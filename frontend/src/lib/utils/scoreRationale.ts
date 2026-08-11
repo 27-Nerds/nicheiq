@@ -216,7 +216,19 @@ export function scoreRationale(
       const dt = clean(idea.estimated_development_time);
       const note = clean(idea.data_acquisition_notes);
       // Surface an ops/cold-start burden only when the data note actually flags one.
-      const opsHint = /moderat|seed|cold[-\s]?start|community|manual/i.test(note) ? note : "";
+      //
+      // THE NOTE MAY ARRIVE IN EITHER READING, SO THE DETECTOR KNOWS BOTH. Every render
+      // path now sanitises `data_acquisition_notes` before this runs — SolutionDetail and
+      // SolutionDetailContent both call `buyerFacingSolutionPreview` on their own prop, so
+      // "cold-start corpus required" reaches this function as "up-front dataset required"
+      // however the host obtained the idea. A caller that hands over a RAW idea (this
+      // function is exported and takes any `SolutionPreview`) still gets the burden line,
+      // because the raw token is matched too. Matching only the raw form silently dropped
+      // the burden line from 78 of the 1,207 distinct notes under `output/`. This function
+      // does NOT sanitise — sanitising belongs to the component that renders the prose, and
+      // a second authority here would be one more place for the vocabulary to drift.
+      const opsHint =
+        /moderat|seed|cold[-\s]?start|up-front data|community|manual/i.test(note) ? note : "";
       why = [dt && `Est. build: ${dt}`, opsHint].filter(Boolean).join(". ");
       break;
     }

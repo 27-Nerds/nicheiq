@@ -54,8 +54,10 @@ vi.mock('../../services/db.js', () => ({
 }));
 
 vi.mock('../../services/assetService.js', () => ({
-  getPreviewReportForJob: (...args: unknown[]) => mockPreviewReport(...args),
   getDiscoveryDataForJob: (...args: unknown[]) => mockDiscoveryData(...args),
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: (...args: unknown[]) => mockPreviewReport(...args),
 }));
 
 vi.mock('../../services/selectionChallengeService.js', () => ({

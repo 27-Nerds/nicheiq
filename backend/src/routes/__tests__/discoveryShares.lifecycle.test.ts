@@ -36,6 +36,8 @@ vi.mock('../../services/jobService.js', () => ({
 
 vi.mock('../../services/assetService.js', () => ({
   getDiscoveryDataForJob: vi.fn(),
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
   getPreviewReportForJob: vi.fn(),
 }));
 

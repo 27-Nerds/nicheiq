@@ -16,6 +16,17 @@ type JobWithRelations = Job & {
   }[];
 };
 
+// Word-boundary truncation for display labels. `niche` itself must stay verbatim in
+// API payloads (re-run/prefill URLs round-trip it); list rows, headers, titles and
+// aria-labels render this instead — validate_idea pitches run to 2000 chars.
+const NICHE_DISPLAY_MAX = 96;
+export function toNicheDisplay(niche: string): string {
+  if (niche.length <= NICHE_DISPLAY_MAX) return niche;
+  const cut = niche.slice(0, NICHE_DISPLAY_MAX);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 60 ? cut.slice(0, lastSpace) : cut).trimEnd() + '…';
+}
+
 interface FormatOptions {
   includeCreatedAt?: boolean;           // Dashboard, Job detail
   includeAssetFlags?: boolean;          // Dashboard only (hasReport, hasLandingPage)
@@ -41,6 +52,10 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
   const base = {
     id: job.id,
     niche: job.niche,
+    // Display-safe short label. `niche` itself stays verbatim — re-run/prefill URLs
+    // round-trip it, so truncation must NEVER happen on the source field. validate_idea
+    // pitches run to 2000 chars; every list/header surface renders this instead.
+    nicheDisplay: toNicheDisplay(job.niche),
     status: job.status,
     currentStage: job.currentStage,
     currentStageName: job.currentStageName,

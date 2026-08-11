@@ -87,6 +87,14 @@
     recommendationSplitNote,
   } from "$lib/utils/adversarialReview";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
+  import {
+    buyerFacingIdeaProse,
+    buyerFacingSolutionPreview,
+    buyerFacingNicheDifficultyVerdict,
+    buyerFacingVerdictNarrative,
+  } from "$lib/selection/buyerFacingResearchProse";
+  import { ideaPortfolioFingerprint } from "$lib/selection/ideaPortfolioFingerprint";
+  import { RANKED_IDEAS_ANCHOR } from "$lib/selection/rankedIdeas";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
   import { buildCollaboratorFeedbackGroups } from "$lib/utils/collaboratorFeedback";
   import {
@@ -125,6 +133,7 @@
   import DecisionStatusBadge from "$lib/components/selection/DecisionStatusBadge.svelte";
   import {
     buildSelectionJourney,
+    decisionActionRecordId,
     type SelectionJourneyTask,
   } from "$lib/selection/decisionJourney";
   import { createSelectionToolOrigin } from "$lib/selection/toolOrigin";
@@ -164,6 +173,9 @@
      *  collapsed dossier. */
     nicheDifficultyVerdict?: NicheDifficultyVerdict | null;
     ideaPortfolioSummary?: string | null;
+    /** Exact sorted visible idea ids+revisions the summary was generated against.
+     *  Missing on legacy reports, which must degrade instead of presenting stale advice. */
+    ideaPortfolioSummaryFingerprint?: string | null;
     userAdjustments?: string[] | null;
     discussionCount?: number | null;
     painPointCount?: number | null;
@@ -202,6 +214,21 @@
     poolMutationLocked?: boolean;
     totalVotes?: number;
     actionSlot?: Snippet<[{ solution: SolutionPreview; index: number }]>;
+    /** "Check my idea" (validate_idea) hosting mode: false renders the flat ranked list —
+     *  the thesis board is a discovery mental model and buries a late-added seed idea in
+     *  the ungrouped tail. Default true = unchanged behavior. */
+    groupByThesis?: boolean;
+    /** Ordered idea keys (ideaKey(): id:revision fallback name) pinned to the top of the
+     *  ranked list — validate mode pins the user's idea first, its pivot second. Internal
+     *  sorts otherwise defeat input ordering. */
+    pinnedIdeaKeys?: string[];
+    /** Command-header overrides for hosting contexts where "Choose ideas" is the wrong
+     *  frame (validate mode: "Your idea, ranked with the alternatives"). */
+    headerTitle?: string | null;
+    headerSub?: string | null;
+    /** The niche reality check renders above the grid by default; the validate report
+     *  page hoists it into its own competitor card, so the hosted instance hides it. */
+    showNicheReality?: boolean;
   }
 
   let {
@@ -228,6 +255,7 @@
     marketReality = null,
     nicheDifficultyVerdict = null,
     ideaPortfolioSummary = null,
+    ideaPortfolioSummaryFingerprint = null,
     userAdjustments = [],
     discussionCount = null,
     painPointCount = null,
@@ -244,13 +272,64 @@
     poolMutationLocked = false,
     totalVotes = 0,
     actionSlot,
+    groupByThesis = true,
+    pinnedIdeaKeys = [],
+    headerTitle = null,
+    headerSub = null,
+    showNicheReality = true,
   }: Props = $props();
+
+  // The four-field rewrite lives in `buyerFacingSolutionPreview` so the OVERLAY is safe on
+  // the three mounts that never come through here. This surface still sanitises, because the
+  // ranked cards below print the same prose without the overlay.
+  const buyerFacingSolution = buyerFacingSolutionPreview;
+
+  // The two whole-sentence rewrites are producer constants unique to this surface; the rest
+  // of the reason is the same pipeline prose the idea cards carry, so it goes through the
+  // same sanitizer. It used to end with the same blind `[—–] -> ". "` replace as the idea
+  // fields, which lower-cased the clause after every dash.
+  function buyerFacingRuledOutFinding(finding: RuledOutFinding): RuledOutFinding {
+    const rewritten = finding.reason
+      .replace(
+        /^No defensible, buildable mechanism on obtainable data\s*[—–-]\s*the viable versions of this idea can't be built as scoped\.$/i,
+        "No defensible, buildable approach was found with the available data. The viable versions cannot be built within this scope.",
+      )
+      .replace(
+        /^This batch result duplicated the existing candidate ('.+?'), so it was not appended\.$/i,
+        "This direction was already represented by $1, so it was not added again.",
+      );
+    return {
+      ...finding,
+      reason: buyerFacingIdeaProse(rewritten) || rewritten,
+      idea: finding.idea ? buyerFacingSolution(finding.idea) : finding.idea,
+    };
+  }
+
+  const displayNicheDifficultyVerdict = $derived(
+    buyerFacingNicheDifficultyVerdict(nicheDifficultyVerdict),
+  );
+
+  const livePortfolioFingerprint = $derived(ideaPortfolioFingerprint(solutions));
+  const portfolioSummaryIsCurrent = $derived(Boolean(
+    ideaPortfolioSummary
+      && ideaPortfolioSummaryFingerprint
+      && livePortfolioFingerprint
+      && ideaPortfolioSummaryFingerprint === livePortfolioFingerprint
+  ));
+  const currentIdeaPortfolioSummary = $derived(
+    portfolioSummaryIsCurrent && ideaPortfolioSummary
+      // THE DATASET READING. This is a second, independent route for
+      // `idea_portfolio_summary` — a $derived on the raw prop, not via
+      // `buyerFacingReport` — and it must fork the same way that one does.
+      ? buyerFacingVerdictNarrative(ideaPortfolioSummary)
+      : null,
+  );
 
   // The generator contract puts the recommendation in the final sentence. Keep that
   // decision separate even when the model returns one long paragraph containing every
   // idea; paragraph-level matching would incorrectly badge every mentioned candidate.
   const summarySections = $derived.by(() => {
-    const paragraphs = (ideaPortfolioSummary ?? "")
+    const paragraphs = (currentIdeaPortfolioSummary ?? "")
       .split(/\n\s*\n/)
       .map((paragraph) => paragraph.trim())
       .filter(Boolean);
@@ -1388,6 +1467,9 @@
     );
   });
   const batchActivities = $derived(chatLedger.batchActivities);
+  const settledBatchActivities = $derived(
+    batchActivities.filter((activity) => activity.outcome !== "pending"),
+  );
   $effect(() => {
     const pending = batchActivities.find((activity) => activity.outcome === "pending");
     if (pending) beginBatchPoll(pending.operationId);
@@ -1588,13 +1670,15 @@
   });
 
   /** Anything at all filed in the dossier appendix (owner view). Declared after
-   *  `rejectedOverlapGroups` so TS sees the dependency as assigned. */
+   *  `rejectedOverlapGroups` so TS sees the dependency as assigned.
+   *  Coverage disclosures are NOT counted: they render at the first level, so
+   *  counting them here would open an empty appendix on a run whose only
+   *  secondary content is its data caveats. */
   const appendixHasContent = $derived(
     summarySupportingNotes.length > 0
       || collaboratorFeedbackGroups.length > 0
       || rejectedOverlapGroups.length > 0
-      || (examinedRuledOut?.length ?? 0) > 0
-      || hasCoverageDisclosures,
+      || (examinedRuledOut?.length ?? 0) > 0,
   );
 
   function openOverlapComparison(group: ResolvedOverlapGroup): void {
@@ -1607,12 +1691,12 @@
 
   // Parse the incumbent name out of a parity finding string, e.g.
   // "shipped by Aftershoot: ..." / "partial by Aftershoot: ..." → "Aftershoot",
-  // "substitute (Forrager): ..." → "Forrager".
+  // "substitute (Forrager): ..." / "bundled_free (Hostaway): ..." → the paren name.
   function incumbentName(parity: string): string {
     const shipped = parity.match(/^(?:shipped by|partial by)\s+(.+?):/i);
     if (shipped) return shipped[1].trim();
-    const substitute = parity.match(/^substitute\s*\(([^)]+)\)/i);
-    if (substitute) return substitute[1].trim();
+    const parenClass = parity.match(/^(?:substitute|bundled_free)\s*\(([^)]+)\)/i);
+    if (parenClass) return parenClass[1].trim();
     const colonIdx = parity.indexOf(":");
     return colonIdx > 0 ? parity.slice(0, colonIdx).trim() : parity.trim();
   }
@@ -1645,7 +1729,13 @@
     const recommendationOrder = new Map(
       analystRecommendedSolutions.map((solution, index) => [ideaKey(solution), index]),
     );
+    // Host-pinned rows (validate mode: the user's idea, then its pivot) outrank
+    // everything, including analyst recommendations.
+    const pinnedOrder = new Map(pinnedIdeaKeys.map((key, index) => [key, index]));
     arr.sort((a, b) => {
+      const aPin = pinnedOrder.get(ideaKey(a)) ?? Number.POSITIVE_INFINITY;
+      const bPin = pinnedOrder.get(ideaKey(b)) ?? Number.POSITIVE_INFINITY;
+      if (aPin !== bPin) return aPin - bPin;
       const aRank = recommendationOrder.get(ideaKey(a)) ?? Number.POSITIVE_INFINITY;
       const bRank = recommendationOrder.get(ideaKey(b)) ?? Number.POSITIVE_INFINITY;
       if (aRank !== bRank) return aRank - bRank;
@@ -1655,6 +1745,10 @@
     });
     return arr;
   });
+  const displaySortedSolutions = $derived(sortedSolutions.map(buyerFacingSolution));
+  const displayExaminedRuledOut = $derived(
+    (examinedRuledOut ?? []).map(buyerFacingRuledOutFinding),
+  );
 
   // ── Thesis partition ──
   // One card per product thesis, variants nested beneath it. Rows keep their rank in
@@ -1852,6 +1946,7 @@
    *  chrome — render the flat list (and hide the uncovered-jobs card, which would
    *  otherwise render with no portfolio structure above it for context). */
   const thesisViewMeaningful = $derived.by(() => {
+    if (!groupByThesis) return false;
     const realTheses = thesisGroups.filter((group) => group.thesis !== null);
     if (realTheses.length >= 2) return true;
     if (realTheses.length === 1) {
@@ -1860,20 +1955,14 @@
     }
     return false;
   });
-  /**
-   * The single row whose select control the first-run tutorial spotlights.
-   *
-   * `i === 0` used to carry this, and thesis grouping broke it: the top-ranked idea is
-   * often a VARIANT, and a variant inside a collapsed card is not in the DOM at all — so
-   * the selector matched nothing and driver.js pinned that step to the bottom of the
-   * screen with no arrow. The lead of the first card is rendered unconditionally in
-   * either layout, so this is always the first select control the user can see.
-   */
-  const tourAnchorKey = $derived.by(() => {
-    if (!interactive) return "";
+  /** The first candidate row the user can actually see. Global rank zero can be a
+   *  collapsed thesis variant and therefore absent from the DOM. A grouped view always
+   *  renders its first group lead; a flat view always renders its first sorted row. */
+  const firstVisibleIdeaKey = $derived.by(() => {
     const first = thesisViewMeaningful ? thesisGroups[0]?.lead.solution : sortedSolutions[0];
     return first ? ideaKey(first) : "";
   });
+  const tourAnchorKey = $derived(interactive ? firstVisibleIdeaKey : "");
   /** "5 jobs examined · 3 theses · 2 uncovered" — the honest one-line read of the pool. */
   const thesisCoverageLine = $derived.by(() => {
     if (!thesisViewMeaningful) return "";
@@ -1917,7 +2006,7 @@
     }
     if (ungrouped > 0) outcomes.push(`${ungrouped} not yet grouped`);
     const head = `${total} new idea${total === 1 ? "" : "s"} from your last request`;
-    return outcomes.length ? `${head} — ${outcomes.join(", ")}.` : `${head}.`;
+    return outcomes.length ? `${head}: ${outcomes.join(", ")}.` : `${head}.`;
   });
 
   const expandedThesisKeys = new SvelteSet<string>();
@@ -2377,13 +2466,19 @@
     trigger?.focus({ preventScroll: true });
   }
 
+  /** `selectError` had no clear at all, so one dead deep link parked the message above the
+   *  pool for the component's life. Same affordance as `clearDetailUrlError`. */
+  function clearSelectError() {
+    selectError = "";
+  }
+
   function clearDetailUrlError() {
     detailUrlError = "";
     clearDetailUrl();
   }
   function openRuledOutDetail(finding: RuledOutFinding) {
     closeAllOverlays();
-    ruledOutDetail = finding;
+    ruledOutDetail = buyerFacingRuledOutFinding(finding);
   }
   function handleCloseRuledOutDetail() {
     ruledOutDetail = null;
@@ -2667,9 +2762,12 @@
       void goto(selectionWorkspaceHref("risks", {
         tool: "tests",
         focus: idea?.idea_id ? { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 } : null,
-        assumptionId: "assumptionId" in action && typeof action.assumptionId === "string"
-          ? action.assumptionId
-          : undefined,
+        // The suggestion names its assumption in `records`, never as a field on
+        // the action. Without it the planner opens with NO assumption at all;
+        // with it the planner opens prefilled with the assumption the suggestion
+        // is about. It does not reopen one specific saved draft — no
+        // `experimentId` deep-link param exists (see TOOL_QUERY_KEYS).
+        assumptionId: decisionActionRecordId(action, "assumption"),
       }));
       return;
     }
@@ -3026,7 +3124,7 @@
         ? tagDescription(solutionPrimaryStrengthKey(s))
         : null,
       angleWhy:
-        s.angle_rationale ||
+        buyerFacingIdeaProse(s.angle_rationale) ||
         (s.winning_angle ? angleDescription(s.winning_angle) : null),
       provenance: sourcePain,
       risk: riskKey
@@ -3054,7 +3152,7 @@
            never a boxed stat-cell strip. Evidence counts (discussions, pain
            points, sources) live in the discovery-dossier ledger below. -->
       <div class="cmd-title-row">
-        <h2 class="cmd-title">{interactive ? CHOOSE_IDEAS_LABEL : RANKED_LIST_HEADING}</h2>
+        <h2 class="cmd-title">{headerTitle ?? (interactive ? CHOOSE_IDEAS_LABEL : RANKED_LIST_HEADING)}</h2>
         <p class="record-line cmd-stats" aria-label="Idea summary">
           {cmdStatsLine}{#if evaluatedDirectionsLabel} · <button
               type="button"
@@ -3068,7 +3166,9 @@
       {#if thesisCoverageLine}
         <p class="record-line cmd-coverage" aria-label="Buyer-job coverage">{thesisCoverageLine}</p>
       {/if}
-      {#if interactive}
+      {#if headerSub}
+        <p class="cmd-sub">{headerSub}</p>
+      {:else if interactive}
         <p class="cmd-sub">
           {#if analystRecommendedSolutions.length > 0}Discovery recommendations appear first. {/if}Select one to three ideas. One Deep Research run covers the full shortlist; comparison and risk checks are optional.
         </p>
@@ -3090,13 +3190,14 @@
     {/if}
   </header>
 
-  {#if nicheDifficultyVerdict}
-    <NicheRealityCheck verdict={nicheDifficultyVerdict} context="report" />
+  {#if displayNicheDifficultyVerdict && showNicheReality}
+    <NicheRealityCheck verdict={displayNicheDifficultyVerdict} context="report" />
   {/if}
 
   <div class:selection-layout={interactive}>
     <div class="candidate-pool">
       <BatchActivity
+        view="live"
         activities={batchActivities}
         stalledOperationId={batchPollStalledOperationId}
         cancellableOperationId={cancellableBatchOperationId}
@@ -3129,6 +3230,17 @@
         <div class="detail-link-error" role="alert">
           <p>{detailUrlError}</p>
           <button type="button" onclick={clearDetailUrlError}>Return to ranked ideas</button>
+        </div>
+      {/if}
+
+      <!-- `selectError` was write-only: assigned when a shortlist proposal's revisions
+           went stale and when a deep-linked evaluation is missing from the report, but
+           rendered nowhere — so both failures were silent. Same surface as the other
+           operation errors, next to detailUrlError. -->
+      {#if selectError}
+        <div class="detail-link-error" role="alert">
+          <p>{selectError}</p>
+          <button type="button" onclick={clearSelectError}>Dismiss</button>
         </div>
       {/if}
 
@@ -3223,6 +3335,13 @@
               />
             </p>
           </section>
+        {:else if ideaPortfolioSummary && !portfolioSummaryIsCurrent}
+          <section class="discovery-take" aria-label="Discovery take">
+            <p class="discovery-take__eyebrow">Discovery take unavailable</p>
+            <p class="discovery-take__quote">
+              Discovery guidance is unavailable for this candidate set. Review the ranked ideas below using their current scores and evidence.
+            </p>
+          </section>
         {/if}
       {/snippet}
 
@@ -3298,6 +3417,7 @@
       {@const maxed = !isSel && selectedIdeaKeys.size >= MAX_SELECTIONS}
       {@const isAnalystPick = analystPickKeys.has(key)}
       <div
+        id={key === firstVisibleIdeaKey ? RANKED_IDEAS_ANCHOR : undefined}
         class="opp-row"
         role="row"
         class:opp-row-sel={isSel}
@@ -3322,7 +3442,6 @@
             aria-disabled={maxed ? "true" : undefined}
           >
             <input
-              id={`idea-select-${i}`}
               type="checkbox"
               class="sr-only"
               checked={isSel}
@@ -3371,6 +3490,13 @@
               data-annotation-anchor={`candidate:${key}:title`}
             >
               <span class="opp-title">{m.title}</span>
+              {#if s.source_frame === "user_seed" && s.generation_operation_id === "validate"}
+                <!-- Find-at-a-glance: pinning alone is invisible — the row says whose
+                     idea it is (same rule as the review page's chip). -->
+                <span class="tag tag-new">Your idea</span>
+              {:else if s.source_frame === "user_seed" && s.generation_operation_id === "validate_pivot"}
+                <span class="tag tag-new">Your idea, adjusted</span>
+              {/if}
               {#if isAnalystPick}
                 <span class="analyst-pick">Recommended</span>
               {/if}
@@ -3590,8 +3716,24 @@
       {#each sortedSolutions as s, i (ideaKey(s))}
         {@render oppRow(s, i)}
       {/each}
-    {/if}
+      {/if}
       </div>
+
+      <!-- Settled batch receipts describe work already reflected in the ranked pool.
+           Keep the full history and its review/retry controls after that pool; only the
+           compact pending state interrupts the decision surface above. -->
+      <BatchActivity
+        activities={settledBatchActivities}
+        stalledOperationId={batchPollStalledOperationId}
+        cancellableOperationId={cancellableBatchOperationId}
+        cancellingOperationId={batchCancellingOperationId}
+        operation={chatLedger.activeOperation}
+        onRecheck={recheckBatch}
+        onCancel={cancelBatch}
+        onReviewCandidates={reviewBatchCandidates}
+        onReviewRuledOut={reviewBatchRuledOut}
+        onRetry={canRequestBatch ? retryBatch : undefined}
+      />
 
       {#if thesisViewMeaningful && uncoveredJobs.length > 0}
         <section class="uncovered-jobs" aria-labelledby="uncovered-jobs-title">
@@ -3758,7 +3900,7 @@
 
   {#snippet ruledOutBlock()}
     <RuledOutList
-      findings={examinedRuledOut ?? []}
+      findings={displayExaminedRuledOut}
       highlightedIndex={seedHighlightRuledOutIndex}
       onOpen={openRuledOutDetail}
     />
@@ -3783,6 +3925,24 @@
 
     {#if shape}
       <p class="shape-note">{shape.line}</p>
+    {/if}
+
+    <!-- FIRST LEVEL, deliberately outside the appendix. These are the notes that
+         change how the scores and counts above should be read ("minimum viable
+         data", "high content filtering rate", a filtered search volume), so a
+         reader who never opens the appendix must still meet them. Filed inside
+         it they sat behind TWO disclosures — the collapsed appendix and then the
+         "Data caveats" summary — and `appendixMeta` does not even count them, so
+         the collapsed appendix gave no hint they existed. This is the placement
+         the visitor view has always used; the owner is no longer the one person
+         who has to dig for the caveats on their own research. -->
+    {#if hasCoverageDisclosures}
+      <ResearchContextNotes
+        shapeLine={null}
+        coverageNotes={coverageNotes ?? []}
+        userAdjustments={userAdjustments ?? []}
+        {marketReality}
+      />
     {/if}
 
     {#if appendixHasContent}
@@ -3817,14 +3977,6 @@
         {/if}
         {#if examinedRuledOut && examinedRuledOut.length > 0}
           {@render ruledOutBlock()}
-        {/if}
-        {#if hasCoverageDisclosures}
-          <ResearchContextNotes
-            shapeLine={null}
-            coverageNotes={coverageNotes ?? []}
-            userAdjustments={userAdjustments ?? []}
-            {marketReality}
-          />
         {/if}
       </AnalysisAppendix>
     {/if}
@@ -3894,6 +4046,8 @@
         {ideaReferences}
         onOpenIdeaReference={openChatIdeaReference}
         focused={chatPanel.isExpanded}
+        initialDraft={chatPanel.draft(jobId)}
+        onDraftChange={(text) => chatPanel.setDraft(jobId, text)}
         onToggleFocus={() => chatPanel.toggleExpanded()}
         onCollapse={() => {
           restoreFocusToLauncher = true;
@@ -4051,13 +4205,13 @@
 {/if}
 
 <!-- Detail modal -->
-{#if modalIndex !== null && sortedSolutions[modalIndex]}
+{#if modalIndex !== null && displaySortedSolutions[modalIndex]}
   {@const detailIndex = modalIndex}
   {#if interactive}
     <SolutionDetail
       open={modalIndex !== null}
-      solution={sortedSolutions[modalIndex]}
-      solutions={sortedSolutions}
+      solution={displaySortedSolutions[modalIndex]}
+      solutions={displaySortedSolutions}
       currentIndex={modalIndex}
       {jobId}
       lifecycle="selection"
@@ -4090,8 +4244,8 @@
     {/snippet}
     <SolutionDetail
       open={modalIndex !== null}
-      solution={sortedSolutions[modalIndex]}
-      solutions={sortedSolutions}
+      solution={displaySortedSolutions[modalIndex]}
+      solutions={displaySortedSolutions}
       currentIndex={modalIndex}
       lifecycle="reference"
       activeTab={detailTab}
@@ -4491,9 +4645,9 @@
     min-height: 2.5rem;
     margin-top: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--color-border-emphasis);
+    border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
-    background: var(--color-bg-elevated);
+    background: transparent;
     color: var(--color-text-primary);
     font: inherit;
     font-size: var(--text-sm);
@@ -4563,17 +4717,16 @@
     max-width: 74ch;
     margin: 0;
     color: var(--color-text-primary);
-    font-family: var(--font-display);
+    font-family: var(--font-body);
     font-size: var(--text-md);
     font-weight: 400;
     line-height: 1.45;
-    letter-spacing: -0.01em;
     text-wrap: pretty;
   }
   .discovery-take__quote :global(button.idea-reference-link) {
     color: inherit;
     font: inherit;
-    font-weight: 650;
+    font-weight: 600; /* ramp weights are {400,500,600,700,800} — 650 is off-system */
     text-decoration-color: var(--color-border-emphasis);
     text-decoration-line: underline;
     text-decoration-style: dotted;
@@ -4747,7 +4900,8 @@
 
   .regen-error {
     margin: 0;
-    font-family: var(--font-mono);
+    /* Prose, not a record line: an error sentence takes the body face (rule 12). */
+    font-family: var(--font-body);
     font-size: var(--text-sm);
     color: var(--color-error-text);
     text-align: right;
@@ -4894,6 +5048,9 @@
     transition:
       background var(--duration-fast) var(--ease-default),
       box-shadow var(--duration-fast) var(--ease-default);
+  }
+  .opp-row[id="idea-select-0"] {
+    scroll-margin-top: var(--space-20);
   }
   /* Grouped board: no rank track — the "#" cell is not rendered there. */
   .opp-list--grouped .opp-row {
@@ -5390,6 +5547,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-11);
     color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   /* ── Variant grouping note ── */
@@ -5426,6 +5584,8 @@
     font-weight: 700;
     letter-spacing: 0.055em;
     text-transform: uppercase;
+    /* These kickers carry a count; mono numerics are tabular (rule 14). */
+    font-variant-numeric: tabular-nums;
   }
   .variant-note-names {
     display: flex;

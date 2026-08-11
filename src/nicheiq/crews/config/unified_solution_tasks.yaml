@@ -388,7 +388,7 @@ divergent_exploration:
        project_type: "saas"
        target_keywords: ["contractor proposal template", "freelance quote calculator", "service estimate generator"]
        data_source_hint: "Pre-built industry templates + user-submitted rate data"
-       why_non_obvious: "Enterprise PM tools charge $30-100/month but most small contractors only use the quote builder; extracting that single feature as a free, affiliate-and-lead-gen-supported tool with pre-built industry templates captures 80% of the value the suite locks behind a subscription."
+       why_non_obvious: "Enterprise PM tools charge $30-100/month but most small contractors only use the quote builder; extracting that single feature as a standalone tool with pre-built industry templates captures 80% of the value the suite locks behind a subscription."
        distribution_channel: "seo"
        **Technique: atomic_feature — single high-value feature extracted from complex tools**
 
@@ -595,33 +595,28 @@ solution_refinement:
 
     **PRICING STRATEGY — willingness-to-pay FIRST, project type second:**
 
+    The directive below is the ONLY pricing guidance in this prompt. It is computed
+    deterministically from this niche's segment payability, its pains' commercial intent, and —
+    decisively — the web-verified wallet evidence, so it already knows whether anyone in this
+    market demonstrably pays. A WTP ladder used to be spelled out here as well; it could not see
+    that evidence, so it kept steering low-WTP ideas to a free/distribution shape in niches whose
+    own verified prices were quoted a few paragraphs earlier. It is deleted rather than duplicated
+    (D1 round 15, Priority 3) — do not reconstruct one, and do not import a house default from
+    outside this prompt.
+
     {monetization_directive}
 
-    Read the addressed pain's WTP (shown as "WTP x/10" in the pain block above). Pricing follows
-    that number FIRST; project type only shapes the FORM of monetization, it does NOT override a weak
-    WTP (a low-WTP SaaS is still a free/distribution play, not a subscription). DO NOT default to
-    "Freemium with 3 tiers".
+    Project type shapes the FORM monetization can take; it never decides on its own whether to
+    charge. Self-check: if you propose a subscription, name the addressed pain's WTP (x/10) that
+    justifies it.
 
-    **Pain WTP < 3/10 (weak wallet):** default to a FREE tool with distribution monetization —
-    Ad-Supported-Free, Affiliate-Only, Hybrid-Traffic, Lead-Gen, or a cheap team tier. Do NOT propose
-    per-seat subscription unless this specific pain shows genuine buying signal.
-    - Example: "Free tool monetized by display ads (target: $5-15 CPM) and affiliate links"
-    - Example: "Free comparison site earning affiliate commissions on purchase referrals"
-
-    **Pain WTP 3-5/10 (borderline):** prefer free + distribution or a low one-time price over a
-    recurring subscription; justify any subscription explicitly.
-
-    **Pain WTP >= 5/10 (real buying signal):** paid pricing is on the table — Freemium,
-    Freemium-Lite, Pure Subscription, Usage-Based, or One-Time — matched to the WTP and competitive
-    landscape.
-    - Example: "Freemium model with Free/Pro tiers at $29/mo targeting professional users"
-
-    Self-check: if you propose a subscription, name the addressed pain's WTP (x/10) that justifies it.
-
-    **Pricing Strategy Field Format:**
-    - For ad-supported: "Free tool monetized via display ads ($X-Y CPM) and affiliate commissions. [traffic rationale]"
-    - For affiliate: "Free comparison tool earning Z% commission on referred purchases. [conversion rationale]"
+    **Pricing Strategy Field Format** — "<model name> — <the concrete numbers> — <rationale>":
     - For subscription: "Freemium model with Starter ($X/mo) and Pro ($Y/mo) tiers. [rationale — cite the pain WTP]"
+    - For one-time / usage-based: "One-time $X purchase" / "$X per N units. [rationale — cite the pain WTP]"
+    - Traffic monetization (ads/affiliate) is a legitimate FORM and has no worked example here on
+      purpose: a worked example is a license, and three lines above this the directive was named
+      the only pricing guidance in the prompt. Write it in the same shape as the others only where
+      the directive supports a shape in which this audience does not pay.
 
     **SEO Fields:**
     - programmatic_seo_opportunity, content_generation_model

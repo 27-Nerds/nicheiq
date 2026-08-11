@@ -1,0 +1,61 @@
+# Adversarial confirmation for tentative buyer-speaker verdicts
+# Used by: utils.speaker_attribution.attribute_evidence_speakers()
+# Variables: target_segment, target_context, candidates_text, candidate_count
+
+template: |
+  Audit tentative buyer-speaker labels relative to this exact primary target.
+  This is a false-positive review, not topic classification.
+
+  PRIMARY TARGET: {target_segment}
+  TARGET CONTEXT: {target_context}
+
+  Confirm a buyer only when the authored contribution directly establishes that
+  the speaker currently operates, manages, or buys tools for the target-side
+  occupation or business. Apply these checks adversarially:
+
+  - The supplied identity_evidence must itself name or unmistakably establish the
+    target-side occupation, business type, or operational role.
+  - Generic business ownership, customers, software use, or performing the pain
+    workflow is not target membership.
+  - An operator of another business doing the function in-house is a customer or
+    unknown when the primary target is a professional/service provider.
+  - Missing narrow qualifiers such as team size or location count is not disproof,
+    but an explicit contradiction is. Someone only aspiring to enter the target
+    role, or explicitly below a required current scale, is adjacent_worker.
+  - explicit_target_segment_contradiction is a deterministic source check against
+    a numeric target floor. When true, segment_fit must be "contradicts",
+    confirmed must be false, and corrected_role must be "adjacent_worker".
+  - deterministic_segment_fit compares explicit numeric intervals only when their
+    units match. For a numeric target qualifier, copy this value into segment_fit.
+    A different unit, colloquial quantity, conflicting scope, or missing quantity
+    is "unknown", never "contradicts". You may still correct a clearly solo,
+    aspiring, customer, or adjacent-worker speaker based on their full role evidence.
+  - Direct first-person selection of a tool for the target operation plus authority
+    to delegate the underlying task to staff establishes operational responsibility,
+    even when the speaker does not state a formal management title. This is evidence
+    to evaluate, not an automatic buyer confirmation: reject the tentative label when
+    the full contribution still identifies an adjacent worker or leaves buyer-side
+    authority unconfirmed.
+  - A customer grievance, service-shopping account, or end-user complaint is
+    customer even when it is detailed, first-person, or highly engaged.
+  - Community, pain title, and topical overlap never supply missing identity.
+
+  Tentative buyers ({candidate_count} total; JSON lines):
+  {candidates_text}
+
+  Return a JSON object with a "reviews" array containing exactly
+  {candidate_count} objects. Each object must have:
+  - index: input 1-based index
+  - confirmed: true only if every rule above passes
+  - segment_fit: "fits" when the source affirmatively establishes the stated
+    target qualifier, "contradicts" when it explicitly conflicts with one, or
+    "unknown" when the qualifier is not stated. "unknown" alone is not a reason
+    to reject an otherwise grounded target-side buyer.
+  - corrected_role: null when confirmed; otherwise "adjacent_worker", "customer",
+    or "unknown"
+  - rationale: one short sentence naming the decisive source evidence or gap
+
+  <verification>
+  Challenge every tentative label. Never confirm merely because the contribution
+  discusses the target's pain. Verify every index appears exactly once.
+  </verification>

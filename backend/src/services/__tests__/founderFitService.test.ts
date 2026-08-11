@@ -14,6 +14,8 @@ vi.mock('../../config.js', () => ({
 }));
 
 import {
+  CONTRACTOR_DELIVERY_COPY,
+  LEGACY_DELIVERY_COPY,
   founderFitIdeaSnapshot,
   generateFounderFitArtifact,
   parseCurrentFounderFitArtifact,
@@ -24,11 +26,14 @@ const profile = {
   weeklyTime: 'under_10' as const,
   budget: 'under_1k' as const,
   team: 'solo' as const,
+  buildModel: 'self' as const,
   revenueHorizon: '90_days' as const,
   distributionAdvantages: ['seo' as const],
   strengths: 'Technical writing',
   hardConstraints: '',
 };
+
+const { buildModel: _buildModel, ...legacyProfile } = profile;
 
 const idea = {
   idea_id: 'idea_signal',
@@ -146,6 +151,224 @@ describe('founderFitService', () => {
     expect(artifact.model).toBe('gpt-founder-fit-test');
   });
 
+  it('keeps the per-idea contractor analysis and code-owns only the delivery claim', async () => {
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const, strengths: 'Deep veterinary operations knowledge' };
+    const contractorSummary = 'This can fit if you scope a narrow brief and manage a contractor within the testing budget.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({
+          summary: contractorSummary,
+          strongestAdvantage: 'Your veterinary operations knowledge can make the contractor brief specific.',
+        })],
+      }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(outsourcedProfile, [idea]);
+    const request = mockChatComplete.mock.calls[0][0];
+
+    expect(request.messages[0].content).toContain('the contractor writes the code');
+    expect(request.messages[0].content).toContain('never say or imply that the founder will code');
+    expect(request.messages[1].content).toContain('"build model":"A contractor or agency will build the software"');
+    expect(request.messages[1].content).toContain('"team size":"Solo founder"');
+    // The analysis survives...
+    expect(artifact.results[0].verdict).toBe('needs_reshape');
+    expect(artifact.results[0].summary).toBe(contractorSummary);
+    expect(artifact.results[0].strongestAdvantage).toBe(
+      'Your veterinary operations knowledge can make the contractor brief specific.',
+    );
+    // ...and only the delivery claim is replaced.
+    expect(artifact.results[0].dimensions.find(({ dimension }) => dimension === 'team'))
+      .toEqual({
+        dimension: 'team',
+        status: 'unknown',
+        summary: CONTRACTOR_DELIVERY_COPY,
+        profileFields: ['team', 'buildModel'],
+        ideaFields: ['estimated_development_time'],
+      });
+    expect(artifact.results[0].suggestedExperiment.assumption).toContain(
+      'A qualified contractor or agency can quote a bounded first test',
+    );
+  });
+
+  it('leaves the five non-delivery dimensions the specialist wrote them', async () => {
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const };
+    const result = modelResult() as any;
+    result.dimensions = result.dimensions.map((dimension: any) =>
+      dimension.dimension === 'distribution'
+        ? { ...dimension, status: 'aligned', summary: 'Your SEO reach covers this buyer directly.' }
+        : dimension
+    );
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({ results: [result] }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(outsourcedProfile, [idea]);
+    const distribution = artifact.results[0].dimensions.find((d) => d.dimension === 'distribution')!;
+
+    expect(distribution.status).toBe('aligned');
+    expect(distribution.summary).toBe('Your SEO reach covers this buyer directly.');
+    // Nothing outside `team` was flattened to "unknown".
+    expect(artifact.results[0].dimensions.filter((d) => d.status === 'unknown').map((d) => d.dimension))
+      .not.toContain('distribution');
+  });
+
+  it.each([
+    ['blocked', 'blocked'],
+    ['needs_reshape', 'needs_reshape'],
+  ])('keeps %s reachable for a contractor profile', async (_label, verdict) => {
+    // Both verdicts were unreachable for every profile that was not `buildModel: 'self'` — the
+    // contract hard-coded `insufficient_evidence` for the entire class, which also made the
+    // reshape route dead code for contractor and legacy owners.
+    const constrained = {
+      ...profile,
+      buildModel: 'contractor' as const,
+      hardConstraints: 'No customer data may leave the EU.',
+    };
+    const result = modelResult({ verdict }) as any;
+    result.dimensions = result.dimensions.map((dimension: any) =>
+      dimension.dimension === 'hard_constraints'
+        ? {
+            ...dimension,
+            status: verdict === 'blocked' ? 'conflict' : 'unknown',
+            summary: 'The required data flow needs an EU-only review.',
+          }
+        : dimension
+    );
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({ results: [result] }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(constrained, [idea]);
+
+    expect(artifact.results[0].verdict).toBe(verdict);
+    // And the published artifact survives the read-time contract, so it actually reaches a reader.
+    expect(parseCurrentFounderFitArtifact(artifact, constrained, [idea])?.results[0].verdict)
+      .toBe(verdict);
+  });
+
+  it.each([
+    ['passive', 'The API integration will be put together by the founder.'],
+    ['second-person', "You'll wire up the API, then hand it to the contractor."],
+    ['code-adjacent', 'You will connect the database and expose the endpoints for the first release.'],
+    ['conditional', "Once you've built the MVP, the contractor can take over."],
+  ])('rejects %s founder-coding prose and publishes nothing when the retry repeats it', async (_shape, attempt) => {
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const };
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary: attempt })],
+      }) } }],
+    });
+
+    await expect(generateFounderFitArtifact(outsourcedProfile, [idea])).rejects.toMatchObject({
+      name: 'FounderFitGenerationError',
+    });
+    expect(mockChatComplete).toHaveBeenCalledTimes(2);
+    expect(mockChatComplete.mock.calls[1][0].messages[0].content)
+      .toContain('change only the wording that puts the founder at the keyboard');
+  });
+
+  it('publishes the retry when the second attempt drops the founder-coding claim', async () => {
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const };
+    const clean = 'A scoped contractor brief can be funded inside this budget if the first slice stays narrow.';
+    mockChatComplete
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify({
+          results: [modelResult({ summary: 'You will build the first release yourself.' })],
+        }) } }],
+      })
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify({
+          results: [modelResult({ summary: clean, verdict: 'fits' })],
+        }) } }],
+      });
+
+    const artifact = await generateFounderFitArtifact(outsourcedProfile, [idea]);
+
+    expect(mockChatComplete).toHaveBeenCalledTimes(2);
+    expect(artifact.results[0].summary).toBe(clean);
+    expect(artifact.results[0].verdict).toBe('fits');
+  });
+
+  it('publishes benign contractor prose that never puts the founder at the keyboard', async () => {
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const };
+    const summary = 'You can hire a contractor to build the MVP, then review it against a narrow acceptance brief.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary })],
+      }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(outsourcedProfile, [idea]);
+    expect(mockChatComplete).toHaveBeenCalledTimes(1);
+    expect(artifact.results[0].summary).toBe(summary);
+  });
+
+  it('keeps a legacy profile without buildModel valid and does not call the founder the builder', async () => {
+    const legacySummary = 'Delivery ownership is unknown, so founder fit depends on who will build the first release.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary: legacySummary })],
+      }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(legacyProfile, [idea]);
+    const userContent = mockChatComplete.mock.calls[0][0].messages[1].content as string;
+
+    expect(userContent).toContain('"team size":"Solo founder"');
+    expect(userContent).toContain('"build model":"not supplied"');
+    expect(artifact.profileSnapshot).toEqual(legacyProfile);
+    // "who will build the first release" names no builder, so it stays.
+    expect(artifact.results[0].summary).toBe(legacySummary);
+    expect(artifact.results[0].dimensions.find(({ dimension }) => dimension === 'team')?.summary)
+      .toBe(LEGACY_DELIVERY_COPY);
+  });
+
+  it('refuses to publish a founder-coding inference for a legacy profile', async () => {
+    const attempt = 'You should develop the application yourself before testing demand.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary: attempt })],
+      }) } }],
+    });
+
+    await expect(generateFounderFitArtifact(legacyProfile, [idea])).rejects.toMatchObject({
+      name: 'FounderFitGenerationError',
+    });
+  });
+
+  it('drops a hallucinated build-model citation from legacy-profile output', async () => {
+    const result = modelResult() as any;
+    result.dimensions = result.dimensions.map((dimension: any) => (
+      dimension.dimension === 'team'
+        ? { ...dimension, profileFields: ['team', 'buildModel'] }
+        : dimension
+    ));
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({ results: [result] }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(legacyProfile, [idea]);
+    const team = artifact.results[0].dimensions.find((dimension) => dimension.dimension === 'team')!;
+    expect(team.profileFields).toEqual(['team']);
+    expect(team.summary).toBe(LEGACY_DELIVERY_COPY);
+  });
+
+  it('identifies the founder as the builder only when the build model says so', async () => {
+    const soloBuilderProfile = { ...profile, buildModel: 'self' as const };
+    const soloSummary = 'Building the software yourself looks feasible only if the first release stays narrow.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary: soloSummary })],
+      }) } }],
+    });
+
+    const artifact = await generateFounderFitArtifact(soloBuilderProfile, [idea]);
+    const userContent = mockChatComplete.mock.calls[0][0].messages[1].content as string;
+
+    expect(userContent).toContain('"build model":"I will build the software"');
+    expect(artifact.results[0].summary).toBe(soloSummary);
+  });
+
   it('maps an exact two-idea response by temporary reference, independent of response order', async () => {
     mockChatComplete.mockResolvedValue({
       choices: [{
@@ -207,6 +430,65 @@ describe('founderFitService', () => {
       profile,
       [{ ...idea, idea_revision: 3 }],
     )).toBeNull();
+  });
+
+  it('withholds a stored contractor artifact whose prose was not written under the contract', async () => {
+    // The gap this closes: the contract used to be applied only where the artifact is MADE.
+    // The stored copy is re-validated on every read by fingerprint alone, and the fingerprint
+    // is computed over the profile and the idea snapshots — the inputs. Change nothing but the
+    // prose and it still matches, so an artifact persisted by any build without the contract
+    // (or one that predates it) was served verbatim to a contractor-profile owner.
+    const outsourcedProfile = { ...profile, buildModel: 'contractor' as const };
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({ results: [modelResult()] }) } }],
+    });
+    const sanctioned = await generateFounderFitArtifact(outsourcedProfile, [idea]);
+    expect(parseCurrentFounderFitArtifact(sanctioned, outsourcedProfile, [idea])).not.toBeNull();
+
+    const tampered = {
+      ...sanctioned,
+      results: [{
+        ...sanctioned.results[0],
+        summary: 'You will build the first release yourself, then hand it to the contractor.',
+      }],
+    };
+
+    expect(tampered.inputFingerprint).toBe(sanctioned.inputFingerprint);
+    expect(parseCurrentFounderFitArtifact(tampered, outsourcedProfile, [idea])).toBeNull();
+  });
+
+  it('withholds a stored legacy artifact that assigns the build to the founder', async () => {
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({ results: [modelResult()] }) } }],
+    });
+    const sanctioned = await generateFounderFitArtifact(legacyProfile, [idea]);
+
+    const tampered = {
+      ...sanctioned,
+      results: [{
+        ...sanctioned.results[0],
+        dimensions: sanctioned.results[0].dimensions.map(dimension => (
+          dimension.dimension === 'team'
+            ? { ...dimension, summary: 'As a solo founder you will develop this yourself.' }
+            : dimension
+        )),
+      }],
+    };
+
+    expect(parseCurrentFounderFitArtifact(tampered, legacyProfile, [idea])).toBeNull();
+  });
+
+  it('leaves a self-build artifact alone — there is no delivery claim to contradict', async () => {
+    const soloSummary = 'Building this yourself is feasible if the first release stays narrow.';
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        results: [modelResult({ summary: soloSummary })],
+      }) } }],
+    });
+    const artifact = await generateFounderFitArtifact(profile, [idea]);
+
+    const parsed = parseCurrentFounderFitArtifact(artifact, profile, [idea]);
+    expect(parsed?.results[0].summary).toBe(soloSummary);
   });
 
   it('snapshots only the bounded fields used by the specialist', () => {

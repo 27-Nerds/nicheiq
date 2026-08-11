@@ -406,6 +406,42 @@ type JargonReplacer = (
 type JargonRule = { pattern: RegExp; replacement: string | JargonReplacer };
 
 /**
+ * The PainPoint repr field names, read to the buyer. `willingness_to_pay_score` takes the
+ * Commercial Intent name the `WTP` rules below already use, so one caveat cannot print the
+ * metric under two names.
+ */
+const REPR_FIELD_LABELS: Record<string, string> = {
+	title: 'problem title',
+	severity_score: 'severity score',
+	willingness_to_pay_score: 'commercial-intent score',
+	representative_quote: 'representative quote',
+	source_platform: 'source platform',
+};
+
+/**
+ * The FIFTH repr key, and the only one with no underscore — which is why it survived the
+ * round that added the other four AND the test that was supposed to prove they were complete:
+ * the suite's `INTERNAL_TOKEN` regex matched a snake_case identifier, so `title=` walked past
+ * it and `title='Burnout and Mental Health Struggles'` reached the buyer verbatim.
+ *
+ * IT CANNOT SHARE THE `=` GATE, BECAUSE A BARE `title` IS NOT OURS. Measured over the
+ * 2,223,988 distinct strings under `output/`, `\btitle\s*=` occurs in 6 of them and only ONE
+ * is this repr. Two of the other five are product advice the walk would corrupt — an SEO
+ * recommendation containing the HTML snippet `<a href="…" title="Picky Eater Solutions">`,
+ * whose `=` is tight and would satisfy the shared lookahead exactly, and an Open Graph
+ * example writing `og:title = "…"` — and the remaining three are scraped Reddit `body` text
+ * that `NON_PROSE_KEY` already holds out of reach. So this rule is gated on the repr CONTEXT
+ * instead: a quoted value followed by one of the sibling keys. Over the same sweep it matches
+ * exactly one string, the one above.
+ *
+ * It must run BEFORE the shared repr rule, which renames the sibling this lookahead reads —
+ * which is also what makes it idempotent: after one pass there is no `severity_score=` left
+ * for it to key on.
+ */
+const PAIN_REPR_TITLE =
+	/\btitle(?==(?:'[^']*'|"[^"]*")\s+(?:severity_score|willingness_to_pay_score|representative_quote|source_platform)=)/g;
+
+/**
  * Ordered pattern -> replacement table for internal names the backend writes into
  * user-facing prose (risk factors, calibration notes, pricing rationales).
  * Conservative by construction: a rule that doesn't match changes nothing.
@@ -413,6 +449,36 @@ type JargonRule = { pattern: RegExp; replacement: string | JargonReplacer };
 const INTERNAL_JARGON_RULES: JargonRule[] = [
 	// Raw field name from a calibration note: "(data_access_model: unverified)".
 	{ pattern: /\bdata_access_model\b/g, replacement: 'data route' },
+
+	// More raw field names, all of them from `data_quality_summary.quality_caveats` — the
+	// prose field the selection surfaces read straight off the preview report, and the one
+	// field in this family that no sanitizer used to reach at all. Measured over every
+	// distinct prose string under `output/` (the same sweep the note below cites), these two
+	// occur ONLY in that field — 7 and 3 strings — so a bare word rule cannot reach an
+	// infrastructure sense of either.
+	{ pattern: /\bpain_points_addressed\b/g, replacement: 'addressed problems' },
+	{ pattern: /\bseo_analytics\b/g, replacement: 'SEO analytics' },
+
+	// THE REPR DUMP. The coverage checker interpolates a whole PainPoint repr into its
+	// caveat — "title='Burnout and Mental Health Struggles' severity_score=0.9
+	// willingness_to_pay_score=0.6 representative_quote="…" source_platform='Reddit
+	// r/gamedev'" — so these four names reach the reader as raw `name=value` pairs.
+	//
+	// THE `=` LOOKAHEAD IS THE GUARD, AND IT IS LOAD-BEARING. This function is the body of
+	// `humanizeReportProse`, an unconditional FIELD-BLIND deep walk, and `severity_score` is
+	// not only ours: one `technical_approach` value names it as a COLUMN of a JSON schema the
+	// product itself would define, beside `pay_signal` and `source_url` that this table does
+	// not own — "a structured JSON schema (complaint, workaround, severity_score, pay_signal,
+	// source_url)". A bare word rule would leave that list half-translated, which is the same
+	// class of defect that got the research vocabulary rejected from this table (see below).
+	// Over every distinct prose string under `output/`, the `=` form appears in 11 strings and
+	// every one is ours — `quality_caveats`, plus the "(severity_score=0.80)" severity
+	// justifications in `description` — and that schema list is the only occurrence without it.
+	{ pattern: PAIN_REPR_TITLE, replacement: REPR_FIELD_LABELS.title },
+	{
+		pattern: /\b(?:severity_score|willingness_to_pay_score|representative_quote|source_platform)(?=\s*=)/g,
+		replacement: (match) => REPR_FIELD_LABELS[match] ?? match,
+	},
 
 	// WTP was renamed Commercial Intent, and its bare 0-1 number needs a scale.
 	// The score can lead the acronym with no "score" noun behind it — "the 0.43
@@ -468,6 +534,18 @@ const INTERNAL_JARGON_RULES: JargonRule[] = [
  * Rewrite internal field names, renamed metrics and gate codenames that leak from
  * backend prose into the report UI, and re-unit any money it quotes so a sentence
  * cannot contradict the tile above it. Text with no match is returned untouched.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. The pipeline's research vocabulary — "corpus",
+ * "cold-start", "wedge", "web-verified" — accounts for ~8,800 jargon instances in fields no
+ * sanitizer reaches, and adding it to this list was measured over every run under `output/`
+ * and rejected. Those words are ambiguous, and this function is the body of
+ * `humanizeReportProse`, an unconditional deep walk with no idea which field it is in: on
+ * infrastructure niches it turned "reducing cold start and inference latency" into
+ * "reducing up-front data and inference latency" across `rationale`, `pricing_strategy` and
+ * `differentiation_factors` — 161 instances — and "backed by specific corpus evidence" into
+ * "collected evidence evidence". The rules live in
+ * `$lib/selection/buyerFacingResearchProse`, which applies them per FIELD and can therefore
+ * pick the right sense; see the note on `buyerFacingReport` there.
  */
 export function humanizeInternalJargon(text: string | null | undefined): string {
 	if (!text) return '';
@@ -489,8 +567,25 @@ export function humanizeInternalJargon(text: string | null | undefined): string 
 	return out;
 }
 
-/** Keys that hold machine values rather than prose — never rewritten. */
-const NON_PROSE_KEY = /(^|_)(id|ids|url|urls|href|link|slug|domain|email|permalink)$/i;
+/**
+ * Keys that hold machine values rather than prose — never rewritten.
+ *
+ * QUOTATIONS ARE ON THIS LIST, and they are not machine values. `humanizeReportProse` is an
+ * unconditional deep walk, so `evidence_appendix[].quotes_with_sources[].quote` and
+ * `detailed_pain_points[].representative_quotes` were being edited: a user who wrote "WTP"
+ * was shown saying "commercial intent". A verbatim quotation that has been silently reworded
+ * is a worse defect than an unglossed acronym inside one — the gloss belongs in the prose
+ * around the quote, never inside the quotation marks.
+ *
+ * `selftext` is on the list for the same reason as `body`, and it is LATENT rather than
+ * live: it is Reddit's own name for the text of a post, it is a real key under `output/`
+ * (`social_content[].selftext`), and NO rule in the table above reaches it today. But this
+ * walk is FIELD-BLIND — it was `body` and `quote` being rewritten that put the other names
+ * here — so the guard has to be in place BEFORE the vocabulary rule that would rewrite a
+ * user's own words, not after someone reads it in a shipped report.
+ */
+const NON_PROSE_KEY =
+	/(^|_)(id|ids|url|urls|href|link|slug|domain|email|permalink|quote|quotes|body|selftext|excerpt|snippet)$/i;
 
 function humanizeNode(value: unknown, key: string | undefined): unknown {
 	if (typeof value === 'string') {

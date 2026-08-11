@@ -89,6 +89,7 @@
   let error = $state("");
   let runError = $state("");
   let runStatus = $state("");
+  let openDisclosures = $state<Record<string, boolean>>({});
   let loadedKey = "";
   let focusedRequestId = 0;
   const lensValues = SELECTION_CHALLENGE_LENSES.map((lens) => lens.value);
@@ -118,7 +119,18 @@
       empty: "See what your saved evidence says about building it",
     },
   };
-  const STALE_TAB_MESSAGE = "Needs recheck — this review predates the current check method or evidence.";
+
+  function disclosureBodyId(kind: string, ...parts: string[]): string {
+    const identity = parts.join("-").replace(/[^a-zA-Z0-9_-]+/g, "-");
+    return `evidence-${kind}-${identity}`;
+  }
+
+  function setDisclosureOpen(id: string, event: Event): void {
+    const details = event.currentTarget;
+    if (!(details instanceof HTMLDetailsElement)) return;
+    openDisclosures = { ...openDisclosures, [id]: details.open };
+  }
+  const STALE_TAB_MESSAGE = "Needs recheck. This review predates the current check method or evidence.";
   const validatedOwnerEvidencePrefill = $derived.by(() => {
     const request = ownerEvidencePrefill;
     if (!request) return { prefill: null, error: "" };
@@ -532,6 +544,7 @@
             {@const supports = reviewItems(question, ["supports"])}
             {@const concerns = reviewItems(question, ["contradicts", "mixed"])}
             {@const unknowns = reviewItems(question, ["insufficient"])}
+            {@const citedEvidenceBodyId = disclosureBodyId("sources", result.id, question.questionId)}
             <article class="question" class:is-disputed={question.consensus === "disputed"}>
               <header>
                 <h5 id="challenge-question-{result.id}-{question.questionId}" tabindex="-1">{SELECTION_CHALLENGE_QUESTION_LABELS[question.questionId] ?? question.questionId}</h5>
@@ -587,35 +600,52 @@
               {#if question.consensus === "disputed"}
                 <p class="disagreement">The two review perspectives read the same evidence differently. Both conclusions remain visible; neither is averaged away.</p>
               {/if}
-              <details class="evidence">
-                <summary>{citedSources.length} cited source{citedSources.length === 1 ? "" : "s"}</summary>
-                {#if citedSources.length}
-                  <ul>
-                    {#each citedSources as source}
-                      {@const readableExcerpt = readableEvidenceExcerpt(source.excerpt)}
-                      <li>
-                        <div>
-                          <span class="evidence-class">{evidenceLabel(source)}</span>
-                          <strong>{source.title}</strong>
-                          {#if source.url}
-                            <a href={source.url} target="_blank" rel="noreferrer" aria-label="Open source for {source.title} (opens in new tab)">
-                              <ExternalLink aria-hidden="true" />
-                            </a>
+              <details
+                class="evidence"
+                open={Boolean(openDisclosures[citedEvidenceBodyId])}
+                ontoggle={(event) => setDisclosureOpen(citedEvidenceBodyId, event)}
+              >
+                <summary
+                  aria-expanded={Boolean(openDisclosures[citedEvidenceBodyId])}
+                  aria-controls={citedEvidenceBodyId}
+                >{citedSources.length} cited source{citedSources.length === 1 ? "" : "s"}</summary>
+                <div id={citedEvidenceBodyId}>
+                  {#if citedSources.length}
+                    <ul>
+                      {#each citedSources as source}
+                        {@const readableExcerpt = readableEvidenceExcerpt(source.excerpt)}
+                        {@const rawExcerptBodyId = disclosureBodyId("captured", result.id, question.questionId, source.key)}
+                        <li>
+                          <div>
+                            <span class="evidence-class">{evidenceLabel(source)}</span>
+                            <strong>{source.title}</strong>
+                            {#if source.url}
+                              <a href={source.url} target="_blank" rel="noreferrer" aria-label="Open source for {source.title} (opens in new tab)">
+                                <ExternalLink aria-hidden="true" />
+                              </a>
+                            {/if}
+                          </div>
+                          <p>{readableExcerpt.text}</p>
+                          {#if readableExcerpt.raw}
+                            <details
+                              class="raw-excerpt"
+                              open={Boolean(openDisclosures[rawExcerptBodyId])}
+                              ontoggle={(event) => setDisclosureOpen(rawExcerptBodyId, event)}
+                            >
+                              <summary
+                                aria-expanded={Boolean(openDisclosures[rawExcerptBodyId])}
+                                aria-controls={rawExcerptBodyId}
+                              >View captured text</summary>
+                              <pre id={rawExcerptBodyId}>{readableExcerpt.raw}</pre>
+                            </details>
                           {/if}
-                        </div>
-                        <p>{readableExcerpt.text}</p>
-                        {#if readableExcerpt.raw}
-                          <details class="raw-excerpt">
-                            <summary>View captured text</summary>
-                            <pre>{readableExcerpt.raw}</pre>
-                          </details>
-                        {/if}
-                      </li>
-                    {/each}
-                  </ul>
-                {:else}
-                  <p class="no-evidence">No captured source answers this question. That is an evidence gap, not validation.</p>
-                {/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="no-evidence">No captured source answers this question. That is an evidence gap, not validation.</p>
+                  {/if}
+                </div>
               </details>
             </article>
           {/each}
@@ -627,9 +657,17 @@
           </button>
         {/if}
 
-        <details class="run-details">
-          <summary>Run details</summary>
-          <p>Idea revision {result.ideaRevision} · {result.evidenceSnapshot.length} evidence items reviewed · {new Date(result.createdAt).toLocaleString()}</p>
+        {@const runDetailsBodyId = disclosureBodyId("run", result.id)}
+        <details
+          class="run-details"
+          open={Boolean(openDisclosures[runDetailsBodyId])}
+          ontoggle={(event) => setDisclosureOpen(runDetailsBodyId, event)}
+        >
+          <summary
+            aria-expanded={Boolean(openDisclosures[runDetailsBodyId])}
+            aria-controls={runDetailsBodyId}
+          >Run details</summary>
+          <p id={runDetailsBodyId}>Idea revision {result.ideaRevision} · {result.evidenceSnapshot.length} evidence items reviewed · {new Date(result.createdAt).toLocaleString()}</p>
         </details>
       {:else}
         {@const staleReview = isStale(focusedIdea?.idea_id ?? "", selectedLens)}

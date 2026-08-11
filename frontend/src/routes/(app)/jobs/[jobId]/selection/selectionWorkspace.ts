@@ -75,6 +75,14 @@ function resolveFallback(
     .slice(0, MAX_SCOPE_IDEAS);
 
   if (drafted.length > 0) return { ideas: drafted, usedTopCandidates: false };
+  // "Check my idea" runs: a draftless workspace visit must scope THE USER'S IDEA, never
+  // pre-scope the top generated ideas (silently substituting the research subject).
+  if (job.entryMode === 'validate_idea') {
+    const seed = solutions.find(
+      (idea) => idea.source_frame === 'user_seed' && idea.generation_operation_id === 'validate',
+    );
+    if (seed) return { ideas: [seed], usedTopCandidates: false };
+  }
   return { ideas: solutions.slice(0, 2), usedTopCandidates: solutions.length > 0 };
 }
 

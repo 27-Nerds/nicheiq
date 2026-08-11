@@ -16,6 +16,7 @@
   import AnnotationSurface from "$lib/components/annotations/AnnotationSurface.svelte";
   import Popover from "$lib/components/ui/Popover.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
+  import { buyerFacingSolutionPreview } from "$lib/selection/buyerFacingResearchProse";
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
   import type { OverlapGroup } from "$lib/types/report";
@@ -124,10 +125,17 @@
 
   const total = $derived(solutions.length);
 
+  // Buyer-facing reading of the four pipeline-prose fields. `scoreRationale` composes the
+  // solo-dev reason out of `data_acquisition_notes`, so it has to read the sanitised idea —
+  // this overlay is mounted with RAW ideas from /selection/review and from
+  // SelectedSolutionsSummary. The RAW `solution` stays the one handed to `onSelect`, because
+  // the shortlist is keyed on object identity.
+  const displaySolution = $derived(buyerFacingSolutionPreview(solution));
+
   const compositeScore = $derived(displayCompositeScore(solution));
-  const compositeWhy = $derived(scoreRationale(solution, "composite"));
+  const compositeWhy = $derived(scoreRationale(displaySolution, "composite"));
   // Unclamped variant for the Decision rationale panel — a full-width surface, not a popover.
-  const compositeWhyFull = $derived(scoreRationale(solution, "composite", { full: true }));
+  const compositeWhyFull = $derived(scoreRationale(displaySolution, "composite", { full: true }));
 
   // Score color (matches ProgressRing auto logic)
   const scoreColor = $derived.by(() => {
@@ -155,8 +163,8 @@
     { key: "solo_dev" as const, label: "Solo", value: solution.solo_dev_feasibility, def: SCORE_DEFINITIONS.solo_dev },
   ].map((s) => ({
     ...s,
-    why: scoreRationale(solution, s.key),
-    whyFull: scoreRationale(solution, s.key, { full: true }),
+    why: scoreRationale(displaySolution, s.key),
+    whyFull: scoreRationale(displaySolution, s.key, { full: true }),
   })));
 
   // The popover text is clamped to keep the card scannable; when the clamp actually cut
@@ -173,8 +181,11 @@
   const displayTitle = $derived(solutionDisplayTitle(solution));
   // The raw internal solution_name is a working name — only worth a subtitle when a
   // headline is shown as the title AND the working name isn't just the headline again.
+  // (The validate seed titles BY solution_name, so the subtitle would duplicate it.)
   const showWorkingName = $derived(
-    !!solution.headline?.trim() && solution.headline.trim() !== solution.solution_name,
+    !!solution.headline?.trim() &&
+      solution.headline.trim() !== solution.solution_name &&
+      displayTitle !== solution.solution_name,
   );
 
   // Overlap group this candidate belongs to, if the run's synthesis found one (a merge was

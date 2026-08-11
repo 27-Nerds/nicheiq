@@ -49,6 +49,10 @@
     REVIEW_AND_START_LABEL,
     ASK_ANALYST_LABEL,
     CHOOSE_IDEAS_LABEL,
+    CANDIDATES_UNAVAILABLE_DETAIL,
+    CANDIDATES_UNAVAILABLE_TITLE,
+    EVIDENCE_WITHHELD_DETAIL,
+    EVIDENCE_WITHHELD_TITLE,
   } from "$lib/selection/labels";
   import {
     SELECTION_LIFECYCLE_CONTEXT,
@@ -71,6 +75,10 @@
     toolQuerySignature,
   } from "./toolQuery";
   import { setServedCapThresholds } from "$lib/utils/scoreRationale";
+  import {
+    RANKED_IDEAS_ANCHOR,
+    rankedIdeasHref as rankedIdeasUrl,
+  } from "$lib/selection/rankedIdeas";
 
   interface Props {
     data: LayoutData;
@@ -221,9 +229,30 @@
 
   // Sentence-case the niche for display so the H1 matches the hub (finding #10);
   // the stored niche can be lowercase.
+  const nicheLabel = $derived(data.job.nicheDisplay ?? data.job.niche);
   const nicheHeading = $derived(
-    data.job.niche ? data.job.niche.charAt(0).toUpperCase() + data.job.niche.slice(1) : data.job.niche,
+    nicheLabel ? nicheLabel.charAt(0).toUpperCase() + nicheLabel.slice(1) : nicheLabel,
   );
+  const rankedIdeasHref = $derived(rankedIdeasUrl(data.job.id));
+
+  function handleRankedIdeasNavigation(event: MouseEvent): void {
+    if (
+      event.defaultPrevented
+      || event.button !== 0
+      || event.metaKey
+      || event.ctrlKey
+      || event.shiftKey
+      || event.altKey
+    ) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const anchor = target.closest<HTMLAnchorElement>("a");
+    if (!anchor) return;
+    const destination = new URL(anchor.href);
+    if (destination.pathname !== `/jobs/${data.job.id}` || destination.hash !== `#${RANKED_IDEAS_ANCHOR}`) return;
+    event.preventDefault();
+    void goto(rankedIdeasHref);
+  }
 
   // The active tool label drives the breadcrumb tail; the journey drives the
   // sidebar tool statuses — same source the job-page launchpad uses.
@@ -303,7 +332,7 @@
       ? [{ ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 }]
       : []);
     if (refs.length < 1 || refs.length > MAX_SCOPE) return;
-    void goto(`/jobs/${data.job.id}#opportunities`, {
+    void goto(rankedIdeasHref, {
       state: {
         ...page.state,
         shortlistProposal: {
@@ -914,8 +943,6 @@
   // The shortlist members stay live — they are not decision tools.
   const noop = () => {};
   setWorkspaceTools({
-    openChallenge: (focus) => { if (decisionTools) openEvidence(focus); },
-    openAssumptions: (focus) => { if (decisionTools) openEvidence(focus, "proof"); },
     openTestPlanner: (...args) => { if (decisionTools) openTestPlanner(...args); },
     openVariants: (...args) => { if (decisionTools) openVariants(...args); },
     openConstraints: () => {
@@ -923,7 +950,6 @@
       closeTools();
       decisionBriefRef?.openEditor();
     },
-    openFit: () => { if (decisionTools) openCompareView("founder"); },
   });
 
   // ── Header context and forward action ─────────────────────────────────────
@@ -971,6 +997,8 @@
   <title>{tabTool} · {nicheHeading} · NicheIQ</title>
 </svelte:head>
 
+<svelte:window onclick={handleRankedIdeasNavigation} />
+
 <AnnotationProvider
   mode="owner"
   enabled
@@ -996,12 +1024,15 @@
   />
   <!-- A <div>, not <main>: the (app) layout already renders the page's single
        <main> landmark, and nested mains are invalid. Styling rides the class. -->
-  <div class="job-page-content job-page-content--selection">
+  <div
+    class="job-page-content job-page-content--selection"
+    class:job-page-content--analyst-docked={chatPanel.isOpen && !chatPanel.isExpanded}
+  >
   <PageHeader
     class="ws-header"
     breadcrumbItems={[
       { label: "Dashboard", href: "/dashboard" },
-      { label: SHORTLIST_TITLE, href: `/jobs/${data.job.id}` },
+      { label: "Ranked ideas", href: rankedIdeasHref },
     ]}
     breadcrumbCurrent={activeToolLabel}
     title={nicheHeading}
@@ -1059,6 +1090,37 @@
           {dataRetrying ? "Loading…" : "Load latest shortlist"}
         </button>
       {/if}
+    </aside>
+  {/if}
+
+  <!-- Two boundary states the workspace used to absorb in silence. `solutionsUnavailable`
+       leaves an EMPTY candidate list (the backend omits job.solutionIdeas during
+       selection), and `evidenceFramingWithheld` empties overlapGroups, which is what
+       /selection/review's duplicate gate charges on. Same words the job page uses. -->
+  {#if data.selectionLoadState.solutionsUnavailable}
+    <aside class="workspace-state workspace-state--data" role="alert" aria-live="polite">
+      <div>
+        <strong>{CANDIDATES_UNAVAILABLE_TITLE}</strong>
+        <p>{CANDIDATES_UNAVAILABLE_DETAIL}</p>
+      </div>
+      <button type="button" disabled={dataRetrying} onclick={() => void reloadSelectionData()}>
+        {dataRetrying ? "Retrying…" : "Retry"}
+      </button>
+    </aside>
+  {:else if data.selectionLoadState.evidenceFramingWithheld}
+    <aside
+      class="workspace-state workspace-state--data"
+      role="status"
+      aria-live="polite"
+      data-artifact-reason={data.artifactReason ?? undefined}
+    >
+      <div>
+        <strong>{EVIDENCE_WITHHELD_TITLE}</strong>
+        <p>{EVIDENCE_WITHHELD_DETAIL}</p>
+      </div>
+      <button type="button" disabled={dataRetrying} onclick={() => void reloadSelectionData()}>
+        {dataRetrying ? "Retrying…" : "Retry"}
+      </button>
     </aside>
   {/if}
 
@@ -1130,13 +1192,13 @@
         </button>
       {/if}
       {#if interactive}
-        <a href={`/jobs/${data.job.id}#opportunities`}>Edit on Choose ideas</a>
+        <a href={rankedIdeasHref}>Back to ranked ideas</a>
       {:else}
         <span class="scope-locked-label">Saved scope</span>
       {/if}
     </div>
     {#if !scopeMatchesShortlist}
-      <p class="scope-help">Preview only — your saved shortlist has not changed.</p>
+      <p class="scope-help">Preview only. Your saved shortlist has not changed.</p>
     {/if}
   </section>
   {/if}
@@ -1148,7 +1210,7 @@
         <strong>We adjusted this link safely</strong>
         {#each data.workspace.notices as notice}<p>{notice}</p>{/each}
         {#if activeIdeas.length === 0}
-          <a class="notice-recover" href={`/jobs/${data.job.id}`}>Back to ranked candidates <span aria-hidden="true">→</span></a>
+          <a class="notice-recover" href={rankedIdeasHref}>Back to ranked ideas <span aria-hidden="true">→</span></a>
         {/if}
       </div>
     </aside>
@@ -1180,7 +1242,7 @@
           Use this scope on Choose ideas<span aria-hidden="true">→</span>
         </button>
       {:else}
-        <a class="commit-cta" href={`/jobs/${data.job.id}#opportunities`}>
+        <a class="commit-cta" href={rankedIdeasHref}>
           {CHOOSE_IDEAS_LABEL}<span aria-hidden="true">→</span>
         </a>
       {/if}
@@ -1301,6 +1363,139 @@
     margin: 0 auto;
     padding: var(--space-8) var(--space-12) var(--space-16);
     color: var(--workspace-ink);
+  }
+
+  .job-page-content--analyst-docked {
+    container: analyst-workspace / inline-size;
+  }
+
+  @media (min-width: 1400px) {
+    .job-page-content--analyst-docked {
+      margin-right: var(--analyst-dock-clearance);
+    }
+  }
+
+  /* The rail reservation can make this desktop viewport a compact content
+     container. Key route and tool layouts to that real width; viewport media
+     queries still handle the ordinary tablet/mobile presentations. */
+  @container analyst-workspace (max-width: 60rem) {
+    .job-page-content--analyst-docked .scope-strip,
+    .job-page-content--analyst-docked .candidate-pills,
+    .job-page-content--analyst-docked :global(.review-grid),
+    .job-page-content--analyst-docked :global(.idea-groups),
+    .job-page-content--analyst-docked :global(.finding-grid),
+    .job-page-content--analyst-docked :global(.conclusion-heading),
+    .job-page-content--analyst-docked :global(.conclusion-summary dl),
+    .job-page-content--analyst-docked :global(.field-grid.two),
+    .job-page-content--analyst-docked :global(.field-grid.three) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .job-page-content--analyst-docked .scope-strip { align-items: flex-start; }
+    .job-page-content--analyst-docked .candidate-pills { width: 100%; }
+    .job-page-content--analyst-docked .candidate-pill { width: 100%; }
+    .job-page-content--analyst-docked .scope-actions,
+    .job-page-content--analyst-docked .scope-help { grid-column: 1; justify-content: flex-start; }
+
+    .job-page-content--analyst-docked :global(.selection-page__header),
+    .job-page-content--analyst-docked :global(.fit-reasoning__header) {
+      display: block;
+    }
+    .job-page-content--analyst-docked :global(.selection-page__header > *),
+    .job-page-content--analyst-docked :global(.fit-reasoning__header > *),
+    .job-page-content--analyst-docked :global(.challenge-head > *),
+    .job-page-content--analyst-docked :global(.map-head > *),
+    .job-page-content--analyst-docked :global(.workspace-head > *) {
+      min-width: 0;
+    }
+
+    .job-page-content--analyst-docked :global(.comparison) {
+      grid-template-columns: minmax(var(--space-30), 0.7fr) repeat(var(--candidate-count, 2), minmax(var(--space-35), 1fr));
+      max-width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+    }
+    .job-page-content--analyst-docked :global(.comparison-label) {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+    }
+    .job-page-content--analyst-docked :global(.fit-action),
+    .job-page-content--analyst-docked :global(.fit-next-test),
+    .job-page-content--analyst-docked :global(.candidate-switch-confirm),
+    .job-page-content--analyst-docked :global(.challenge-head),
+    .job-page-content--analyst-docked :global(.result-head),
+    .job-page-content--analyst-docked :global(.question > header),
+    .job-page-content--analyst-docked :global(.map-head),
+    .job-page-content--analyst-docked :global(.reconcile-error),
+    .job-page-content--analyst-docked :global(.ledger-intro),
+    .job-page-content--analyst-docked :global(.editor-header),
+    .job-page-content--analyst-docked :global(.discard-prompt),
+    .job-page-content--analyst-docked :global(.workspace-head),
+    .job-page-content--analyst-docked :global(.form-context) {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .job-page-content--analyst-docked :global(.fit-action button),
+    .job-page-content--analyst-docked :global(.fit-next-test button),
+    .job-page-content--analyst-docked :global(.recheck-action),
+    .job-page-content--analyst-docked :global(.run-action) {
+      width: 100%;
+    }
+
+    .job-page-content--analyst-docked :global(.lens-rail > div) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      min-width: 0;
+    }
+    .job-page-content--analyst-docked :global(.lens-rail button),
+    .job-page-content--analyst-docked :global(.lens-rail button > span),
+    .job-page-content--analyst-docked :global(.finding),
+    .job-page-content--analyst-docked :global(.question > header > *),
+    .job-page-content--analyst-docked :global(.idea-group),
+    .job-page-content--analyst-docked :global(.experiment-main),
+    .job-page-content--analyst-docked :global(.experiment-rule),
+    .job-page-content--analyst-docked :global(.candidate-switcher > *),
+    .job-page-content--analyst-docked :global(.segment-track) {
+      min-width: 0;
+    }
+    .job-page-content--analyst-docked :global(.candidate-switcher .segment-track) {
+      display: flex;
+      width: 100%;
+      max-width: 100%;
+    }
+    .job-page-content--analyst-docked :global(.finding),
+    .job-page-content--analyst-docked :global(.finding:nth-child(even)),
+    .job-page-content--analyst-docked :global(.finding--unknown),
+    .job-page-content--analyst-docked :global(.finding--next) {
+      grid-column: 1;
+      padding-inline: 0;
+      border-left: 0;
+    }
+    .job-page-content--analyst-docked :global(.idea-head),
+    .job-page-content--analyst-docked :global(.form-row),
+    .job-page-content--analyst-docked :global(.record > summary),
+    .job-page-content--analyst-docked :global(.brief-export-body),
+    .job-page-content--analyst-docked :global(.experiment-row) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .job-page-content--analyst-docked :global(.record-body) { padding-left: 0; }
+    .job-page-content--analyst-docked :global(.experiment-rule),
+    .job-page-content--analyst-docked :global(.row-actions),
+    .job-page-content--analyst-docked :global(.brief-export-body .origin-status) {
+      grid-column: auto;
+      grid-row: auto;
+    }
+    .job-page-content--analyst-docked :global(.row-actions),
+    .job-page-content--analyst-docked :global(.brief-export-actions) {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+    .job-page-content--analyst-docked :global(.result-ledger) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .job-page-content--analyst-docked :global(.outcome-picker .segment-cards) { grid-template-columns: minmax(0, 1fr); }
+    .job-page-content--analyst-docked :global(.field-grid.three .supporting-cost) {
+      grid-column: auto;
+      max-width: none;
+    }
   }
 
   /* The niche is CONTEXT on a tool page, not the hero — it rides just under the

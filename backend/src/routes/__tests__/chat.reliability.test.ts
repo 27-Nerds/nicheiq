@@ -34,9 +34,23 @@ const mockExecuteRaw = vi.fn().mockResolvedValue(undefined);
 const mockChatMessageCount = vi.fn();
 const mockChatMessageFindManyTx = vi.fn().mockResolvedValue([]);
 const mockTxChatMessageCreate = vi.fn().mockResolvedValue({});
-const mockTxJobFindUnique = vi.fn(async (..._a: any[]) => {
+const mockTxChatMessageUpdate = vi.fn().mockResolvedValue({});
+const mockTxJobAssetFindUnique = vi.fn();
+const mockCommercialCopyBackfillRunFindFirst = vi.fn();
+const mockCommercialCopyBackfillItemFindMany = vi.fn();
+const mockTxJobFindUnique = vi.fn(async (...args: any[]): Promise<any> => {
   const j = await mockJobFindFirst();
-  return j ? { status: j.status, gateStage: j.gateStage ?? null } : null;
+  return j ? {
+    id: j.id,
+    status: j.status,
+    niche: j.niche,
+    gateStage: j.gateStage ?? null,
+    activeDispatchId: j.activeDispatchId ?? null,
+    candidatePoolVersion: Object.prototype.hasOwnProperty.call(j, 'candidatePoolVersion')
+      ? j.candidatePoolVersion
+      : 1,
+    ...(args[0]?.select?.solutionIdeas ? { solutionIdeas: j.solutionIdeas } : {}),
+  } : null;
 });
 let mockPostStreamJobFindUniqueError: Error | null = null;
 const mockJobFindUniqueTop = vi.fn(async (...args: any[]) => {
@@ -60,10 +74,14 @@ const mockTransaction = vi.fn(async (cb: any) => {
   const tx = {
     $executeRaw: mockExecuteRaw,
     job: { findUnique: (...a: any[]) => mockTxJobFindUnique(...a) },
+    jobAsset: { findUnique: (...a: any[]) => mockTxJobAssetFindUnique(...a) },
     chatMessage: {
       count: mockChatMessageCount,
-      findMany: mockChatMessageFindManyTx,
+      findMany: (...a: any[]) => a[0]?.select?.patchJson
+        ? mockChatMessageFindManyTop(...a)
+        : mockChatMessageFindManyTx(...a),
       create: mockTxChatMessageCreate,
+      update: mockTxChatMessageUpdate,
     },
   };
   return cb(tx);
@@ -81,6 +99,12 @@ vi.mock('../../services/db.js', () => ({
       findMany: (...a: any[]) => mockChatMessageFindManyTop(...a),
       update: (...a: any[]) => mockChatMessageUpdate(...a),
       delete: (...a: any[]) => mockChatMessageDelete(...a),
+    },
+    commercialCopyBackfillRun: {
+      findFirst: (...a: any[]) => mockCommercialCopyBackfillRunFindFirst(...a),
+    },
+    commercialCopyBackfillItem: {
+      findMany: (...a: any[]) => mockCommercialCopyBackfillItemFindMany(...a),
     },
     $transaction: (cb: any) => mockTransaction(cb),
   },
@@ -141,8 +165,10 @@ vi.mock('../../services/openai.js', () => ({
 const mockGetPreviewReportForJob = vi.fn().mockResolvedValue(null);
 const mockGetDiscoveryDataForJob = vi.fn().mockResolvedValue(null);
 vi.mock('../../services/assetService.js', () => ({
-  getPreviewReportForJob: (...a: any[]) => mockGetPreviewReportForJob(...a),
   getDiscoveryDataForJob: (...a: any[]) => mockGetDiscoveryDataForJob(...a),
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: (...a: any[]) => mockGetPreviewReportForJob(...a),
 }));
 
 vi.mock('../../services/selectionDecisionStateLoader.js', () => ({
@@ -170,7 +196,15 @@ beforeEach(async () => {
   mockCheckChatRateLimit.mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
   mockChatMessageCount.mockResolvedValue(0);
   mockChatMessageFindManyTx.mockResolvedValue([]);
+  mockChatMessageFindManyTop.mockReset().mockResolvedValue([]);
   mockTxChatMessageCreate.mockResolvedValue({});
+  mockTxChatMessageUpdate.mockResolvedValue({});
+  mockTxJobAssetFindUnique.mockReset().mockResolvedValue({ candidatePoolVersion: 1 });
+  mockCommercialCopyBackfillRunFindFirst.mockResolvedValue({
+    id: 'commercial-copy-run',
+    completedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+  mockCommercialCopyBackfillItemFindMany.mockResolvedValue([]);
   mockChatMessageCreate.mockResolvedValue({
     id: 'asst-1',
     role: 'assistant',

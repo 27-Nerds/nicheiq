@@ -45,6 +45,9 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     save_state.niche_data_menu_text = "- Public permit records (city open-data portal)"
     save_state.niche_dissatisfaction_text = ""  # probed, found nothing — must round-trip as '', not None
     save_state.idea_portfolio_summary = "AlphaTool and BetaTracker both show moderate market fit."
+    save_state.idea_portfolio_summary_fingerprint = (
+        '{"version":1,"ideas":[["idea-alpha",1],["idea-beta",1]]}'
+    )
     # The partition itself must survive: regenerate/seed batches REUSE it so family_id (the
     # thesis identity) stays stable instead of being re-labeled per batch.
     save_state.buyer_job_partition = {
@@ -112,6 +115,9 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     assert load_state.idea_portfolio_summary == (
         "AlphaTool and BetaTracker both show moderate market fit."
     )
+    assert load_state.idea_portfolio_summary_fingerprint == (
+        '{"version":1,"ideas":[["idea-alpha",1],["idea-beta",1]]}'
+    )
     assert load_state.idea_theses == save_state.idea_theses
     assert load_state.buyer_job_partition == save_state.buyer_job_partition
     assert load_state.niche_difficulty_verdict is not None
@@ -141,6 +147,29 @@ def test_idea_focus_defaults_auto_when_never_set(tmp_path, monkeypatch):
     assert load_state.idea_focus == "auto"
 
 
+def test_legacy_portfolio_summary_without_fingerprint_restores_gracefully(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
+    monkeypatch.setattr(settings, "checkpoint_enabled", True)
+    save_state = ResearchState()
+    save_state.niche_context = _niche_ctx()
+    save_state.idea_portfolio_summary = "Legacy guidance."
+    save_state.idea_portfolio_summary_fingerprint = None
+    cm = CheckpointManager(
+        niche_description="x", state=save_state, allowed_project_types=None, job_id="legacy"
+    )
+    cm.save_stage("stage_1_niche_context", save_state.niche_context)
+
+    load_state = ResearchState()
+    cm2 = CheckpointManager(
+        niche_description="x", state=load_state, allowed_project_types=None, job_id="legacy"
+    )
+    assert cm2.load_checkpoint_folder(cm.checkpoint_folder) is True
+    assert load_state.idea_portfolio_summary == "Legacy guidance."
+    assert load_state.idea_portfolio_summary_fingerprint is None
+
+
 # ── Durable coverage guard: every ResearchState field must be persisted or explicitly transient ──
 
 # state attrs restored from a stage-payload file (checkpoint_manager stage_mapping values)
@@ -163,8 +192,11 @@ _PERSISTED_VIA_METADATA = {
     "sources_searched", "idea_ruled_out", "idea_funnel_counts", "idea_cell_allocation",
     "idea_overlap_groups", "idea_theses", "buyer_job_partition",
     "niche_incumbent_map", "niche_wallet_brief", "idea_portfolio_summary",
+    "idea_portfolio_summary_fingerprint",
     "user_pain_scope", "user_audience_scope", "user_adjusted",
     "niche_data_menu_text", "niche_dissatisfaction_text",
+    "user_idea_text", "user_idea_brief", "user_idea_inferred_fields", "user_idea_pivot",
+    "user_idea_identity_terms", "user_idea_brief_parity",
 }
 # intentionally NOT persisted (re-derived, terminal, unused, or re-set on construction)
 _TRANSIENT = {

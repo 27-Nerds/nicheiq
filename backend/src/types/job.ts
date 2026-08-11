@@ -9,18 +9,32 @@ export const VALID_PROJECT_TYPES = [
   'marketplace',
 ] as const;
 
+// Charset for research inputs. The base set (all modes) accepts the punctuation real
+// input produces: iOS/macOS smart quotes and apostrophes (\p{Pi}\p{Pf}), prices ($, \p{Sc}),
+// "CRM + invoicing" (\p{Sm}), snake_case (\p{Pc}). \p{Sm} brings < and > along — those are
+// re-rejected explicitly below because the niche is interpolated into email HTML templates.
+const NICHE_STANDARD_CHARS = /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}\p{Sc}\p{Sm}\p{Pc}\p{Pi}\p{Pf}\r\n\t]+$/u;
+// validate_idea (Check my idea) pitches additionally get \p{So} (emoji) and \p{Sk} (backtick).
+const NICHE_VALIDATE_CHARS = /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}\p{Sc}\p{Sm}\p{Pc}\p{Pi}\p{Pf}\p{So}\p{Sk}\r\n\t]+$/u;
+const ANGLE_BRACKETS = /[<>]/;
+export const VALIDATE_NICHE_MIN = 40;
+export const STANDARD_NICHE_MAX = 500;
+export const VALIDATE_NICHE_MAX = 2000;
+
 // API request schemas
 // Note: email and userId come from authenticated session, not request body
 export const CreateJobSchema = z.object({
   niche: z.string()
     .min(10, 'Niche description must be at least 10 characters')
-    .max(500, 'Niche description must be at most 500 characters')
+    // Widest limits live on the field; the superRefine below re-tightens per mode
+    // (zod refinements can only tighten, never relax a field constraint).
+    .max(VALIDATE_NICHE_MAX, `Description must be at most ${VALIDATE_NICHE_MAX} characters`)
     .regex(
-      /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}\r\n\t]+$/u,
-      'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
+      NICHE_VALIDATE_CHARS,
+      'Description contains unsupported characters. Use letters, numbers, spaces, and common punctuation.'
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
-  entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea']).optional(),
+  entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea', 'validate_idea']).optional(),
   // GTM-focus steer for idea generation/ranking emphasis (only active when angle eval is on).
   ideaFocus: z.enum(['auto', 'novelty', 'distribution']).optional(),
   // Guided research (Phase B) opt-in. The route re-checks entitlement and rejects
@@ -29,6 +43,46 @@ export const CreateJobSchema = z.object({
   // The price the intake displayed for the first purchased segment. Job creation
   // compares this inside the same transaction that creates the job and charge.
   expectedCost: z.number().int().min(0).max(1000),
+}).superRefine((data, ctx) => {
+  const { niche, entryMode, chatMode } = data;
+  if (ANGLE_BRACKETS.test(niche)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['niche'],
+      message: 'Description must not contain < or > characters.',
+    });
+  }
+  if (entryMode === 'validate_idea') {
+    if (niche.length < VALIDATE_NICHE_MIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['niche'],
+        message: `Describe your idea in at least ${VALIDATE_NICHE_MIN} characters. Say what it does and who it is for.`,
+      });
+    }
+    if (chatMode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['chatMode'],
+        message: 'Guided research is not available for idea checks.',
+      });
+    }
+  } else {
+    if (niche.length > STANDARD_NICHE_MAX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['niche'],
+        message: `Niche description must be at most ${STANDARD_NICHE_MAX} characters`,
+      });
+    }
+    if (!NICHE_STANDARD_CHARS.test(niche)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['niche'],
+        message: 'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.',
+      });
+    }
+  }
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;
@@ -99,6 +153,9 @@ export const SelectionDecisionProfileSchema = z.object({
   weeklyTime: z.enum(['under_10', '10_20', '20_40', 'full_time']),
   budget: z.enum(['under_1k', '1k_5k', '5k_20k', '20k_plus']),
   team: z.enum(['solo', 'small_team', 'funded_team']),
+  // Optional for legacy profiles. Never infer this from team size: solo did not historically
+  // mean the founder had committed to writing the software.
+  buildModel: z.enum(['self', 'contractor']).optional(),
   revenueHorizon: z.enum(['30_days', '90_days', '6_months', 'patient']),
   distributionAdvantages: z.array(
     z.enum(['seo', 'community', 'existing_audience', 'outbound', 'paid', 'partnerships']),
@@ -173,6 +230,7 @@ export const IdeasReadySchema = z.object({
   skip_validation: z.boolean().optional(),
   discovery_data_path: z.string().max(500).optional().default(''),
   preview_report_path: z.string().optional(),
+  commercial_copy_contract_version: z.string().max(64).optional(),
   // Phase-1 LLM cost breakdown (CostTracker.get_summary()), persisted so the admin
   // pricing view shows spend on awaiting-selection runs before Phase-2 completes.
   cost_summary: z.record(z.any()).optional(),
@@ -203,6 +261,7 @@ export const RegenerationCompleteSchema = z.object({
   // Accumulated onto the job's existing costUsd (regeneration adds spend to an
   // already-completed job, unlike report-ready which sets the initial total).
   cost_summary: z.record(z.any()).optional(),
+  commercial_copy_contract_version: z.string().max(64).optional(),
 });
 
 export type RegenerationCompleteInput = z.infer<typeof RegenerationCompleteSchema>;
@@ -260,6 +319,7 @@ export const SeedIdeaCompleteSchema = z.object({
   idea: z.object({ solution_name: z.string().min(1) }).passthrough(),
   outcome: z.enum(['accepted', 'demoted']),
   cost_summary: z.record(z.any()).optional(),
+  commercial_copy_contract_version: z.string().max(64).optional(),
   dispatch_id: DispatchIdSchema,
 });
 

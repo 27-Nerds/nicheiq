@@ -17,10 +17,10 @@
 
 <svelte:head>
   {#if discovery}
-    <title>{discovery.niche} - Shared Discovery - NicheIQ</title>
+    <title>{discovery.nicheDisplay ?? discovery.niche} - Shared Discovery - NicheIQ</title>
     <meta
       name="description"
-      content="Vote on solution ideas for: {discovery.niche}"
+      content="Vote on solution ideas for: {discovery.nicheDisplay ?? discovery.niche}"
     />
   {:else}
     <title>Discovery Unavailable - NicheIQ</title>

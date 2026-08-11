@@ -1,12 +1,21 @@
 <script lang="ts">
   import type { NicheDifficultyVerdict } from "$lib/types/report";
+  import { buyerFacingNicheDifficultyVerdict } from "$lib/selection/buyerFacingResearchProse";
 
   interface Props {
     verdict: NicheDifficultyVerdict;
     context?: "discovery" | "report";
   }
 
-  let { verdict, context = "report" }: Props = $props();
+  let { verdict: rawVerdict, context = "report" }: Props = $props();
+
+  // Sanitise HERE, not in the callers. Three surfaces feed this component a niche verdict
+  // (the job page Overview, the public share link, SelectionWorkbench) and only one of them
+  // used to rewrite the pipeline vocabulary first — so `corpus`, `web-verified` and
+  // `paid wedge` shipped to paying users through the other two. Doing it at the single
+  // render point closes both bypasses by construction and makes any future caller safe.
+  // The rewrite is idempotent, so a caller that already sanitised loses nothing.
+  const verdict = $derived(buyerFacingNicheDifficultyVerdict(rawVerdict) ?? rawVerdict);
 
   // FIT visuals derive from software_addressability (cutoffs mirror the backend bands
   // 0.70 / 0.45 / 0.25 in niche_difficulty.py). The difficulty band measures overall
@@ -67,7 +76,7 @@
 
   const cleanHeadline = $derived(
     verdict.headline
-      ?.replace(/^software\s+fit:\s*[^—-]+[—-]\s*/i, "")
+      ?.replace(/^software\s+fit:\s*[^—–-]+[—–-]\s*/i, "")
       .trim() || verdict.headline,
   );
 
@@ -105,7 +114,7 @@
   // Only explain the axis split when it would otherwise read as a contradiction.
   const difficultyNote = $derived(
     difficultyHigh && (fitBand === "strong" || fitBand === "moderate")
-      ? "Reflects frictions like cold start and crowded tooling — not a worse software fit."
+      ? "Reflects frictions like building the initial dataset and crowded tooling, not a worse software fit."
       : null,
   );
 </script>

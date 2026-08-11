@@ -1,0 +1,31 @@
+{
+  "provenance": "Trimmed verbatim from output/checkpoints/preview_report_51a491dc-c095-4e21-befb-5cadf540629a.json",
+  "market_reality": {
+    "wallet": {
+      "wallet_class": "paying",
+      "evidence": "$99-399/mo DaySmart Vet, $299/mo single-vet, $290/mo IDEXX Neo, $300/mo VetSnap",
+      "free_density": "no free PIMS or inventory tools shown"
+    }
+  },
+  "niche_difficulty_verdict": {
+    "difficulty_level": "medium",
+    "software_addressability": 0.723,
+    "headline": "Software Fit: Strong — automating inventory and controlled substance compliance",
+    "narrative_summary": "Software can directly own the core pains of clinical drug management, but you must avoid subscription pricing because willingness to pay is weak across the board. Focus instead on building a free tool that leverages distribution through lead-gen or sponsorship, as the current market is highly saturated with incumbents and requires a data corpus that does not yet exist. You must tighten your wedge to serve a specific clinical segment, as current ideas often drift from the target audience and risk solving problems for the wrong users.",
+    "key_challenges": [
+      "The corpus drifts from the stated audience — tighten the wedge or the product will end up serving the wrong user.",
+      "Most ideas need a data corpus that doesn't exist yet — plan a cold-start play (seed it, scrape it, or partner) before the product is useful.",
+      "No pain shows strong buying signals — plan a free-tool + distribution monetization (lead-gen, sponsorship, a cheap team tier), not subscription pricing.",
+      "The niche already runs a dense tool ecosystem (10 tools web-verified, 3 with published pricing) — new products compete for attention inside an existing stack. Thin early signal; Deep Research validates."
+    ],
+    "key_strengths": [
+      "Most pains are workflow or data problems a tool can directly own.",
+      "There's room for a genuinely novel angle, not just a clone.",
+      "Buyers in this niche demonstrably pay for tooling ($99-399/mo DaySmart Vet, $299/mo single-vet, $290/mo IDEXX Neo, $300/mo VetSnap) — willingness-to-pay is not the primary risk. Thin early signal; Deep Research validates."
+    ],
+    "low_confidence": false,
+    "buyer_class": "smb-operator",
+    "buyer_class_note": "Buyers here are small-business operators — price-aware but used to paying for tools that save time or win customers."
+  },
+  "idea_portfolio_summary": "The current idea pool for veterinary pharmacy management is largely constrained by the dominance of incumbents like VetSnap, which bundle essential compliance features into their existing platforms. Concepts such as the Controlled-Substance Reconciliation Ledger, DEA Inspection Fire Drill, DEAAuditChecklistGen, and NDCShiftVet all suffer from limited market fit because they attempt to solve problems that are already addressed by free, integrated tools within the PIMS ecosystem. While these ideas target high-budget corporate segments, the market evidence suggests that building standalone solutions for these specific tasks will struggle to gain traction against entrenched competitors that offer these capabilities as a default utility. The Fallback Ledger and DispenseSpeedBench represent the only ideas in this set without direct incumbent parity, yet they remain hampered by trust-dependent regulatory risks and the challenge of justifying subscription pricing in a market where willingness to pay is generally weak. The overall verdict for this pool is that the software fit is strong for the niche, but the specific concepts generated are either redundant or lack the necessary data corpus to be viable. Given the market reality that subscription models are poorly received, the most promising path forward is to pivot toward a free, lead-generation-focused tool rather than a standalone product. Between the current candidates, the Fallback Ledger and DispenseSpeedBench deserve the most validation, as they are the only entries that avoid direct competition with bundled incumbent features, provided they are restructured away from subscription pricing to align with the niche's actual spending habits."
+}

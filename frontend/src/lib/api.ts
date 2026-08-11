@@ -238,6 +238,12 @@ export interface SolutionsResponse {
   canRegenerate: boolean;
   ideaBatchCompletedCount: number;
   maxIdeaBatches: number;
+  activeOperation: Job['activeOperation'];
+  candidatePoolVersion: number | null;
+  artifactVerification: 'verified' | 'untrusted';
+  artifactReason: string | null;
+  /** Present only when CurrentSelectionContext verified pool version and content binding. */
+  previewReport: import('$lib/types/previewReport').PreviewReport | null;
 }
 
 /**
@@ -1207,17 +1213,20 @@ export interface SharedPreviewReport {
       }>;
     }>;
   } | null;
-  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  /** Pool-scoped: served only while it still describes the live candidate list. */
   examined_ruled_out?: RuledOutFinding[];
-  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  /** Pool-scoped: served only while it still describes the live candidate list. */
   overlap_groups?: OverlapGroup[];
   /** Complete thesis partition of the visible pool + validated families no concept covers.
-   *  Passed through by the sanitizer unless explicitly stripped (it isn't). */
+   *  Pool-scoped: served only while it still describes the live candidate list. */
   idea_theses?: IdeaThesisPartition;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
   market_reality?: MarketReality;
-  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  /** Pool-scoped: served only while it still describes the live candidate list. */
   idea_portfolio_summary?: string | null;
+  /** Fingerprint of the candidate list the summary was written against. Served
+   *  together with the summary or not at all. */
+  idea_portfolio_summary_fingerprint?: string | null;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
   niche_difficulty_verdict?: NicheDifficultyVerdict;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
@@ -1255,11 +1264,16 @@ export interface SharedDiscoveryData {
 export interface DiscoveryShareData {
   shareType: 'discovery';
   niche: string;
+  /** Display-safe short label (word-boundary truncated backend-side); `niche` stays verbatim. */
+  nicheDisplay?: string;
   solutions: SolutionPreview[];
   /** @deprecated removed in next release — use previewReport + discoveryData */
   discoveryFindings?: Record<string, any>;
   discoveryData: SharedDiscoveryData | null;
   previewReport: SharedPreviewReport | null;
+  /** True when a preview snapshot exists but its pool-scoped guidance was withheld
+   *  because it no longer describes the candidate list being voted on. */
+  evidenceFramingWithheld?: boolean;
   voteSummary: VoteSummary;
   allowIndexing?: boolean;
 }

@@ -480,21 +480,34 @@ describe('selection decision state projection', () => {
       expect(state.nextAction.kind).toBe('start_deep_research');
     });
 
-    it('empties historical decision-tool rows so a revoked grant leaks nothing', () => {
-      mocks.parseFounderFit.mockReturnValue(fitArtifact());
+    it('preserves historical decision facts and the full founder-fit receipt after revocation', () => {
+      const artifact = {
+        ...fitArtifact(),
+        results: [{
+          ...fitArtifact().results[0],
+          summary: 'Fits the saved weekly time budget.',
+          blockingConflict: null,
+          decisionChangingUnknown: 'Whether the owner can sustain outbound distribution.',
+        }],
+      };
+      mocks.parseFounderFit.mockReturnValue(artifact);
       const state = gated({
         selectionDraft: currentDraft(),
         selectionDecisionProfile: profile,
-        selectionFounderFit: fitArtifact(),
+        selectionFounderFit: artifact,
       });
-      expect(state.profile).toBeNull();
-      expect(state.founderFit).toBeNull();
+
+      expect(state.profile).toEqual(profile);
+      expect(state.founderFit).toMatchObject({
+        results: [{ verdict: 'fits' }],
+      });
+      expect(state.founderFitReceipt).toEqual({ analysis: artifact, stale: false });
       expect(state.challenges).toEqual([]);
       expect(state.ownerEvidence).toEqual([]);
       expect(state.assumptions).toEqual([]);
       expect(state.experiments).toEqual([]);
       expect(state.conclusions).toEqual([]);
-      expect(state.staleCounts.total).toBe(state.staleCounts.shortlist);
+      expect(state.staleCounts.total).toBe(0);
     });
 
     it('keeps the shortlist intact — it is not a decision tool', () => {

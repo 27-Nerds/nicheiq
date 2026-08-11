@@ -26,6 +26,11 @@
     normalizeSeoScalabilityNarrative,
     renderMarkdown,
   } from "$lib/utils/format";
+  import {
+    buyerFacingReport,
+    buyerFacingSolutionPreview,
+  } from "$lib/selection/buyerFacingResearchProse";
+  import type { SolutionPreview } from "$lib/types/job";
   import { afterNavigate, replaceState } from "$app/navigation";
   import { localReportDate, utcReportDate } from "$lib/utils/reportDates";
   import { unavailableSectionNotes } from "$lib/utils/unavailableSections";
@@ -65,8 +70,58 @@
   // which never picked up the summary layer's per-call-site humanising — so the
   // page was honest at a glance and reverted to internal names one click deeper.
   // Rewriting once here covers both branches and anything added to either later.
-  const report = $derived(humanizeReportProse(sourceReport));
+  //
+  // `buyerFacingReport` is the second half of that same seam. `humanizeReportProse`
+  // rewrites internal field names everywhere; the niche-difficulty verdict and the idea
+  // portfolio summary carry a research vocabulary of their own ("corpus", "wedge",
+  // "cold-start", "web-verified") that needs sentence-level rewrites, and those two fields
+  // reached the paid brief raw through ReportBrief's risk list and the portfolio note
+  // below. Normalising both here means a section component cannot forget and a new one
+  // cannot regress.
+  //
+  // `buyerFacingIdeas` is the third. `buyerFacingReport` is field-scoped to the verdict and
+  // the portfolio summary, and the IDEA objects hanging off the report carry a vocabulary of
+  // their own that only `buyerFacingIdeaProse` knows: `critic_concern` printed "wedge",
+  // "mechanism parity", "data_feas" and "cold-start corpus" verbatim on the paid Deep
+  // Research report through AlternativesSection's critic panel, and `data_acquisition_notes`
+  // did the same through the data badges' tooltips there and in TechnicalBlueprint. Measured
+  // over every run under `output/`, 50 of the 210 distinct `alternative_solutions[]
+  // .critic_concern` values carry it. Sanitising the ARRAY here rather than the three call
+  // sites is the same doctrine `buyerFacingSolutionPreview` follows on the SolutionDetail
+  // tree: every current and future consumer of these fields is covered by construction.
+  const report = $derived(
+    buyerFacingIdeas(buyerFacingReport(humanizeReportProse(sourceReport))),
+  );
   let reportShell = $state<HTMLDivElement>();
+
+  /**
+   * `AlternativeSolution`, `SolutionDetails` and `SolutionPreview` are three TypeScript
+   * declarations of the same pipeline idea object, and only the last one is what the
+   * sanitizer is typed against. It reads nothing but the four prose fields all three share
+   * and returns its input BY REFERENCE when none of them changed, so the cast is safe in
+   * both directions and identity survives it.
+   */
+  function asBuyerFacingIdea<T extends object>(idea: T): T {
+    return buyerFacingSolutionPreview(idea as unknown as SolutionPreview) as unknown as T;
+  }
+
+  /** Returns the report untouched when no idea changed, so `$derived` memoisation holds. */
+  function buyerFacingIdeas<T extends Report>(source: T): T {
+    const alternatives = source.alternative_solutions;
+    const details = source.selected_solution_details;
+    const nextAlternatives = alternatives?.map(asBuyerFacingIdea);
+    const alternativesChanged = !!alternatives
+      && !!nextAlternatives
+      && nextAlternatives.some((alternative, index) => alternative !== alternatives[index]);
+    const nextDetails = details ? asBuyerFacingIdea(details) : details;
+    const detailsChanged = !!details && nextDetails !== details;
+    if (!alternativesChanged && !detailsChanged) return source;
+    return {
+      ...source,
+      ...(alternativesChanged ? { alternative_solutions: nextAlternatives! } : {}),
+      ...(detailsChanged ? { selected_solution_details: nextDetails! } : {}),
+    };
+  }
 
   const solutionDetails = $derived<SolutionDetails>(
     report.selected_solution_details ?? {
@@ -923,17 +978,21 @@
                 {/if}
                 {#if report.market_reality.incumbents.length}
                   <!-- A third, wider population than either competitor count on the
-                       Competition tab: web-verified incumbents across the whole niche,
-                       shown as a capped list. Named and counted so the three numbers
-                       read as different scopes rather than as disagreeing answers. -->
+                       Competition tab: incumbents checked on the web across the whole
+                       niche, shown as a capped list. Named and counted so the three
+                       numbers read as different scopes rather than as disagreeing
+                       answers. "Web-verified" is the pipeline's word, not the buyer's. -->
                   <p class="incumbent-scope">
-                    Web-verified incumbents across the niche —
+                    Incumbents checked on the web across the niche:
                     {report.market_reality.incumbents.length > 8
                       ? `first 8 of ${report.market_reality.incumbents.length}`
                       : `all ${report.market_reality.incumbents.length}`}. This is
                     the whole niche, not the direct competitors for the selected idea.
                   </p>
-                  <ul class="named-list" aria-label="Web-verified niche incumbents">
+                  <!-- The label a screen reader announces has to match the visible copy
+                       above it, which is the comment's own point: "Web-verified" is the
+                       pipeline's word, not the buyer's. -->
+                  <ul class="named-list" aria-label="Niche incumbents checked on the web">
                     {#each report.market_reality.incumbents.slice(0, 8) as incumbent}
                       <li>
                         <strong>{incumbent.name}</strong>

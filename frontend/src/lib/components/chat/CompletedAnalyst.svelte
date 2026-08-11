@@ -23,9 +23,9 @@
 
 <section class="completed-analyst" class:compact aria-label="Completed report analyst">
   <header>
-    <!-- No "Report analyst" eyebrow here: every host of this component already
-         titles it (the report page mounts it in a Sheet whose title/aria-label
-         is "Report analyst"), and a second copy read as a duplicated header. -->
+    <!-- No analyst eyebrow here: every host of this component already titles it
+         (the report page mounts it in a Sheet titled ANALYST_PANEL_TITLE), and a
+         second copy read as a duplicated header. -->
     <div>
       <h2>Ask about any finding</h2>
     </div>

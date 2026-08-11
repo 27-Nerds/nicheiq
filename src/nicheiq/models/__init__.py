@@ -29,6 +29,7 @@ from .social_content import (
     RedditComment,
     RedditPost,
     SocialContentCollection,
+    SpeakerAttribution,
     TwitterThread,
     TwitterTweet,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "TwitterTweet",
     "TwitterThread",
     "SocialContentCollection",
+    "SpeakerAttribution",
     # Research State
     "NicheContext",
     "SearchQuery",

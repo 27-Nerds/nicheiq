@@ -49,12 +49,27 @@ const mockGetJob = vi.fn();
 const mockGetJobAsset = vi.fn();
 const mockUpdateJobStatus = vi.fn();
 const mockCancelJob = vi.fn();
+const mockGetReportJsonForJob = vi.fn();
 
 vi.mock('../../services/jobService.js', () => ({
   getJob: (...args: any[]) => mockGetJob(...args),
   updateJobStatus: (...args: any[]) => mockUpdateJobStatus(...args),
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
   cancelJob: (...args: any[]) => mockCancelJob(...args),
+}));
+
+vi.mock('../../services/assetService.js', () => ({
+  getDiscoveryDataForJob: vi.fn().mockResolvedValue(null),
+  getReportJsonForJob: (...args: any[]) => mockGetReportJsonForJob(...args),
+  getReportJsonPublicationForJob: async (...args: any[]) => {
+    const value = await mockGetReportJsonForJob(...args);
+    if (value?.status === 'publication_blocked') return value;
+    return value == null ? { status: 'missing' } : { status: 'ready', report: value };
+  },
+}));
+
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: vi.fn().mockResolvedValue(null),
 }));
 
 const mockCreateJobAndChargeDiscoveryInTx = vi.fn();
@@ -215,6 +230,7 @@ beforeEach(async () => {
   mockGetQueueLength.mockResolvedValue(0);
   mockGetQueueStats.mockResolvedValue({ position: 1, aheadCount: 0, totalQueued: 1 });
   mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 0 });
+  mockGetReportJsonForJob.mockResolvedValue({ report: 'publishable' });
   mockJobUpdateMany.mockResolvedValue({ count: 1 });
   mockJobUpdate.mockResolvedValue({});
   mockJobDispatchCreate.mockResolvedValue({ id: 'resume-dispatch-1' });
@@ -627,15 +643,34 @@ describe('Security Audit: Jobs API', () => {
       mockExistsSync.mockReturnValue(true);
     });
 
-    // SECURITY FINDING: resolveAssetPath has no traversal protection.
-    // It resolves relative paths against the project root and passes absolute paths
-    // through unchanged. If an attacker can control the stored filePath in the DB,
-    // they can read arbitrary files from the filesystem.
+    // Report JSON is served through assetService, which applies path containment and the
+    // commercial-copy publication fence. Landing-page behavior is tested separately below.
 
-    it('reportjson — stored path with ../ traversal is served without sanitization', async () => {
+    it('reportjson — returns an explicit degraded state when publication safety is unknown', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockGetReportJsonForJob.mockResolvedValueOnce({
+        status: 'publication_blocked',
+        reason: 'status UNKNOWN is not publishable',
+      });
+
+      const res = await request(app)
+        .get(`/api/jobs/${targetJobId}/reportjson`)
+        .set(validUserHeaders);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: 'This report is temporarily unavailable while its publication safety is verified.',
+        code: 'REPORT_PUBLICATION_BLOCKED',
+      });
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('Report publication blocked'));
+      error.mockRestore();
+    });
+
+    it('reportjson — blocks a stored path with ../ traversal', async () => {
       mockGetJobAsset.mockResolvedValue({
         filePath: '../../../etc/passwd',
       });
+      mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)
@@ -647,9 +682,8 @@ describe('Security Audit: Jobs API', () => {
           res.on('end', () => cb(null, data));
         });
 
-      // The file is served — resolveAssetPath does not block traversal
-      expect(res.status).toBe(200);
-      expect(mockExistsSync).toHaveBeenCalledWith('../../../etc/passwd');
+      expect(res.status).toBe(404);
+      expect(mockExistsSync).not.toHaveBeenCalled();
     });
 
     it('reportjson — URL-encoded traversal %2e%2e%2f in stored path', async () => {
@@ -657,6 +691,7 @@ describe('Security Audit: Jobs API', () => {
       mockGetJobAsset.mockResolvedValue({
         filePath: '%2e%2e%2fetc/passwd',
       });
+      mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)
@@ -668,15 +703,15 @@ describe('Security Audit: Jobs API', () => {
           res.on('end', () => cb(null, data));
         });
 
-      // Path is passed through as-is (the literal %2e%2e%2f string)
-      expect(res.status).toBe(200);
-      expect(mockExistsSync).toHaveBeenCalledWith('%2e%2e%2fetc/passwd');
+      expect(res.status).toBe(404);
+      expect(mockExistsSync).not.toHaveBeenCalled();
     });
 
     it('reportjson — null byte injection in stored path', async () => {
       mockGetJobAsset.mockResolvedValue({
         filePath: 'report.json\x00.html',
       });
+      mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)
@@ -688,13 +723,14 @@ describe('Security Audit: Jobs API', () => {
           res.on('end', () => cb(null, data));
         });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(404);
     });
 
     it('reportjson — absolute path /etc/shadow passes through unchanged', async () => {
       mockGetJobAsset.mockResolvedValue({
         filePath: '/etc/shadow',
       });
+      mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)
@@ -706,9 +742,8 @@ describe('Security Audit: Jobs API', () => {
           res.on('end', () => cb(null, data));
         });
 
-      expect(res.status).toBe(200);
-      // resolveAssetPath returns absolute paths as-is
-      expect(mockExistsSync).toHaveBeenCalledWith('/etc/shadow');
+      expect(res.status).toBe(404);
+      expect(mockExistsSync).not.toHaveBeenCalled();
     });
 
     it('landingpage — stored path with ../ traversal is served without sanitization', async () => {
@@ -753,11 +788,12 @@ describe('Security Audit: Jobs API', () => {
         });
 
       expect(res.status).toBe(200);
-      expect(mockExistsSync).toHaveBeenCalledWith('outputs/job-123/report.json');
+      expect(mockGetReportJsonForJob).toHaveBeenCalledWith(targetJobId);
     });
 
     it('asset not found returns 404', async () => {
       mockGetJobAsset.mockResolvedValue(null);
+      mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)

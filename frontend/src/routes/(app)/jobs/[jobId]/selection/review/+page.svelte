@@ -3,6 +3,7 @@
   import { getContext } from "svelte";
   import type { PageData } from "./$types";
   import { ApiError, selectSolution } from "$lib/api";
+  import type { SolutionPreview } from "$lib/types/job";
   import { displayCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -16,13 +17,13 @@
     type SelectionWorkspaceLifecycle,
   } from "../selectionWorkspace";
   import {
-    startDeepResearchLabel,
     guideRecordLine,
     CHOOSE_IDEAS_LABEL,
     TOOL_NAMES,
     STRESS_TEST_EVIDENCE_LABEL,
   } from "$lib/selection/labels";
   import { shortlistOverlaps, overlapWarningText } from "$lib/selection/overlapWarnings";
+  import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
   let { data }: { data: PageData } = $props();
 
@@ -86,6 +87,12 @@
   const selectedIdeas = $derived(data.workspace.ideas);
   const selectedCount = $derived(selectedIdeas.length);
   const selectedRefs = $derived(new Set(selectedIdeas.map((idea) => `${idea.idea_id}:${idea.idea_revision ?? 1}`)));
+  const fitReferences = $derived(selectedIdeas.flatMap((idea) => (
+    idea.idea_id
+      ? [{ ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 }]
+      : []
+  )));
+  const fitResults = $derived(scopedFounderFitResults(data.founderFit, fitReferences));
   // Last chance to notice two shortlisted ideas are the same product. Deep Research
   // funds three slots and this gate is the only one that charges for them.
   const overlapWarnings = $derived(
@@ -97,21 +104,25 @@
       })),
     ),
   );
-  const savedRefs = $derived(new Set((data.decisionState?.shortlist.items ?? []).map((reference) => (
-    `${reference.ideaId}:${reference.ideaRevision}`
-  ))));
+  const savedRefs = $derived(new Set(
+    recordArray(data.decisionState?.shortlist?.items)
+      .map(referenceKey)
+      .filter((reference): reference is string => reference !== null),
+  ));
   const scopeMatchesSaved = $derived(
     selectedRefs.size === savedRefs.size && [...selectedRefs].every((reference) => savedRefs.has(reference)),
   );
-  const riskChecks = $derived((data.decisionState?.challenges ?? []).filter((challenge) => (
-    selectedRefs.has(`${challenge.idea.ideaId}:${challenge.idea.ideaRevision}`)
+  const riskChecks = $derived(recordArray(data.decisionState?.challenges).filter((challenge) => (
+    referenceIsSelected(objectRecord(challenge)?.idea)
   )).length);
-  const staleRiskChecks = $derived(data.decisionState?.staleCounts.challenges ?? 0);
+  const staleRiskChecks = $derived(
+    nonNegativeInteger(data.decisionState?.staleCounts?.challenges) ?? 0,
+  );
   // First-hand evidence the owner saved via "Add your evidence". Non-retracted rows
   // whose idea is still on the current shortlist are already the only ones the state
   // service returns, so the same selectedRefs filter as the checks applies.
-  const ownerEvidence = $derived((data.decisionState?.ownerEvidence ?? []).filter((record) => (
-    selectedRefs.has(`${record.idea.ideaId}:${record.idea.ideaRevision}`)
+  const ownerEvidence = $derived(recordArray(data.decisionState?.ownerEvidence).filter((record) => (
+    referenceIsSelected(objectRecord(record)?.idea)
   )).length);
   // The gate carries the same ledger line the guide panel uses, so the state a
   // user assembled across the workspace is restated once before they pay for it.
@@ -129,14 +140,183 @@
   );
   // Unresolved decision questions surfaced at the commit gate, plus any
   // evidence check whose overall call came back weakened/contradicted.
-  const openAssumptions = $derived((data.decisionState?.assumptions ?? []).filter((assumption) => (
-    selectedRefs.has(`${assumption.idea.ideaId}:${assumption.idea.ideaRevision}`)
-    && assumption.ownerState === "OPEN"
+  const openAssumptions = $derived(recordArray(data.decisionState?.assumptions).filter((assumption) => (
+    referenceIsSelected(objectRecord(assumption)?.idea)
+    && objectRecord(assumption)?.ownerState === "OPEN"
   )).length);
-  const weakenedChecks = $derived((data.decisionState?.challenges ?? []).filter((challenge) => (
-    selectedRefs.has(`${challenge.idea.ideaId}:${challenge.idea.ideaRevision}`)
-    && (challenge.overall === "weakened" || challenge.overall === "contradicted")
+  const weakenedChecks = $derived(recordArray(data.decisionState?.challenges).filter((challenge) => (
+    referenceIsSelected(objectRecord(challenge)?.idea)
+    && (objectRecord(challenge)?.overall === "weakened" || objectRecord(challenge)?.overall === "contradicted")
   )).length);
+  const solutionNameCounts = $derived((data.solutions ?? []).reduce((counts, solution) => {
+    counts.set(solution.solution_name, (counts.get(solution.solution_name) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>()));
+
+  type ReceiptRow = { label: string; value: string };
+
+  function objectRecord(value: unknown): Record<string, unknown> | null {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  }
+
+  function recordArray(value: unknown): Record<string, unknown>[] {
+    return Array.isArray(value)
+      ? value.flatMap((candidate) => {
+          const record = objectRecord(candidate);
+          return record ? [record] : [];
+        })
+      : [];
+  }
+
+  function trimmedString(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    return value.trim() || null;
+  }
+
+  function referenceKey(reference: unknown): string | null {
+    const record = objectRecord(reference);
+    const ideaId = trimmedString(record?.ideaId);
+    const ideaRevision = record?.ideaRevision;
+    return ideaId
+      && typeof ideaRevision === "number"
+      && Number.isInteger(ideaRevision)
+      && ideaRevision >= 1
+      ? `${ideaId}:${ideaRevision}`
+      : null;
+  }
+
+  function referenceIsSelected(reference: unknown): boolean {
+    const key = referenceKey(reference);
+    return key !== null && selectedRefs.has(key);
+  }
+
+  function scopedFounderFitResults(
+    founderFit: unknown,
+    references: Array<{ ideaId: string; ideaRevision: number }>,
+  ): Record<string, unknown>[] | null {
+    const receipt = objectRecord(founderFit);
+    const analysis = objectRecord(receipt?.analysis);
+    if (receipt?.stale !== false || !Array.isArray(analysis?.results)) return null;
+
+    const results = recordArray(analysis.results);
+    if (results.length !== references.length) return null;
+    const expected = new Set(references.map((reference) => `${reference.ideaId}:${reference.ideaRevision}`));
+    const actual = new Set(results.map(referenceKey).filter((key): key is string => key !== null));
+    return actual.size === results.length
+      && expected.size === actual.size
+      && [...expected].every((key) => actual.has(key))
+      ? results
+      : null;
+  }
+
+  function matchesIdea(
+    reference: unknown,
+    idea: SolutionPreview,
+  ): boolean {
+    return referenceKey(reference) === `${idea.idea_id}:${idea.idea_revision ?? 1}`;
+  }
+
+  function founderFitFor(idea: SolutionPreview) {
+    const current = recordArray(data.decisionState?.founderFit?.results).find((result) => (
+      matchesIdea(result.idea, idea)
+    ));
+    const verdict = trimmedString(current?.verdict);
+    if (!verdict) return null;
+
+    const detail = fitResults?.find((result) => matchesIdea(result, idea)) ?? null;
+    return { verdict, detail };
+  }
+
+  function founderFitLabel(verdict: unknown): string | null {
+    switch (verdict) {
+      case "fits": return "Fits your constraints";
+      case "needs_reshape": return "Needs reshape";
+      case "blocked": return "Blocked by your constraints";
+      case "insufficient_evidence": return "Insufficient evidence";
+      default: return null;
+    }
+  }
+
+  function testOutcome(outcome: unknown): string | null {
+    const normalized = trimmedString(outcome)?.toUpperCase();
+    switch (normalized) {
+      case "PASS": return "Passed";
+      case "FAIL": return "Failed";
+      case "AMBIGUOUS": return "Ambiguous";
+      case "INVALID": return "Invalid";
+      default: return null;
+    }
+  }
+
+  function collaboratorSignal(idea: SolutionPreview): string | null {
+    if (data.collaboratorSignalsStatus !== "loaded") return null;
+
+    const id = idea.idea_id;
+    const exactCount = id ? nonNegativeInteger(objectRecord(data.solutionVotesById)?.[id]) : null;
+    const legacySafe = solutionNameCounts.get(idea.solution_name) === 1;
+    const legacyCount = legacySafe
+      ? nonNegativeInteger(objectRecord(data.solutionVotes)?.[idea.solution_name])
+      : null;
+    const count = exactCount ?? legacyCount ?? 0;
+    const latestNoteRecord = recordArray(data.voteRationales).find((vote) => (
+      id && trimmedString(vote.solutionId)
+        ? trimmedString(vote.solutionId) === id
+        : !trimmedString(vote.solutionId)
+          && legacySafe
+          && trimmedString(vote.solutionName) === idea.solution_name
+    ));
+    const latestNote = trimmedString(latestNoteRecord?.comment);
+
+    if (count <= 0 && !latestNote) return null;
+    const countText = count > 0
+      ? `${count} collaborator ${count === 1 ? "vote" : "votes"}`
+      : "Collaborator note";
+    return latestNote ? `${countText}. Latest note: “${latestNote}”` : countText;
+  }
+
+  function receiptRows(idea: SolutionPreview): ReceiptRow[] {
+    const rows: ReceiptRow[] = [];
+    // red_team_verdict currently has no durable per-idea code-owned provenance marker.
+    // Because generator output can populate the same BaseSolutionIdea field, a naked value
+    // is not safe receipt evidence. Keep it omitted until the producer resets then stamps it.
+
+    const fit = founderFitFor(idea);
+    const fitLabel = fit ? founderFitLabel(fit.verdict) : null;
+    if (fitLabel) {
+      rows.push({
+        label: "Founder fit",
+        value: trimmedString(fit?.detail?.summary)
+          ? `${fitLabel}: ${trimmedString(fit?.detail?.summary)}`
+          : fitLabel,
+      });
+    }
+
+    const impactRank: Record<string, number> = { DECISIVE: 3, HIGH: 2, MEDIUM: 1 };
+    const openAssumption = recordArray(data.decisionState?.assumptions)
+      .filter((assumption) => (
+        matchesIdea(assumption.idea, idea) && assumption.ownerState === "OPEN"
+      ))
+      .sort((left, right) => (
+        (impactRank[trimmedString(right.impact) ?? ""] ?? 0)
+        - (impactRank[trimmedString(left.impact) ?? ""] ?? 0)
+      ))[0];
+    const unresolved = trimmedString(fit?.detail?.blockingConflict)
+      || trimmedString(openAssumption?.statement)
+      || trimmedString(fit?.detail?.decisionChangingUnknown);
+    if (unresolved) rows.push({ label: "Open question", value: unresolved });
+
+    const conclusion = recordArray(data.decisionState?.conclusions).find((candidate) => (
+      matchesIdea(candidate.idea, idea)
+    ));
+    const outcome = conclusion ? testOutcome(conclusion.outcome) : null;
+    if (outcome) rows.push({ label: "Latest test", value: outcome });
+
+    const collaborator = collaboratorSignal(idea);
+    if (collaborator) rows.push({ label: "Collaborator signal", value: collaborator });
+    return rows;
+  }
   const creditBalance = $derived(
     data.billingLoadState?.balanceUnavailable
       ? null
@@ -168,11 +348,33 @@
       ? creditBalance - researchCost
       : null,
   );
-  const creditShortfall = $derived(
-    creditBalance !== null && researchCost !== null && creditBalance < researchCost
-      ? researchCost - creditBalance
+  // ── "Check my idea" (validate_idea): subject-switch acknowledgement ──
+  // Deep Research on a validate run is expected to continue with THE USER'S idea. A
+  // scope that omits it means the user is consciously switching subjects — that gets an
+  // explicit acknowledgement at the money moment (mixed scope needs none, and a run whose
+  // seed isn't purchasable gets the neutral wording).
+  const isValidation = $derived(data.job.entryMode === "validate_idea");
+  const validationSeed = $derived(
+    isValidation
+      ? (data.job.solutionIdeas ?? []).find(
+          (s) => s.source_frame === "user_seed" && s.generation_operation_id === "validate",
+        ) ?? null
       : null,
   );
+  const scopeIncludesSeed = $derived(
+    Boolean(validationSeed?.idea_id)
+    && selectedRefs.has(`${validationSeed?.idea_id}:${validationSeed?.idea_revision ?? 1}`),
+  );
+  const validationSubjectSwitch = $derived(
+    isValidation && selectedCount > 0 && !scopeIncludesSeed,
+  );
+  let subjectSwitchAcknowledged = $state(false);
+  $effect(() => {
+    // Any scope change resets the acknowledgement.
+    void selectedRefs;
+    subjectSwitchAcknowledged = false;
+  });
+
   const canStart = $derived(
     currentStatus === "AWAITING_SELECTION"
     && canMutate
@@ -184,6 +386,7 @@
     && creditDataValid
     && hasEnoughCredits
     && (!confirmationMismatch || mismatchAcknowledged)
+    && (!validationSubjectSwitch || subjectSwitchAcknowledged)
     && !submitting,
   );
 
@@ -281,7 +484,7 @@
       <h2>Review your shortlist</h2>
       <p class="selection-page__lead">
         {canMutate
-          ? "Nothing is charged until you confirm this exact set of ideas."
+          ? "Confirm this exact shortlist before Deep Research begins."
           : "View-only record of the exact shortlist. Open any idea for details; changes and a new research start are unavailable."}
       </p>
     </div>
@@ -289,6 +492,12 @@
       <p class="review-record">{recordLine}</p>
     {/if}
   </header>
+
+  {#if data.collaboratorSignalsStatus === "unavailable"}
+    <p class="collaborator-load-warning" role="status">
+      Collaborator feedback is temporarily unavailable. Saved votes or notes may be missing from this page.
+    </p>
+  {/if}
 
   {#if selectedCount === 0}
     <div class="selection-page__panel">
@@ -312,16 +521,9 @@
           <div>
             <p class="review-kicker">Shortlist</p>
             <h3 id="selected-ideas-title">{selectedCount} selected · max 3</h3>
-            <!-- Flat pricing verified: one chargeForStageInTx(…,'deep_research') per run
-                 (backend/src/routes/jobs.ts), never multiplied by idea count. -->
-            <p class="flat-price-note" data-tour="flat-price">
-              {researchCost === null
-                ? "One price for up to 3 ideas — the cost does not multiply per idea."
-                : `One price for up to 3 ideas — the same ${researchCost} credits for 1, 2, or 3.`}
-            </p>
           </div>
           {#if canMutate}
-            <a href={`/jobs/${data.job.id}#opportunities`}>{CHOOSE_IDEAS_LABEL}</a>
+            <a href={rankedIdeasHref(data.job.id)}>{CHOOSE_IDEAS_LABEL}</a>
           {:else}
             <span class="readonly-label">Saved scope</span>
           {/if}
@@ -329,11 +531,17 @@
         <ol class="selected-list">
           {#each selectedIdeas as idea, index (`${idea.idea_id}:${idea.idea_revision ?? 1}`)}
             {@const composite = displayCompositeScore(idea)}
+            {@const receipt = receiptRows(idea)}
             <li>
               <button type="button" class="idea-row" onclick={() => (detailIndex = index)}>
                 <span class="idea-ordinal" aria-hidden="true">{index + 1}</span>
                 <span class="idea-body">
-                  <strong>{solutionDisplayTitle(idea)}</strong>
+                  <strong>
+                    {solutionDisplayTitle(idea)}
+                    {#if isValidation && idea.source_frame === "user_seed" && idea.generation_operation_id === "validate"}
+                      <span class="score-chip">Your idea</span>
+                    {/if}
+                  </strong>
                   <span class="idea-summary">{idea.short_description ?? idea.description}</span>
                   {#if composite !== null || idea.idea_tier === "bundle"}
                     <span class="idea-meta-row">
@@ -350,9 +558,22 @@
                 </span>
                 {#if (idea.idea_revision ?? 1) > 1}<small>Updated version</small>{/if}
               </button>
+              {#if receipt.length > 0}
+                <dl class="idea-receipt" aria-label={`Decision receipt for ${solutionDisplayTitle(idea)}`}>
+                  {#each receipt as row (row.label)}
+                    <div>
+                      <dt>{row.label}</dt>
+                      <dd>{row.value}</dd>
+                    </div>
+                  {/each}
+                </dl>
+              {/if}
             </li>
           {/each}
         </ol>
+        <p class="scope-terms">
+          Starting Deep Research locks this exact shortlist. Ideas cannot change during the run, and any active discovery share closes once the run is successfully queued.
+        </p>
         <!-- Advertising a tool this owner cannot open: the link 307-bounces to
              /selection/compare, so the whole summary is gated with it. -->
         {#if decisionTools}
@@ -389,18 +610,18 @@
                  Research payload, so the copy must not promise that. -->
             <p>
               <a href={routeHref("risks")}>{ownerEvidence} {ownerEvidence === 1 ? "piece" : "pieces"} of your own evidence</a>
-              {ownerEvidence === 1 ? "is" : "are"} saved against these ideas — risk checks and the analyst cite it.
+              {ownerEvidence === 1 ? "is" : "are"} saved against these ideas. Risk checks and the analyst cite it.
             </p>
           {/if}
           {#if openAssumptions > 0}
             <p>
               <a href={routeHref("risks")}>{openAssumptions} open {openAssumptions === 1 ? "question" : "questions"} to resolve</a>
-              — tracked but not yet answered. They do not block research.
+              {openAssumptions === 1 ? "is" : "are"} tracked but not yet answered. They do not block research.
             </p>
           {/if}
           {#if weakenedChecks > 0}
             <p class="risk-flag">
-              {weakenedChecks} {weakenedChecks === 1 ? "check" : "checks"} found claims weakened or contradicted{canMutate ? " — worth a look before you start." : "."}
+              {weakenedChecks} {weakenedChecks === 1 ? "check" : "checks"} found claims weakened or contradicted{canMutate ? ". Worth a look before you start." : "."}
             </p>
           {/if}
           {#if riskChecks > 0 && staleRiskChecks > 0}
@@ -417,13 +638,15 @@
       <section class="value-card selection-page__panel" aria-labelledby="deliverables-title">
         <p class="review-kicker">Deep Research report</p>
         <h3 id="deliverables-title">What you get</h3>
+        <p class="delivery-readiness">Typically ready within the hour. It runs in the background, so you can leave and come back.</p>
         <ul class="deliverables">
-          <li>Demand &amp; pain evidence — validated pain points with source quotes</li>
+          <li>Demand &amp; pain evidence: validated pain points with source quotes</li>
           <li>Competitor &amp; alternatives landscape</li>
           <li>SEO &amp; keyword strategy</li>
           <li>Go-to-market playbook &amp; monetization</li>
           <li>Risks, a clear recommendation, and decision-changing conditions</li>
         </ul>
+        <p class="refund-note">Run protection: if the run fails or finds too little data, credits return automatically.</p>
         <!-- /sample-report lives in the (public) route group, so following it in
              this tab drops the user out of the app shell mid-commit. -->
         {#if data.sampleReportAvailable}
@@ -459,36 +682,18 @@
       </div>
 
       <aside class="confirm-card" aria-labelledby="confirm-title">
-        <p class="review-kicker">Confirmation</p>
         <h3 id="confirm-title">{selectedCount} {selectedCount === 1 ? "idea" : "ideas"}, one research run</h3>
-        <!-- Duration: no single authoritative pipeline number exists (docs disagree:
-             ~35 min dashboard copy vs ~45 min designer brief), so this stays a
-             deliberately loose "within the hour" expectation. -->
-        <p>Typically ready within the hour — it runs in the background, so you can leave and come back.</p>
-
-        <div class="price-summary" aria-label="Credit summary">
-          <div class="price-summary__heading">
-            <span>Credit summary</span>
-            <strong>{researchCost === null ? "Unavailable" : `${researchCost} credits total`}</strong>
-          </div>
-          <!-- One unit, stated once in the heading: the rows were previously mixing
-               "731", "−100" and "631 credits" in a four-row ledger. -->
-          <div><span>Available balance</span><strong>{creditBalance ?? "Unavailable"}</strong></div>
-          <div><span>Deep Research cost</span><strong>{researchCost === null ? "Unavailable" : `−${researchCost}`}</strong></div>
-          <div class="post-charge">
-            <span>Balance after starting</span>
-            <strong>{postChargeBalance === null ? "Unavailable" : postChargeBalance}</strong>
-          </div>
+        <div class="commit-record-wrap" role="group" aria-label="Credit summary">
+          <!-- One priced surface. chargeForStageInTx(..., 'deep_research') charges once
+               per run, so this record must never imply per-idea multiplication. -->
+          <p class="commit-record" data-tour="flat-price">
+            <span>FLAT PRICE <b>{researchCost === null ? "UNAVAILABLE" : `${researchCost}\u00a0CREDITS`}</b></span>
+            <i aria-hidden="true">·</i>
+            <span>COVERS <b>1-3 IDEAS</b></span>
+            <i aria-hidden="true">·</i>
+            <span>BALANCE AFTER <b>{postChargeBalance ?? "UNAVAILABLE"}</b></span>
+          </p>
         </div>
-        <ul class="price-notes">
-          <li>You are charged only after you start the run.</li>
-          <li>Starting locks this shortlist — ideas can’t be changed during the run.</li>
-          <li>Any active discovery share link closes once Deep Research is successfully queued.</li>
-          <!-- Refund truth: failJob() auto-refunds the in-flight stage on failure, and
-               INSUFFICIENT_DATA quality stops go through the same path
-               (backend/src/services/jobService.ts). -->
-          <li>If the run fails or finds too little data, credits are returned automatically.</li>
-        </ul>
 
         {#if confirmationMismatch}
           <section class="confirmation-change" aria-labelledby="confirmation-change-title">
@@ -526,12 +731,33 @@
           </section>
         {/if}
 
+        {#if validationSubjectSwitch}
+          <section class="confirmation-change" aria-labelledby="subject-switch-title">
+            <h4 id="subject-switch-title">You're researching a different idea</h4>
+            <p>
+              {#if validationSeed}
+                Deep Research will cover {selectedIdeas.map(solutionDisplayTitle).join(" · ")}
+                instead of your idea, {solutionDisplayTitle(validationSeed)}. Your idea's
+                check stays saved on this run. You can start it later.
+              {:else}
+                Your submitted idea isn't available for research on this run, so Deep
+                Research will cover {selectedIdeas.map(solutionDisplayTitle).join(" · ")}.
+                Your idea's check stays saved.
+              {/if}
+            </p>
+            {#if !subjectSwitchAcknowledged}
+              <button
+                type="button"
+                class="credit-link credit-link--button"
+                onclick={() => { subjectSwitchAcknowledged = true; }}
+              >Yes, research {selectedIdeas.length === 1 ? solutionDisplayTitle(selectedIdeas[0]) : "these ideas"}</button>
+            {/if}
+          </section>
+        {/if}
+
         {#if !creditDataValid}
           <p class="credit-warning">{creditAvailabilityMessage} Reload before starting so you can confirm the exact charge.</p>
           <button class="credit-link credit-link--button" type="button" onclick={() => void invalidateAll()}>Reload credit information</button>
-        {:else if creditShortfall !== null}
-          <p class="credit-warning">You need {creditShortfall} more credits before you can start.</p>
-          <a class="credit-link" href="/billing">Add credits</a>
         {/if}
 
         {#if data.workspace.scopeSource === "preview"}
@@ -540,7 +766,7 @@
               ? "Save at least one idea in Compare before starting research."
               : "No saved idea scope is available in this selection record."}
           </p>
-          {#if canMutate}<a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Choose ideas</a>{/if}
+          {#if canMutate}<a class="credit-link" href={rankedIdeasHref(data.job.id)}>Choose ideas</a>{/if}
         {:else if !scopeMatchesSaved}
           <p class="credit-warning">
             {canMutate
@@ -556,7 +782,7 @@
         {#each overlapWarnings as overlap (overlap.sharedProduct)}
           <p class="overlap-warning">
             {overlapWarningText(overlap)}
-            {#if canMutate}<a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Change your shortlist</a>{/if}
+            {#if canMutate}<a class="credit-link" href={rankedIdeasHref(data.job.id)}>Change your shortlist</a>{/if}
           </p>
         {/each}
 
@@ -564,8 +790,8 @@
         <SubmitButton
           type="button"
           label={confirmationMismatch && mismatchAcknowledged
-            ? `Confirm updated scope · ${researchCost ?? "?"} credits`
-            : researchCost === null ? "Start Deep Research" : startDeepResearchLabel(researchCost)}
+            ? "Confirm updated scope"
+            : "Start Deep Research"}
           loadingText="Starting research…"
           loading={submitting}
           disabled={!canStart}
@@ -587,7 +813,7 @@
                   : confirmationMismatch && !mismatchAcknowledged
                     ? "Review and accept the updated shortlist and price before starting research."
                 : !hasEnoughCredits
-                  ? "Add enough credits before starting research."
+                  ? "Top up your balance before starting research."
                   : "Deep Research cannot be started in the current job state."}
           </p>
         {/if}
@@ -616,6 +842,7 @@
   .review-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(21rem, 0.75fr); gap: var(--space-6); align-items: start; }
   .review-main { display: grid; min-width: 0; gap: var(--space-6); }
   .review-record { margin: 0; color: var(--color-text-muted); font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono); letter-spacing: var(--tracking-wider); white-space: nowrap; }
+  .collaborator-load-warning { margin: 0; color: var(--color-warning-text); font-size: var(--text-13); font-weight: 600; line-height: var(--leading-snug); }
   .scope-card { min-width: 0; overflow: hidden; overflow-wrap: anywhere; }
   .scope-card-head { display: flex; justify-content: space-between; gap: var(--space-4); align-items: end; padding: var(--space-5); border-bottom: 1px solid var(--color-border); }
   .review-kicker { margin: 0; color: var(--color-text-muted); font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; }
@@ -640,12 +867,18 @@
   .selected-list strong { display: block; font-family: var(--font-display); font-size: var(--text-lg); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
   .idea-summary { display: -webkit-box; overflow: hidden; margin: var(--space-2) 0 0; color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .selected-list small { color: var(--color-text-muted); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); white-space: nowrap; }
-  .flat-price-note { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--text-13); line-height: var(--leading-snug); }
+  .idea-receipt { display: grid; gap: var(--space-2); margin: calc(var(--space-1) * -1) 0 0; padding: 0 var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-6) + var(--space-3)); }
+  .idea-receipt > div { display: grid; grid-template-columns: minmax(7rem, 0.3fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+  .idea-receipt dt { color: var(--color-text-muted); font-size: var(--text-sm); font-weight: 600; line-height: var(--leading-normal); }
+  .idea-receipt dd { margin: 0; color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-normal); text-wrap: pretty; }
+  .scope-terms { margin: 0; padding: var(--space-3) var(--space-5); color: var(--color-text-muted); background: var(--color-bg-surface); font-size: var(--text-13); line-height: var(--leading-normal); }
   .idea-meta-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
   .score-chip, .tier-chip { display: inline-flex; align-items: center; padding: 0.125rem var(--space-2); border-radius: var(--radius-md); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .score-chip { color: var(--color-text-secondary); background: var(--color-bg-surface); box-shadow: inset 0 0 0 1px var(--color-border); }
   .tier-chip { color: var(--color-text-muted); background: var(--color-bg-surface); box-shadow: inset 0 0 0 1px var(--color-border); }
   .value-card, .note-card { min-width: 0; padding: var(--space-5); overflow-wrap: anywhere; }
+  .delivery-readiness, .refund-note { max-width: 65ch; margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-normal); }
+  .refund-note { color: var(--color-text-muted); }
   .deliverables { display: grid; gap: var(--space-2); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
   .deliverables li { position: relative; padding-left: var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); }
   .deliverables li::before { content: "✓"; position: absolute; left: 0; color: var(--color-success-text); font-weight: 700; }
@@ -663,18 +896,11 @@
   /* Shared emphasis-card recipe (finding: one accent tint token + border-accent
      + shadow-sm), matched by the compare page's .fit-action. */
   .confirm-card { position: sticky; top: var(--space-4); min-width: 0; padding: var(--space-6); overflow-wrap: anywhere; border: 1px solid var(--color-border-accent); border-radius: var(--radius-lg); color: var(--color-text-primary); background: var(--color-accent-subtle); box-shadow: var(--shadow-sm); }
-  .confirm-card .review-kicker { color: var(--color-accent-dark); }
-  .confirm-card > p:not(.review-kicker, .submit-error, .credit-warning, .overlap-warning) { margin: var(--space-3) 0 var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
-  .price-summary { display: grid; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
-  .price-summary > div { display: flex; justify-content: space-between; gap: var(--space-4); align-items: baseline; }
-  .price-summary span { color: var(--color-text-secondary); font-size: var(--text-13); }
-  .price-summary strong { font: 700 var(--text-base)/var(--leading-tight) var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .price-summary__heading { margin-bottom: var(--space-1); }
-  .price-summary__heading span { color: var(--color-text-primary); font-weight: 700; }
-  .price-summary__heading strong { color: var(--color-accent-dark); font-family: var(--font-body); }
-  .price-summary .post-charge { margin-top: var(--space-1-5); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
-  .price-summary .post-charge span, .price-summary .post-charge strong { color: var(--color-text-primary); }
-  .price-notes { display: grid; gap: var(--space-1-5); margin: var(--space-3) 0 var(--space-4); padding: 0; list-style: none; color: var(--color-text-muted); font-size: var(--text-xs); line-height: var(--leading-snug); }
+  .confirm-card > p:not(.commit-record, .submit-error, .credit-warning, .overlap-warning) { margin: var(--space-3) 0 var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
+  .commit-record { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin: 0 0 var(--space-5); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.07em; line-height: var(--leading-tight); text-transform: uppercase; font-variant-numeric: tabular-nums; font-feature-settings: "zero" 0; }
+  .commit-record span, .commit-record b { white-space: nowrap; }
+  .commit-record b { color: var(--color-text-primary); font: inherit; }
+  .commit-record i { font-style: normal; }
   .confirmation-change {
     display: grid;
     gap: var(--space-3);
@@ -713,11 +939,12 @@
     .scope-card-head { align-items: flex-start; flex-direction: column; }
     .idea-row { grid-template-columns: var(--space-6) minmax(0, 1fr); padding-inline: var(--space-4); }
     .selected-list small { grid-column: 2; }
+    .idea-receipt { padding-inline: calc(var(--space-4) + var(--space-6) + var(--space-3)) var(--space-4); }
+    .idea-receipt > div { grid-template-columns: 1fr; gap: var(--space-1); }
+    .scope-terms { padding-inline: var(--space-4); }
     .value-card, .note-card { padding: var(--space-4); }
     .risk-summary { padding-inline: var(--space-4); }
     .risk-summary__head { align-items: flex-start; flex-direction: column; gap: var(--space-2); }
     .confirm-card { padding: var(--space-4); }
-    .price-summary > div { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
-    .price-summary__heading { align-items: baseline !important; flex-direction: row !important; }
   }
 </style>

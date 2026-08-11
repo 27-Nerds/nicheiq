@@ -151,3 +151,40 @@ describe("PainAnalysis selected-solution scope", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * ProgressRing's `color="auto"` is a GOODNESS ramp (>=0.7 success/green,
+ * >=0.4 warning, else error/red). Severity is a badness scale, so pointing
+ * `auto` at it inverts the colour against the label: the most severe pain in
+ * the run painted green and the mildest one red. Real captured runs are full
+ * of severity >= 0.7 values, so this was the common case, not an edge one.
+ */
+describe("PainAnalysis severity ring colour direction", () => {
+  function severityRingStroke(container: HTMLElement): string | null {
+    const item = Array.from(container.querySelectorAll(".score-ring-item"))
+      .find((node) => node.textContent?.includes("Severity"));
+    return item?.querySelector("circle:not(.progress-ring-bg)")?.getAttribute("stroke") ?? null;
+  }
+
+  it("never paints a high-severity pain with the success colour", async () => {
+    const view = render(PainAnalysis, {
+      props: { painPoints: [pain("Severe billing failure", 0.95)], analytics, solution },
+    });
+
+    await fireEvent.click(view.getByRole("tab", { name: "Niche Analysis" }));
+    await waitFor(() => expect(view.container.querySelector(".score-ring-item")).not.toBeNull());
+
+    expect(severityRingStroke(view.container)).toBe("var(--color-error)");
+  });
+
+  it("uses the same severity colour whatever the score, so the ramp cannot invert", async () => {
+    const view = render(PainAnalysis, {
+      props: { painPoints: [pain("Mild annoyance", 0.2)], analytics, solution },
+    });
+
+    await fireEvent.click(view.getByRole("tab", { name: "Niche Analysis" }));
+    await waitFor(() => expect(view.container.querySelector(".score-ring-item")).not.toBeNull());
+
+    expect(severityRingStroke(view.container)).toBe("var(--color-error)");
+  });
+});

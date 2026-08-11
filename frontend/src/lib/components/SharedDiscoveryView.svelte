@@ -26,6 +26,10 @@
   import type { SolutionPreview } from "$lib/types/job";
   import type { AudienceMapping } from "$lib/types/report";
   import { createDiscoveryDisplayModel } from "$lib/discovery/discoveryDisplay";
+  import {
+    EVIDENCE_WITHHELD_DETAIL,
+    EVIDENCE_WITHHELD_TITLE,
+  } from "$lib/selection/labels";
 
   interface Props {
     data: DiscoveryShareData;
@@ -170,6 +174,11 @@
   const coverageNotes = $derived(
     (previewReport?.data_quality_summary?.quality_caveats ?? []).filter((n) => n?.trim()),
   );
+
+  // The backend withholds every pool-scoped preview field when the run's evidence
+  // snapshot no longer describes the ideas being voted on. Say so in the owner's words
+  // rather than letting the sections quietly disappear.
+  const evidenceFramingWithheld = $derived(data.evidenceFramingWithheld === true);
 </script>
 
 <SharedViewBanner variant="discovery" shareToken={shareToken} />
@@ -179,11 +188,18 @@
   <!-- Research topic header -->
   <div data-annotation-anchor="research-header">
   <PageHeader
-    title={data.niche}
+    title={data.nicheDisplay ?? data.niche}
     titleVariant="research-topic"
     subtitle="Discovery is complete. Review the ranked opportunities and vote for the direction you would back."
   />
   </div>
+
+  {#if evidenceFramingWithheld}
+    <div class="evidence-withheld" role="status">
+      <strong>{EVIDENCE_WITHHELD_TITLE}</strong>
+      <p>{EVIDENCE_WITHHELD_DETAIL}</p>
+    </div>
+  {/if}
 
   <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
   <section aria-label="Ranked opportunities and voting">
@@ -200,6 +216,7 @@
     {uncoveredFamilies}
     {marketReality}
     ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
+    ideaPortfolioSummaryFingerprint={previewReport?.idea_portfolio_summary_fingerprint ?? null}
     {segmentCount}
     solutionVotes={voteSummary.solutionVotes}
   >
@@ -396,6 +413,7 @@
         >
           <CommunitySourcesSection
             subredditNames={discoveryData?.subreddit_names}
+            subredditPostCounts={discoveryData?.subreddit_post_counts}
             communityHubs={audienceMapping?.community_hubs}
             postsAnalyzed={analyzedCount || undefined}
             sourcesSearched={discoveryData?.sources_searched}
@@ -532,6 +550,26 @@
     .locked-post-sub { grid-column: 1; }
     .locked-post-score { grid-column: 2; grid-row: 1; }
     .locked-post-age { grid-column: 2; }
+  }
+
+  .evidence-withheld {
+    padding: var(--space-4);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-warning-subtle);
+    color: var(--color-text-primary);
+  }
+
+  .evidence-withheld strong {
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .evidence-withheld p {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: var(--leading-normal);
   }
 
   .vote-error {

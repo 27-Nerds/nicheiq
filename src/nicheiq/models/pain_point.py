@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ..utils.slugify import slugify
 from .keyword_data import OpportunityLevel
+from .social_content import SpeakerAttribution
 
 
 def compute_opportunity_level(
@@ -471,6 +472,13 @@ class PainPoint(BaseModel):
             "post/thread ID where representative_quotes[i] was found. "
             "Empty string means source unknown. May contain duplicates."
         )
+    )
+    speaker_attributions: list[SpeakerAttribution | None] = Field(
+        default_factory=list,
+        description=(
+            "Parallel array with representative_quotes. Each entry is the durable role "
+            "judgment for that exact quoted contribution; None is reserved for legacy data."
+        ),
     )
     # Audience segment mapping (from Stage 6.5 audience mapping)
     affected_segments: Optional[list[str]] = Field(

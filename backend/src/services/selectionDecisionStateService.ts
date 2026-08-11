@@ -1,6 +1,7 @@
 import { parseCurrentFounderFitArtifact } from './founderFitService.js';
 import { prepareSelectionChallengeInput } from './selectionChallengeService.js';
 import { SelectionDecisionProfileSchema } from '../types/job.js';
+import type { FounderFitArtifact } from '../types/founderFit.js';
 import {
   SELECTION_CHALLENGE_LENSES,
   SelectionChallengeArtifactSchema,
@@ -102,12 +103,24 @@ export interface SelectionDecisionStateInput {
   discoveryData: unknown;
   /**
    * Whether the owner has the optional decision tools grant (User.decisionToolsAccess).
-   * When false the optional ladder is skipped entirely and every decision-tool
-   * projection is emptied, so the client can never surface a step the API would 403.
+   * When false the optional creation ladder is skipped. Completed decision facts remain
+   * projected so revoking creation access does not rewrite the purchase record.
    * Required — a fail-closed gate must not have a permissive default.
    */
   decisionTools: boolean;
 }
+
+export type SelectionDecisionStateProjection = SelectionDecisionState & {
+  /**
+   * Owner-readable historical artifact for decision receipts. This is deliberately carried
+   * by the ungated decision-state read; the grant controls creating new founder-fit output,
+   * not reading completed work after access is revoked.
+   */
+  founderFitReceipt: {
+    analysis: FounderFitArtifact | null;
+    stale: boolean;
+  };
+};
 
 function ideaKey(ideaId: string, ideaRevision: number) {
   return `${ideaId}\0${ideaRevision}`;
@@ -133,7 +146,7 @@ function exactSet(left: Array<{ ideaId: string; ideaRevision: number }>, right: 
   return left.every(item => rightKeys.has(ideaKey(item.ideaId, item.ideaRevision)));
 }
 
-export function buildSelectionDecisionState(input: SelectionDecisionStateInput): SelectionDecisionState {
+export function buildSelectionDecisionState(input: SelectionDecisionStateInput): SelectionDecisionStateProjection {
   const ideas = ensureIdeaIdentities(input.jobId, input.solutionIdeas);
   const currentIdeaByKey = new Map(ideas.map(idea => [
     ideaKey(String(idea.idea_id), Number(idea.idea_revision)),
@@ -264,6 +277,7 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
 
   const currentExperiments: SelectionDecisionState['experiments'] = [];
   const currentConclusions: SelectionDecisionState['conclusions'] = [];
+  const conclusionTimes = new Map<string, number>();
   let staleExperiments = 0;
   let staleConclusions = 0;
   for (const row of input.experiments) {
@@ -294,10 +308,15 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
         idea: ideaRef(idea),
         outcome: row.conclusion.outcome,
       });
+      conclusionTimes.set(row.conclusion.id, row.conclusion.createdAt.getTime());
     } else if (row.conclusion) {
       staleConclusions += 1;
     }
   }
+  currentConclusions.sort((left, right) => (
+    (conclusionTimes.get(right.id) ?? 0) - (conclusionTimes.get(left.id) ?? 0)
+    || right.id.localeCompare(left.id)
+  ));
 
   const currentChallengeBySlot = new Map(currentChallenges.map(challenge => [
     `${ideaKey(challenge.idea.ideaId, challenge.idea.ideaRevision)}\0${challenge.lens}`,
@@ -561,19 +580,20 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
       items: shortlist,
       staleItems: staleShortlistItems,
     },
-    // Without the grant these stay empty even when historical rows exist (the grant can
-    // be revoked after the owner used the tools) — the client renders progress and
-    // "saved work" badges straight off these arrays.
-    profile: decisionTools ? profile : null,
-    founderFit: decisionTools ? founderFit : null,
-    challenges: decisionTools ? currentChallenges : [],
-    ownerEvidence: decisionTools ? currentOwnerEvidence : [],
-    assumptions: decisionTools ? currentAssumptions : [],
-    experiments: decisionTools ? currentExperiments : [],
-    conclusions: decisionTools ? currentConclusions : [],
-    staleCounts: decisionTools
-      ? staleCounts
-      : { ...staleCounts, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: staleCounts.shortlist },
+    // Access controls whether new optional work can be created, not whether completed
+    // work remains part of the owner's historical decision record.
+    profile,
+    founderFit,
+    founderFitReceipt: {
+      analysis: parsedFounderFit,
+      stale: input.selectionFounderFit != null && !parsedFounderFit,
+    },
+    challenges: currentChallenges,
+    ownerEvidence: currentOwnerEvidence,
+    assumptions: currentAssumptions,
+    experiments: currentExperiments,
+    conclusions: currentConclusions,
+    staleCounts,
     deepResearch: {
       eligible: blockers.length === 0,
       optionalWorkRequired: false,

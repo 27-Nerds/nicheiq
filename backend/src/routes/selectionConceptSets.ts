@@ -3,9 +3,12 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
-import { getPreviewReportForJob } from '../services/assetService.js';
 import { acquireGenerationLock } from '../services/selectionGenerationLock.js';
 import { prisma } from '../services/db.js';
+import {
+  loadCurrentSelectionContext,
+  type CurrentSelectionContext,
+} from '../services/currentSelectionContext.js';
 import {
   ConceptSetGenerationError,
   ConceptSetTimeoutError,
@@ -14,9 +17,9 @@ import {
   type ConceptSetGuardrailCode,
   type SelectionConceptSetInput,
 } from '../services/selectionConceptSetService.js';
+import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
 import {
-  findOwnedSelectionWorkspaceJob as ownedJob,
-  type SelectionWorkspaceJob as ConceptJob,
+  findOwnedJob,
 } from '../services/selectionOwnedJobService.js';
 import {
   PrepareSelectionConceptOptionSchema,
@@ -26,7 +29,7 @@ import {
   type SelectionConceptSetRequest,
 } from '../types/selectionConceptSet.js';
 import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
-import { ensureIdeaIdentities, type IdeaRecord } from '../utils/ideaIdentity.js';
+import { type IdeaRecord } from '../utils/ideaIdentity.js';
 
 export const selectionConceptSetsRouter = Router();
 
@@ -80,9 +83,32 @@ const OptionParamsSchema = JobParamsSchema.extend({
   optionId: z.string().regex(/^O[a-f0-9]{11}$/),
 });
 
-function exactParents(job: ConceptJob, request: SelectionConceptSetRequest): IdeaRecord[] | null {
-  const pool = ensureIdeaIdentities(job.id, job.solutionIdeas);
-  const parents = request.parents.map((ref) => pool.find((idea) =>
+const conceptJobSelect = {
+  id: true,
+  status: true,
+  selectionDecisionProfile: true,
+  selectionFounderFit: true,
+  selectionFinalDecision: { select: { id: true } },
+} satisfies Prisma.JobSelect;
+
+type ConceptJob = Prisma.JobGetPayload<{ select: typeof conceptJobSelect }>;
+
+async function ownedJob(jobId: string, userId: string): Promise<ConceptJob | null> {
+  return findOwnedJob(jobId, userId, conceptJobSelect);
+}
+
+async function loadOwnedConceptSnapshot(jobId: string, userId: string) {
+  const job = await ownedJob(jobId, userId);
+  if (!job) return null;
+  const selection = await loadCurrentSelectionContext(prisma, jobId);
+  return selection ? { job, selection } : null;
+}
+
+function exactParents(
+  selection: CurrentSelectionContext,
+  request: SelectionConceptSetRequest,
+): IdeaRecord[] | null {
+  const parents = request.parents.map((ref) => selection.canonical.candidates.find((idea) =>
     idea.idea_id === ref.ideaId && idea.idea_revision === ref.ideaRevision
   ));
   return parents.some((parent) => !parent) ? null : parents as IdeaRecord[];
@@ -90,16 +116,17 @@ function exactParents(job: ConceptJob, request: SelectionConceptSetRequest): Ide
 
 async function loadContextInput(
   job: ConceptJob,
+  selection: CurrentSelectionContext,
   request: SelectionConceptSetRequest,
 ): Promise<SelectionConceptSetInput | null> {
-  const parents = exactParents(job, request);
+  if (selection.canonical.version === null) return null;
+  const parents = exactParents(selection, request);
   if (!parents) return null;
   const exactPairs = request.parents.map((parent) => ({
     ideaId: parent.ideaId,
     ideaRevision: parent.ideaRevision,
   }));
-  const [report, challenges, ownerEvidence, conclusions] = await Promise.all([
-    getPreviewReportForJob(job.id).catch(() => null),
+  const [challenges, ownerEvidence, conclusions] = await Promise.all([
     prisma.selectionChallenge.findMany({
       where: { jobId: job.id, OR: exactPairs },
       orderBy: { createdAt: 'desc' },
@@ -131,12 +158,25 @@ async function loadContextInput(
   ]);
   return {
     jobId: job.id,
+    candidatePoolVersion: selection.canonical.version,
     purpose: request.purpose,
     targetTradeoff: request.targetTradeoff,
     parents,
-    report,
+    // Preview-derived buyer guidance exists only on the verified side of the type
+    // boundary. A stale/unversioned preview becomes null, never a weaker form of trust.
+    report: selection.runArtifacts.verification === 'verified'
+      ? selection.runArtifacts.previewReport
+      : null,
     founderProfile: job.selectionDecisionProfile,
-    founderFit: job.selectionFounderFit,
+    // Through the read-time contract, not raw: this value is written into the Concept Forge
+    // prompt payload, so an artifact that is stale against the current candidates — or whose
+    // prose was written under a different delivery model — would otherwise become grounding
+    // the model reasons from and repeats back.
+    founderFit: parseCurrentFounderFitArtifact(
+      job.selectionFounderFit,
+      job.selectionDecisionProfile,
+      [...selection.canonical.candidates],
+    ),
     challenges: [
       ...challenges.map((row) => row.artifact),
       ...ownerEvidence.map((row) => ({
@@ -169,12 +209,19 @@ function requestFromArtifact(artifact: SelectionConceptSetArtifact): SelectionCo
   };
 }
 
-function parentRevisionStale(job: ConceptJob, artifact: SelectionConceptSetArtifact): boolean {
-  const parents = exactParents(job, requestFromArtifact(artifact));
+function parentRevisionStale(
+  jobId: string,
+  selection: CurrentSelectionContext,
+  artifact: SelectionConceptSetArtifact,
+): boolean {
+  const candidatePoolVersion = selection.canonical.version;
+  if (candidatePoolVersion === null) return true;
+  const parents = exactParents(selection, requestFromArtifact(artifact));
   if (!parents) return true;
   return parents.some((parent, index) => {
     const prepared = prepareSelectionConceptSetInput({
-      jobId: job.id,
+      jobId,
+      candidatePoolVersion,
       purpose: artifact.purpose,
       targetTradeoff: artifact.targetTradeoff ?? undefined,
       parents: [parent],
@@ -331,8 +378,8 @@ selectionConceptSetsRouter.get(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = JobParamsSchema.parse(req.params);
-      const job = await ownedJob(jobId, req.user!.id);
-      if (!job) {
+      const snapshot = await loadOwnedConceptSnapshot(jobId, req.user!.id);
+      if (!snapshot) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
@@ -340,7 +387,7 @@ selectionConceptSetsRouter.get(
         where: { jobId, archivedAt: null },
         orderBy: { createdAt: 'desc' },
         take: MAX_CONCEPT_SETS_PER_JOB,
-        select: { id: true, artifact: true, createdAt: true },
+        select: { id: true, artifact: true, candidatePoolVersion: true, createdAt: true },
       });
       const parsedRows = rows.flatMap((row) => {
         const parsed = SelectionConceptSetArtifactSchema.safeParse(row.artifact);
@@ -350,8 +397,13 @@ selectionConceptSetsRouter.get(
         jobId,
         parsedRows.map(({ row, artifact }) => ({ id: row.id, artifact })),
       );
-      const sets = parsedRows.map(({ row, artifact }) =>
-        publicSet(row, parentRevisionStale(job, artifact), evaluated.get(row.id) ?? {}));
+      const sets = parsedRows.map(({ row, artifact }) => publicSet(
+        row,
+        row.candidatePoolVersion === null
+          || row.candidatePoolVersion !== snapshot.selection.canonical.version
+          || parentRevisionStale(jobId, snapshot.selection, artifact),
+        evaluated.get(row.id) ?? {},
+      ));
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ sets });
     } catch (error) {
@@ -373,17 +425,23 @@ selectionConceptSetsRouter.post(
     try {
       const { jobId } = JobParamsSchema.parse(req.params);
       const request = SelectionConceptSetRequestSchema.parse(req.body);
-      const job = await ownedJob(jobId, req.user!.id);
-      if (!job) {
+      const snapshot = await loadOwnedConceptSnapshot(jobId, req.user!.id);
+      if (!snapshot) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
+      const { job, selection } = snapshot;
       const editError = editable(job);
       if (editError) {
         res.status(409).json({ error: editError });
         return;
       }
-      const input = await loadContextInput(job, request);
+      if (selection.canonical.version === null) {
+        res.status(409).json({ error: 'The shortlist cannot be version-verified yet; refresh the research before generating options' });
+        return;
+      }
+      const candidatePoolVersion = selection.canonical.version;
+      const input = await loadContextInput(job, selection, request);
       if (!input) {
         res.status(409).json({ error: 'A selected parent revision changed; reopen the shortlist' });
         return;
@@ -394,8 +452,13 @@ selectionConceptSetsRouter.post(
       // thrown away, with no way to get different ones. A discard is now final, and the
       // same inputs generate fresh directions.
       const cached = await prisma.selectionConceptSet.findFirst({
-        where: { jobId, inputFingerprint: prepared.inputFingerprint, archivedAt: null },
-        select: { id: true, artifact: true, createdAt: true },
+        where: {
+          jobId,
+          candidatePoolVersion,
+          inputFingerprint: prepared.inputFingerprint,
+          archivedAt: null,
+        },
+        select: { id: true, artifact: true, candidatePoolVersion: true, createdAt: true },
       });
       if (cached) {
         const cachedArtifact = SelectionConceptSetArtifactSchema.parse(cached.artifact);
@@ -446,13 +509,15 @@ selectionConceptSetsRouter.post(
           }
           throw error;
         }
-        const freshJob = await ownedJob(jobId, req.user!.id);
-        const freshInput = freshJob && editable(freshJob) === null
-          ? await loadContextInput(freshJob, request)
+        const freshSnapshot = await loadOwnedConceptSnapshot(jobId, req.user!.id);
+        const freshInput = freshSnapshot && editable(freshSnapshot.job) === null
+          ? await loadContextInput(freshSnapshot.job, freshSnapshot.selection, request)
           : null;
         if (
-          !freshJob
+          !freshSnapshot
           || !freshInput
+          || generated.candidatePoolVersion !== candidatePoolVersion
+          || freshSnapshot.selection.canonical.version !== candidatePoolVersion
           || prepareSelectionConceptSetInput(freshInput).inputFingerprint !== generated.artifact.inputFingerprint
         ) {
           res.status(409).json({ error: 'The shortlist or its evidence changed while options were being prepared' });
@@ -464,6 +529,7 @@ selectionConceptSetsRouter.post(
           created = await prisma.selectionConceptSet.create({
             data: {
               jobId,
+              candidatePoolVersion: generated.candidatePoolVersion,
               purpose: generated.artifact.purpose,
               inputFingerprint: generated.artifact.inputFingerprint,
               parentRefs: generated.artifact.parents as unknown as Prisma.InputJsonValue,
@@ -471,7 +537,7 @@ selectionConceptSetsRouter.post(
               model: generated.artifact.model,
               promptId: generated.artifact.promptId,
             },
-            select: { id: true, artifact: true, createdAt: true },
+            select: { id: true, artifact: true, candidatePoolVersion: true, createdAt: true },
           });
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -480,10 +546,11 @@ selectionConceptSetsRouter.post(
             const winner = await prisma.selectionConceptSet.findFirst({
               where: {
                 jobId,
+                candidatePoolVersion,
                 inputFingerprint: generated.artifact.inputFingerprint,
                 archivedAt: null,
               },
-              select: { id: true, artifact: true, createdAt: true },
+              select: { id: true, artifact: true, candidatePoolVersion: true, createdAt: true },
             });
             if (winner) {
               await recordForgeCost(jobId, generated.costUsd);
@@ -572,11 +639,12 @@ selectionConceptSetsRouter.post(
     try {
       const params = OptionParamsSchema.parse(req.params);
       const input = PrepareSelectionConceptOptionSchema.parse(req.body);
-      const job = await ownedJob(params.jobId, req.user!.id);
-      if (!job) {
+      const snapshot = await loadOwnedConceptSnapshot(params.jobId, req.user!.id);
+      if (!snapshot) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
+      const { job, selection } = snapshot;
       const editError = editable(job);
       if (editError) {
         res.status(409).json({ error: editError });
@@ -584,18 +652,25 @@ selectionConceptSetsRouter.post(
       }
       const row = await prisma.selectionConceptSet.findFirst({
         where: { id: params.setId, jobId: params.jobId, archivedAt: null },
-        select: { id: true, artifact: true },
+        select: { id: true, artifact: true, candidatePoolVersion: true },
       });
       if (!row) {
         res.status(404).json({ error: 'Concept set not found' });
         return;
       }
       const artifact = SelectionConceptSetArtifactSchema.parse(row.artifact);
+      if (
+        row.candidatePoolVersion === null
+        || row.candidatePoolVersion !== selection.canonical.version
+      ) {
+        res.status(409).json({ error: 'These concept options belong to an older shortlist; generate a current set before evaluating' });
+        return;
+      }
       if (artifact.inputFingerprint !== input.expectedInputFingerprint) {
         res.status(409).json({ error: 'The concept options changed; review the current set before evaluating' });
         return;
       }
-      const currentInput = await loadContextInput(job, requestFromArtifact(artifact));
+      const currentInput = await loadContextInput(job, selection, requestFromArtifact(artifact));
       if (
         !currentInput
         || prepareSelectionConceptSetInput(currentInput).inputFingerprint !== artifact.inputFingerprint
@@ -638,6 +713,7 @@ selectionConceptSetsRouter.post(
             patchJson: patch as unknown as Prisma.InputJsonValue,
             origin: 'concept_forge',
             operationId,
+            candidatePoolVersion: row.candidatePoolVersion,
           },
           select: { id: true, patchJson: true },
         });

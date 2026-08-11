@@ -21,6 +21,7 @@ import {
   subscribeToProgress,
 } from "$lib/api";
 import type { Job } from "$lib/types/job";
+import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
 vi.mock("$lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("$lib/api")>();
@@ -229,7 +230,7 @@ describe("+page.svelte — terminal-stop handoff", () => {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      expect(goto).toHaveBeenCalledWith("/jobs/job-1#opportunities", {
+      expect(goto).toHaveBeenCalledWith(rankedIdeasHref("job-1"), {
         replaceState: true,
         invalidateAll: true,
       });

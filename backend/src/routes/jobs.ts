@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, getJobAsset, cancelJob } from '../services/jobService.js';
-import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
+import {
+  getDiscoveryDataForJob,
+  getReportJsonPublicationForJob,
+} from '../services/assetService.js';
+import { getPreviewReportForJob } from '../services/selectionBoundary/rawPreviewReport.js';
 import { getQueueStats, getQueueLength, deliverDispatchWork } from '../services/queueService.js';
 import {
   createJobAndChargeDiscoveryInTx,
@@ -42,6 +46,7 @@ import { IdeaSynthesisPatchSchema, type IdeaSynthesisPatch } from '../types/idea
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { hasAnalystAccess } from '../services/featureAccess.js';
 import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
+import { loadCurrentSelectionContext } from '../services/currentSelectionContext.js';
 import {
   findIdeaForExport,
   ideaExportFilename,
@@ -237,13 +242,21 @@ jobsRouter.get('/:jobId', requireInternalAuth, validateJobId, async (req: Authen
       return;
     }
 
+    // Selection lifecycle data is intentionally separate from the candidate/artifact
+    // snapshot. The generic job endpoint must not put a raw pool on the wire for a
+    // selection screen; /solutions mints that response through CurrentSelectionContext.
+    const selectionContextRequired =
+      job.status === JobStatus.AWAITING_SELECTION
+      || job.status === JobStatus.REGENERATING
+      || isSelectionMutationActive(job);
+
     // Format response using shared helper
     res.json(formatJobResponse(job, {
       includeCreatedAt: true,
       includeProgress: true,
       includeProgressTimestamps: true,
       includeAssets: true,
-      includeSolutionIdeas: true,
+      includeSolutionIdeas: !selectionContextRequired,
     }));
   } catch (error) {
     console.error('Failed to get job:', error);
@@ -280,21 +293,30 @@ jobsRouter.get('/:jobId/reportjson', requireInternalAuth, validateJobId, async (
       }
     }
 
-    const asset = await getJobAsset(jobId, AssetType.REPORT_JSON);
-    const resolvedPath = asset ? resolveAssetPath(asset.filePath) : '';
-    if (!asset || !existsSync(resolvedPath)) {
+    const publication = await getReportJsonPublicationForJob(jobId);
+    if (publication.status === 'publication_blocked') {
+      console.error(
+        `[jobs] Report publication blocked (jobId=${jobId}, reason=${publication.reason})`,
+      );
+      res.status(409).json({
+        error: 'This report is temporarily unavailable while its publication safety is verified.',
+        code: 'REPORT_PUBLICATION_BLOCKED',
+      });
+      return;
+    }
+    if (publication.status === 'missing') {
       res.status(404).json({ error: 'Report not found' });
       return;
     }
+    const report = publication.report;
 
     const filename = `nicheiq_report_${jobId}.json`;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    const stat = statSync(resolvedPath);
-    res.setHeader('Content-Length', stat.size);
-
-    createReadStream(resolvedPath).pipe(res);
+    const body = JSON.stringify(report, null, 2);
+    res.setHeader('Content-Length', Buffer.byteLength(body));
+    res.send(body);
   } catch (error) {
     console.error('Failed to get report:', error);
     res.status(500).json({ error: 'Failed to download report' });
@@ -432,8 +454,8 @@ jobsRouter.get('/:jobId/discovery-data', requireInternalAuth, validateJobId, asy
 
 /**
  * GET /api/jobs/:jobId/preview-report
- * Phase 1 preview report (lightweight summary for the selection screen).
- * Available after Phase 1 completes (AWAITING_SELECTION and beyond).
+ * Raw Phase 1 preview compatibility endpoint for historical/non-selection surfaces.
+ * Active selection consumers must use the verified /solutions context.
  */
 jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -447,6 +469,22 @@ jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, asy
 
     if (!verifyOwnership(req, job.userId)) {
       res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // The raw compatibility endpoint is for historical/non-selection lifecycle
+    // surfaces only. Active selection must atomically bind the preview to the current
+    // candidate pool through /solutions; otherwise a frontend producer could reopen
+    // the exact stale-summary bypass this boundary exists to prevent.
+    if (
+      job.status === JobStatus.AWAITING_SELECTION
+      || job.status === JobStatus.REGENERATING
+      || isSelectionMutationActive(job)
+    ) {
+      res.status(409).json({
+        error: 'Active selection previews require the verified selection context',
+        code: 'SELECTION_CONTEXT_REQUIRED',
+      });
       return;
     }
 
@@ -2511,7 +2549,6 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
     const job = await prisma.job.findFirst({
       where: { id: jobId, userId: req.user!.id },
       select: {
-        solutionIdeas: true,
         selectedSolution: true,
         selectedSolutions: true,
         selectedSolutionIds: true,
@@ -2534,7 +2571,13 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
       return;
     }
 
-    const solutionIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const currentSelection = await loadCurrentSelectionContext(prisma, jobId);
+    if (!currentSelection) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    const solutionIdeas = [...currentSelection.canonical.candidates];
     const selectedSolutions = job.selectedSolutions?.length ? job.selectedSolutions : null;
     const selectedSolutionIds = job.selectedSolutionIds?.length
       ? job.selectedSolutionIds
@@ -2587,6 +2630,14 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
       maxIdeaBatches: MAX_IDEA_BATCHES,
       activeOperation,
       status: job.status,
+      candidatePoolVersion: currentSelection.canonical.version,
+      artifactVerification: currentSelection.runArtifacts.verification,
+      artifactReason: currentSelection.runArtifacts.verification === 'untrusted'
+        ? currentSelection.runArtifacts.reason
+        : null,
+      previewReport: currentSelection.runArtifacts.verification === 'verified'
+        ? currentSelection.runArtifacts.previewReport
+        : null,
     });
   } catch (error) {
     console.error('Failed to get solutions:', error);

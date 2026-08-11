@@ -31,18 +31,12 @@ export interface WorkspaceTestSeed {
 }
 
 export interface WorkspaceToolsApi {
-  /** Evidence review, optionally focused on one candidate revision and lens. */
-  openChallenge(focus?: WorkspaceChallengeFocus): void;
-  /** Evidence review with the decision-changing questions disclosure open. */
-  openAssumptions(focus?: WorkspaceChallengeFocus): void;
   /** Test planner, optionally seeded from a tracked assumption. */
   openTestPlanner(seed?: WorkspaceTestSeed): void;
   /** Variant generator (ConceptForge) over the current exact scope. */
   openVariants(purpose?: SelectionConceptPurpose): void;
   /** Build-constraints form. */
   openConstraints(): void;
-  /** Durable founder-fit comparison route. */
-  openFit(): void;
 }
 
 const WORKSPACE_TOOLS_KEY = Symbol("selection:workspace-tools");

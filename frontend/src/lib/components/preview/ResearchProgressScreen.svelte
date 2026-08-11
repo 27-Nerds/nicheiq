@@ -94,10 +94,16 @@
         return { Icon: PAIN_ICON, text: "Seeded from a catalog pain point" };
       case "pain_remix":
         return { Icon: PAIN_ICON, text: "Seeded from catalog pain points" };
+      // "Check my idea": static copy by design — the derived market lives only in
+      // checkpoint state (never on the Job row), so it appears in the report's
+      // parsed-idea echo at completion, not here.
+      case "validate_idea":
+        return { Icon: IDEA_ICON, text: "Checking your idea against this market" };
       default:
         return null;
     }
   });
+  const isIdeaCheck = $derived(entryMode === "validate_idea");
 
   const pct = $derived(Math.round(progressPercent ?? 0));
 
@@ -119,7 +125,13 @@
 
   // Purchased lifecycle only. "Build" is an optional post-report deliverable, not
   // an automatic research phase; the required user choice belongs between the runs.
-  const phases = ["Discovery", "Pick ideas", "Deep Research"];
+  // Idea-check runs end at the idea's verdict, not an idea-picking step — "Pick
+  // ideas" mid-run would teach exactly the wrong expectation.
+  const phases = $derived(
+    isIdeaCheck
+      ? ["Research", "Your verdict", "Deep Research"]
+      : ["Discovery", "Pick ideas", "Deep Research"],
+  );
   const activePhase = $derived(isDiscovery ? 0 : 2);
   const phaseState = (i: number): "done" | "active" | "queued" | "pending" =>
     i < activePhase
@@ -155,6 +167,16 @@
       <p class="rp-provenance">
         <Icon size={14} aria-hidden="true" />
         <span>{provenance.text}</span>
+      </p>
+    {/if}
+
+    {#if isIdeaCheck}
+      <!-- The control-group sentence — echoed at the report's alternatives disclosure,
+           so the generated pool reads as method, never a bait-and-switch. -->
+      <p class="rp-method">
+        We research the market your idea lives in, write your pitch up as a complete
+        product spec — name included — and score it beside the other approaches that
+        same evidence supports.
       </p>
     {/if}
 
@@ -202,7 +224,7 @@
 
     <p class="rp-body">
       {#if isDiscovery}
-        This usually takes up to 15 minutes. You can safely close this tab — we'll email
+        This usually takes under an hour. You can safely close this tab — we'll email
         you{#if userEmail}&nbsp;at <strong>{userEmail}</strong>{/if} the moment it's ready.
       {:else}
         We're validating your top picks — the full market validation runs now. You can
@@ -376,6 +398,15 @@
   .rp-provenance :global(svg) {
     color: var(--color-accent);
     flex-shrink: 0;
+  }
+
+  .rp-method {
+    max-width: 56ch;
+    margin: -0.5rem 0 1.25rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
   }
 
   /* Queue/execution truth from the job record, not an ambiguous spinner. */

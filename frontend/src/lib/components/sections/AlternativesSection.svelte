@@ -10,7 +10,9 @@
   } from "lucide-svelte";
   import { SECTION_MAP } from "$lib/config/report-sections";
   import type { AlternativeSolution } from "$lib/types/report";
-  import { renderMarkdown, formatScorePercent, humanizeInternalJargon } from "$lib/utils/format";
+  import { renderMarkdown, formatScorePercent } from "$lib/utils/format";
+  import { buyerFacingSolutionPreview } from "$lib/selection/buyerFacingResearchProse";
+  import type { SolutionPreview } from "$lib/types/job";
   import Badge from "$lib/components/ui/Badge.svelte";
 import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
@@ -31,7 +33,26 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     data: AlternativeSolution[];
   }
 
-  let { data }: Props = $props();
+  let { data: rawData }: Props = $props();
+
+  /**
+   * The idea prose on these cards is pipeline-facing. `critic_concern` is the loudest — it
+   * printed "wedge", "mechanism parity", "data_feas" and "cold-start corpus" to buyers on the
+   * paid Deep Research report, because the only pass it went through was
+   * `humanizeInternalJargon`, which owns renamed metrics and money units and knows nothing
+   * about the research vocabulary. `data_acquisition_notes` rides the same object into the
+   * data badge's tooltip below.
+   *
+   * ReportContent sanitises `alternative_solutions` at the report boundary, which covers
+   * every host it has today. This runs again on the component's OWN prop for the same reason
+   * NicheRealityCheck re-sanitises the verdict: a future host cannot forget, and the rules are
+   * idempotent, so the second pass costs nothing and changes nothing.
+   */
+  function asBuyerFacingIdea(solution: AlternativeSolution): AlternativeSolution {
+    const clean = buyerFacingSolutionPreview(solution as unknown as SolutionPreview);
+    return clean as unknown as AlternativeSolution;
+  }
+  const data = $derived(rawData.map(asBuyerFacingIdea));
 
   // Determine competitive intensity color
   function getIntensityColor(intensity: string | undefined): string {
@@ -438,7 +459,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                 Independent critic's take
               </div>
               <p class="text-sm text-text-secondary">
-                {humanizeInternalJargon(solution.critic_concern)}
+                {solution.critic_concern}
               </p>
             </div>
           {/if}
@@ -460,7 +481,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               {/each}
               {#if adversarial.severity === "weakened"}
                 <p class="text-sm text-text-muted mt-1">
-                  This candidate remains available — review these concerns before committing to it.
+                  This candidate remains available. Review these concerns before committing to it.
                 </p>
               {:else}
                 <p class="text-sm text-text-muted mt-1">{PREMISE_UNPROVEN_CODA}</p>
@@ -485,7 +506,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                 Adjacent market check (audience-independent, web-verified)
               </div>
               <p class="text-sm text-text-secondary">
-                {solution.adjacent_market_parity} — this product monetizes the same
+                {solution.adjacent_market_parity}{solution.adjacent_market_parity.trim().endsWith(".") ? "" : "."} This product monetizes the same
                 mechanism/data in its own market, so it shapes both the competition and where
                 the money actually is.
               </p>
@@ -496,18 +517,18 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               <div class="text-xs text-text-muted font-medium mb-1">Who pays</div>
               <p class="text-sm text-text-secondary">
                 {#if solution.source_segment_payability_class === "corporate-budget"}
-                  Buyers with organizational budget authority — direct paid pricing is viable.
+                  Buyers with organizational budget authority. Direct paid pricing is viable.
                 {:else if solution.source_segment_payability_class === "smb-budget"}
-                  Small-business operators paying from business revenue — price-aware but used to
+                  Small-business operators paying from business revenue, price-aware but used to
                   paying for tools that earn their keep.
                 {:else if solution.source_segment_payability_class === "prosumer-wallet"}
-                  Prosumers paying out of pocket — expect low price ceilings and churn-prone
+                  Prosumers paying out of pocket. Expect low price ceilings and churn-prone
                   subscriptions; validate willingness-to-pay before committing.
                 {:else if solution.source_segment_payability_class === "personal-wallet"}
-                  Individuals spending personal money episodically — a historically
+                  Individuals spending personal money episodically, a historically
                   low-willingness-to-pay buyer; favor one-time pricing or free-tool distribution.
                 {:else}
-                  Mixed buyer types — pick the segment with budget authority and price for it.
+                  Mixed buyer types. Pick the segment with budget authority and price for it.
                 {/if}
               </p>
             </div>

@@ -63,6 +63,13 @@ export const CONFIG = {
   suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
   suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),
 
+  // Clarify-intake (suggest mode 'clarify_idea', backend/src/services/clarifyIdea.ts).
+  // Own rate-limit keyspace, separate from suggestRate* above: this call is part
+  // of the paid "Check my idea" submit path, so a burst of Feeling-Lucky/
+  // auto-complete usage elsewhere must never throttle it (and vice versa).
+  clarifyRateHourly: parseInt(process.env.CLARIFY_RATE_HOURLY || '30', 10),
+  clarifyRateDaily: parseInt(process.env.CLARIFY_RATE_DAILY || '100', 10),
+
   // Guided chat (Phase A — plans/eager-meandering-feather.md). Must be a
   // strict-tool-capable, OpenAI-direct model (the `propose_modification` tool call
   // is reassembled from streamed deltas and Zod-validated). gpt-5.6-luna is the

@@ -121,11 +121,185 @@ export interface Report {
 	// grounded LLM pass failed its name-coverage guardrail.
 	idea_portfolio_summary?: string | null;
 
+	// Portfolio fingerprint of the exact candidate list `idea_portfolio_summary` was
+	// written against. The summary is guidance about THAT list, so it is only current
+	// while this equals the live pool's fingerprint; surfaces must compare the two
+	// before presenting the summary as a recommendation.
+	idea_portfolio_summary_fingerprint?: string | null;
+
 	// Stage timing summary (pipeline execution timing)
 	stage_timing_summary?: StageTimingSummary;
 
+	// "Check my idea" (entry_mode='validate_idea') report block — present only on validate
+	// runs' preview reports (src/nicheiq/report/idea_validation_block.py). Enum-driven:
+	// never string-sniff prose fields for behavior.
+	idea_validation?: IdeaValidation | null;
+
 	// Share indexing control (injected by backend for shared reports)
 	_shareAllowIndexing?: boolean;
+}
+
+// ── "Check my idea" (idea_validation block) ──
+
+export type IdeaValidationOutcome =
+	| 'worth_testing'
+	| 'occupied'
+	| 'premise_unproven'
+	| 'ruled_out'
+	| 'not_evaluated';
+
+export interface IdeaValidationPart {
+	key: 'problem_real' | 'space_occupied' | 'demand';
+	/** problem_real: supported|thin|not_found · space_occupied: shipped|partial|adjacent|none_found|not_checked · demand: not_measured */
+	state: string;
+	answer: string;
+	detail: string;
+}
+
+export interface IdeaValidationBreadth {
+	posts: number;
+	/** Distinct posting accounts of the cited threads (quote-level authorship isn't tracked). */
+	distinct_authors: number;
+	distinct_communities: number;
+	months_spanned: number;
+	label: string;
+}
+
+export interface IdeaValidationPivot {
+	attempted: boolean;
+	outcome: 'accepted' | 'rejected' | 'not_attempted';
+	trigger_finding?: string | null;
+	/** Parsed incumbent name from the trigger — lets the panel say "TeamSnap already
+	 * ships part of your mechanism" instead of echoing the raw parity note twice. */
+	trigger_incumbent?: string | null;
+	because?: string | null;
+	keeps?: string | null;
+	changes?: string | null;
+	reason_not_shown?: string | null;
+	/** WHY the drafted revision was rejected — split so the copy can't claim
+	 * "scored no better" when the revision scored better but failed parity clearance. */
+	rejection_code?: 'no_design' | 'incomplete_scores' | 'not_better' | 'parity_not_cleared';
+	rejected_name?: string | null;
+	rejected_pitch?: string | null;
+	/** The acceptance decision's OWN angle-composite ×100 — deliberately not the
+	 * workbench's displayCompositeScore. */
+	rejected_composite?: number | null;
+	original_composite?: number | null;
+	ries_label?: string | null;
+	name?: string | null;
+	idea_id?: string | null;
+	idea_revision?: number | null;
+}
+
+export interface IdeaValidationCompetitor {
+	name?: string | null;
+	what_they_ship?: string | null;
+	price_note?: string | null;
+	price_caveat?: string | null;
+	gap?: string | null;
+	url?: string | null;
+	/** The vendor the verdict's parity finding named — rendered first with a chip. */
+	verdict_trigger?: boolean;
+	/** Promoted trigger rows only: the parity probe's capability evidence ("ships
+	 * Ratio utility billing (RUBS) and CAM") — the map focus is often broader than
+	 * the killing capability, and the row must substantiate the verdict. */
+	verdict_evidence?: string | null;
+	/** Row synthesized from the parity finding (vendor absent from the incumbent
+	 * map): what-they-ship is probe evidence; price/gap/url deliberately empty. */
+	synthesized?: boolean;
+}
+
+export interface IdeaValidationAlternatives {
+	count: number;
+	/** Alternatives whose audience_fit judgment says they primarily serve the buyer
+	 * the user NAMED — the same field the workbench's Adjacent-audience chip reads,
+	 * so the two numbers can never contradict. null = pool carries no audience_fit
+	 * verdicts (legacy runs): inconclusive, the sentence is omitted. */
+	named_buyer_count?: number | null;
+	top: { idea_id?: string | null; name?: string | null; one_liner?: string | null }[];
+}
+
+export interface IdeaValidation {
+	provisional: true;
+	outcome: IdeaValidationOutcome;
+	idea_name?: string | null;
+	headline: string;
+	parts: IdeaValidationPart[];
+	score_bands?: Record<string, string>;
+	evidence_confidence: 'Low' | 'Moderate' | 'High';
+	evidence_confidence_reason: string;
+	breadth?: IdeaValidationBreadth | null;
+	anchored_pains: {
+		pain_title: string;
+		severity_band: string;
+		/** High/Medium/Low with the dossier's cutoffs — one severity vocabulary per page. */
+		severity_label?: string;
+		mention_count?: number | null;
+		quotes: string[];
+	}[];
+	/** Near-miss pains: not anchored to the seed but sharing the pitch's own
+	 * mechanism/problem vocabulary — each with a disposition so stronger-looking
+	 * pains in the dossier can't read as the verdict grading the wrong essay. */
+	related_pains?: {
+		pain_title: string;
+		severity_label: string;
+		mention_count?: number | null;
+		note: 'risk' | 'unmatched';
+	}[];
+	/** Non-anchored pains ranking above the idea's own anchored max — the ruled-out
+	 * bridge's "where else to look" number. Unanchored seed → 0. */
+	stronger_pain_count?: number;
+	unanchored_hypothesis?: boolean | null;
+	user_idea_text?: string | null;
+	user_idea_brief?: string | null;
+	/** Echo fields the Stage-1 parser INFERRED rather than read from the pitch. */
+	assumed_fields: string[];
+	derived_market?: string | null;
+	derived_buyer?: string | null;
+	incumbent_parity?: string | null;
+	existing_equivalent?: string | null;
+	competitors: IdeaValidationCompetitor[];
+	/** Our own generator independently proposed the same product — a DEMAND signal. */
+	duplicate_of?: { idea_id?: string | null; name: string } | null;
+	red_team_verdict?: string | null;
+	kill_risks: {
+		claim: string;
+		why_it_matters?: string | null;
+		falsification?: string | null;
+		quote?: string | null;
+		/** Provenance of the risk: adversarial review, the score critic's concession,
+		 * or the market's own loudest adverse pain. */
+		source?: 'adversarial_review' | 'score_critic' | 'market_signal';
+		/** market_signal only: the underlying pain's canonical title. */
+		pain_title?: string | null;
+	}[];
+	pivot: IdeaValidationPivot;
+	alternatives: IdeaValidationAlternatives;
+	seed_candidate_status?: string | null;
+	seed_idea_id?: string | null;
+	seed_idea_revision?: number | null;
+	/** Computed backend-side; gates the "Continue with your idea" commit panel. */
+	seed_purchasable: boolean;
+	/** The seed's /100 score on the workbench's OWN ranking contract (angle composite
+	 * + visible-pool audience-fit coverage) — a demoted seed is absent from the idea
+	 * list, so the page cannot derive this number anywhere else. */
+	seed_display_composite_score?: number | null;
+	demotion_reason?: string | null;
+	desk_limits: string[];
+	experiment_ladder: { rung: number; action: string; kill_number: string; cost_note: string }[];
+	next_experiment_index: number;
+	/** The product as the tournament actually graded it (may be a refinement of the pitch). */
+	evaluated_idea?: {
+		name?: string | null;
+		value_proposition?: string | null;
+		mechanism_summary?: string | null;
+	} | null;
+	/** Non-null when the evaluated seed drifted from a stated pitch clause — the
+	 * Keeps/Changes/Because delta rendered in the echo card. */
+	refinement?: { kept: string[]; changed: string[]; because?: string | null } | null;
+	/** Display-only parity note for the PITCHED mechanism (brief-derived probe);
+	 * never feeds outcome or confidence. */
+	original_mechanism_parity?: string | null;
 }
 
 // Stage timing summary
@@ -744,6 +918,8 @@ export interface NicheDifficultyVerdict {
 	buyer_class?: string | null;
 	/** One-liner on what the buyer class means for monetization. */
 	buyer_class_note?: string | null;
+	/** Structured requested -> dossier -> recommendation audience mismatch. */
+	audience_drift_notice?: AudienceDriftNotice | null;
 }
 
 export interface DataQualitySummary {
@@ -983,6 +1159,7 @@ export interface AudienceMapping {
 	audience_segments?: AudienceSegment[];
 	primary_target_segment?: string;
 	segment_prioritization_rationale?: string;
+	audience_drift_notice?: AudienceDriftNotice | null;
 
 	// Influencers and community
 	key_influencers?: Influencer[];
@@ -1000,6 +1177,13 @@ export interface AudienceMapping {
 	// Strategy
 	recommended_channels?: string[];
 	early_adopter_tactics?: string;
+}
+
+export interface AudienceDriftNotice {
+	requested_audience: string;
+	dossier_primary_segment: string;
+	recommended_source_segments: string[];
+	message: string;
 }
 
 export interface InfluencerTopPost {

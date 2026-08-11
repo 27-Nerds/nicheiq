@@ -5,17 +5,19 @@ import { TOUR_CHAPTERS, TOUR_MIN_VIEWPORT } from "../chapters";
 const chapters = Object.values(TOUR_CHAPTERS);
 
 describe("tour chapters", () => {
-  it("covers the four surfaces with the planned step counts", () => {
+  it("covers the five surfaces with the planned step counts", () => {
     expect(Object.keys(TOUR_CHAPTERS).sort()).toEqual([
       "compare",
       "job-shortlist",
       "review",
       "risks",
+      "validate-report",
     ]);
     expect(TOUR_CHAPTERS["job-shortlist"].steps).toHaveLength(7);
     expect(TOUR_CHAPTERS.compare.steps).toHaveLength(4);
     expect(TOUR_CHAPTERS.risks.steps).toHaveLength(4);
     expect(TOUR_CHAPTERS.review.steps).toHaveLength(3);
+    expect(TOUR_CHAPTERS["validate-report"].steps).toHaveLength(6);
   });
 
   it("gives every step a string selector, a title and a description", () => {
@@ -117,6 +119,9 @@ describe("every selector a chapter targets resolves against the source", () => {
     "src/routes/(app)/jobs/[jobId]/selection/compare/+page.svelte",
     "src/routes/(app)/jobs/[jobId]/selection/risks/+page.svelte",
     "src/routes/(app)/jobs/[jobId]/selection/review/+page.svelte",
+    // "Check my idea" report page (validate-report chapter anchors)
+    "src/lib/components/sections/ValidationVerdict.svelte",
+    "src/routes/(app)/jobs/[jobId]/+page.svelte",
   ];
   const source = FILES.map((f) => readFileSync(f, "utf8")).join("\n");
 

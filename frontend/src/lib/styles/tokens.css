@@ -24,6 +24,14 @@
 	--space-30: 7.5rem;   /* 120px */
 	--space-35: 8.75rem;  /* 140px */
 
+	/* Analyst dock geometry. Wide shells reserve this exact clearance so the
+	   body-portaled frame and in-flow controls can never occupy the same pixels.
+	   The responsive presentation switches at 1400px in component media queries
+	   (custom properties cannot be used in media-query conditions). */
+	--analyst-dock-width: 26rem; /* 416px */
+	--analyst-dock-inset: var(--space-4); /* 16px */
+	--analyst-dock-clearance: calc(var(--analyst-dock-width) + var(--analyst-dock-inset)); /* 432px */
+
 	/* ========================================
 	   Border Radius Scale
 	   ======================================== */

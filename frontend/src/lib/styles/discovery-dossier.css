@@ -119,8 +119,14 @@
   background: transparent;
 }
 
+/* Inline padding is --space-4 to put the numbered section titles on the SAME
+   left rail as `.dossier-header` (see its padding above). They used to sit at
+   --space-2, so the dossier's own title and every heading under it started at
+   two different x positions, and the offset changed again at ≤760px. One rail,
+   both breakpoints. --space-4 is also the canonical row inline padding
+   (DESIGN_SYSTEM §5.3), so the header is the value that was already right. */
 .discovery-dossier .section-container.expandable .expandable-trigger {
-  padding: var(--space-3) var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border-top: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
   border-radius: 0;
@@ -209,7 +215,8 @@
     width: 100%;
   }
 
+  /* Tracks the mobile `.dossier-header` padding above, so the rail holds here too. */
   .discovery-dossier .section-container.expandable .expandable-trigger {
-    padding-inline: var(--space-1-5);
+    padding-inline: var(--space-3);
   }
 }

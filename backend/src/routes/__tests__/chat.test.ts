@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
 import express, { Express } from 'express';
 import request from 'supertest';
+import { openingOriginForFingerprint } from '../../utils/ideaPortfolioFingerprint.js';
 
 // ============================================
 // Mock dependencies
@@ -15,15 +17,29 @@ const mockExecuteRaw = vi.fn().mockResolvedValue(undefined);
 const mockChatMessageCount = vi.fn();
 const mockChatMessageFindManyTx = vi.fn().mockResolvedValue([]);
 const mockTxChatMessageCreate = vi.fn().mockResolvedValue({});
+const mockTxChatMessageUpdate = vi.fn().mockResolvedValue({});
+const mockTxJobAssetFindUnique = vi.fn();
+const mockCommercialCopyBackfillRunFindFirst = vi.fn();
+const mockCommercialCopyBackfillItemFindMany = vi.fn();
 // Codex review finding 11: chat.ts re-reads status/gateStage twice — once inside the
 // advisory-lock transaction (before persisting the user turn) and once again after the
 // LLM stream completes (before persisting the assistant message). Both default to
 // mirroring whatever mockJobFindFirst is currently configured to return, so existing
 // tests (which only set up mockJobFindFirst) keep passing unchanged; finding-11-specific
 // tests override these individually to simulate a gate change mid-request/mid-stream.
-const mockTxJobFindUnique = vi.fn(async (..._a: any[]) => {
+const mockTxJobFindUnique = vi.fn(async (...args: any[]): Promise<any> => {
   const j = await mockJobFindFirst();
-  return j ? { status: j.status, gateStage: j.gateStage ?? null } : null;
+  return j ? {
+    id: j.id,
+    status: j.status,
+    niche: j.niche,
+    gateStage: j.gateStage ?? null,
+    activeDispatchId: j.activeDispatchId ?? null,
+    candidatePoolVersion: Object.prototype.hasOwnProperty.call(j, 'candidatePoolVersion')
+      ? j.candidatePoolVersion
+      : 1,
+    ...(args[0]?.select?.solutionIdeas ? { solutionIdeas: j.solutionIdeas } : {}),
+  } : null;
 });
 const mockJobFindUniqueTop = vi.fn(async (...args: any[]) => {
   const j = await mockJobFindFirst();
@@ -34,19 +50,31 @@ const mockJobFindUniqueTop = vi.fn(async (...args: any[]) => {
       selectionChallenges: j.selectionChallenges ?? [],
       selectionExperiments: j.selectionExperiments ?? [],
       selectionOwnerEvidence: j.selectionOwnerEvidence ?? [],
+      selectionConceptSets: j.selectionConceptSets ?? [],
       selectionAssumptions: j.selectionAssumptions ?? [],
     };
   }
   return { status: j.status, gateStage: j.gateStage ?? null };
 });
+const poolBindHistoryRows = async (value: any) => (
+  (await value).map((row: any) => Object.prototype.hasOwnProperty.call(row, 'candidatePoolVersion')
+    ? row
+    : { ...row, candidatePoolVersion: 1 })
+);
 const mockTransaction = vi.fn(async (cb: any) => {
   const tx = {
     $executeRaw: mockExecuteRaw,
     job: { findUnique: (...a: any[]) => mockTxJobFindUnique(...a) },
+    jobAsset: { findUnique: (...a: any[]) => mockTxJobAssetFindUnique(...a) },
     chatMessage: {
       count: mockChatMessageCount,
-      findMany: mockChatMessageFindManyTx,
+      findMany: (...a: any[]) => poolBindHistoryRows(
+        a[0]?.select?.patchJson
+          ? mockChatMessageFindManyTop(...a)
+          : mockChatMessageFindManyTx(...a),
+      ),
       create: mockTxChatMessageCreate,
+      update: mockTxChatMessageUpdate,
     },
   };
   return cb(tx);
@@ -64,6 +92,12 @@ vi.mock('../../services/db.js', () => ({
       findMany: (...a: any[]) => mockChatMessageFindManyTop(...a),
       // Follow-up chips are written back onto the assistant row once generated.
       update: (...a: any[]) => mockChatMessageUpdate(...a),
+    },
+    commercialCopyBackfillRun: {
+      findFirst: (...a: any[]) => mockCommercialCopyBackfillRunFindFirst(...a),
+    },
+    commercialCopyBackfillItem: {
+      findMany: (...a: any[]) => mockCommercialCopyBackfillItemFindMany(...a),
     },
     $transaction: (cb: any) => mockTransaction(cb),
   },
@@ -139,9 +173,11 @@ const mockGetReportJsonForJob = vi.fn().mockResolvedValue(null);
 // Tests exercising get_pain_evidence override this per-case.
 const mockGetDiscoveryDataForJob = vi.fn().mockResolvedValue(null);
 vi.mock('../../services/assetService.js', () => ({
-  getPreviewReportForJob: (...a: any[]) => mockGetPreviewReportForJob(...a),
   getReportJsonForJob: (...a: any[]) => mockGetReportJsonForJob(...a),
   getDiscoveryDataForJob: (...a: any[]) => mockGetDiscoveryDataForJob(...a),
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: (...a: any[]) => mockGetPreviewReportForJob(...a),
 }));
 
 const mockLoadSelectionDecisionState = vi.fn().mockResolvedValue(null);
@@ -155,6 +191,7 @@ vi.mock('../../services/selectionDecisionStateLoader.js', () => ({
 let app: Express;
 const authHeaders = { 'x-user-id': 'user-123' };
 const jobId = '00000000-0000-0000-0000-000000000001';
+const portfolioFingerprint = '{"version":1,"ideas":[["idea-sol1",1]]}';
 
 function makeJob(overrides: Record<string, any> = {}) {
   return {
@@ -164,8 +201,15 @@ function makeJob(overrides: Record<string, any> = {}) {
     selectionDraft: null,
     selectionDraftVersion: 0,
     solutionIdeas: [
-      { solution_name: 'Sol1', short_description: 'does a thing', market_fit_score: 0.7 },
+      {
+        idea_id: 'idea-sol1',
+        idea_revision: 1,
+        solution_name: 'Sol1',
+        short_description: 'does a thing',
+        market_fit_score: 0.7,
+      },
     ],
+    candidatePoolVersion: 1,
     ...overrides,
   };
 }
@@ -211,6 +255,8 @@ function makePreviewReport(overrides: Record<string, any> = {}) {
   return {
     alternative_solutions: [
       {
+        idea_id: 'idea-sol1',
+        idea_revision: 1,
         solution_name: 'Sol1',
         description: 'A tool for doing a thing',
         value_proposition: 'Saves time',
@@ -230,6 +276,7 @@ function makePreviewReport(overrides: Record<string, any> = {}) {
       },
     ],
     idea_portfolio_summary: 'This pool leans toward workflow tools for solo operators.',
+    idea_portfolio_summary_fingerprint: portfolioFingerprint,
     market_reality: {
       incumbents: [{ name: 'SpreadsheetCo', pricing: '$0', gap: 'no automation' }],
       wallet: {
@@ -278,6 +325,100 @@ function makePreviewReport(overrides: Record<string, any> = {}) {
   };
 }
 
+function makeConceptSetArtifact(sentinel: string) {
+  const parent = {
+    ideaId: 'idea-sol1',
+    ideaRevision: 1,
+    solutionName: 'Sol1',
+    candidateSnapshotSha256: 'a'.repeat(64),
+    pain: 'A current pain',
+    audience: 'Current buyers',
+  };
+  return {
+    inputFingerprint: 'b'.repeat(64),
+    purpose: 'diverge',
+    targetTradeoff: null,
+    parents: [parent],
+    context: {
+      reportSha256: 'c'.repeat(64),
+      founderFitFingerprint: null,
+      challengeFingerprints: [],
+      conclusionFingerprints: [],
+    },
+    options: (['narrow', 'reposition', 'adjacent'] as const).map((operation, index) => {
+      const assumptionId = `A${String(index + 1).repeat(10)}`;
+      return {
+        optionId: `O${String(index + 1).repeat(11)}`,
+        operation,
+        title: `${operation} ${sentinel}`,
+        brief: `A concrete direction carrying obsolete preview guidance: ${sentinel}.`,
+        changeSummary: `Change the buyer framing using ${sentinel}.`,
+        rationale: `The obsolete preview claimed ${sentinel}.`,
+        parentContributions: [{ ...parent, contribution: 'Keep the current workflow.' }],
+        changedAxes: [{ axis: 'buyer', from: 'Current buyers', to: sentinel, reason: 'Old preview guidance.' }],
+        retainedEvidence: [`Old preview evidence: ${sentinel}`],
+        evidenceToRecheck: ['Recheck this direction against the current run.'],
+        assumptions: [{
+          assumptionId,
+          type: 'demand',
+          statement: 'The changed buyer has this problem.',
+          whyDecisionChanging: 'The buyer determines demand.',
+          consequenceIfFalse: 'Discard the direction.',
+        }],
+        disqualifiers: ['No buyer commits.'],
+        suggestedTest: {
+          assumptionId,
+          hypothesis: 'Qualified buyers will book a call.',
+          method: 'BOOKED_CALL',
+          evidenceSignal: 'SMALL_COMMITMENT',
+          audience: 'Qualified current buyers',
+          artifact: 'A one-page concept with a booked-call CTA',
+          primaryMetric: 'Qualified booked-call rate',
+          passThreshold: 'At least 3 of 20 book',
+          failThreshold: 'Zero of 20 book',
+          measurementWindow: 'Seven days',
+        },
+      };
+    }),
+    model: 'gpt-test',
+    promptId: 'selection-concept-forge',
+    createdAt: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+function dossierContext(
+  candidates: Record<string, unknown>[],
+  previewReport: Record<string, unknown> | null = null,
+  untrustedReason: string | null = previewReport ? null : 'preview_unavailable',
+) {
+  return {
+    job: {
+      status: 'AWAITING_SELECTION',
+      niche: 'test niche',
+      gateStage: null,
+      activeDispatchId: null,
+    },
+    canonical: { candidates, displayedCount: candidates.length, version: 1 },
+    runArtifacts: untrustedReason
+      ? {
+          verification: 'untrusted',
+          reason: untrustedReason,
+          candidatePoolVersion: 1,
+          artifactPoolVersion: 1,
+        }
+      : {
+          verification: 'verified',
+          candidatePoolVersion: 1,
+          previewReport,
+        },
+    openingOrigin: 'opening:cv:test',
+  } as any;
+}
+
+function selectionOpeningOrigin(binding: string): string {
+  return `opening:cv:${createHash('sha256').update(binding).digest('hex').slice(0, 28)}`;
+}
+
 describe('analyst context for ruled-out ideas', () => {
   it('includes the full ruled-out brief in selection-stage chat', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
@@ -304,12 +445,7 @@ describe('analyst context for ruled-out ideas', () => {
   });
 
   it('includes the full ruled-out brief when generating the opening analysis', async () => {
-    mockJobFindFirst.mockResolvedValue({
-      id: jobId,
-      status: 'AWAITING_SELECTION',
-      niche: 'test niche',
-      solutionIdeas: [],
-    });
+    mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop
       .mockResolvedValueOnce([])
@@ -367,7 +503,15 @@ beforeEach(async () => {
   mockCheckChatRateLimit.mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
   mockChatMessageCount.mockResolvedValue(0);
   mockChatMessageFindManyTx.mockResolvedValue([]);
+  mockChatMessageFindManyTop.mockReset().mockResolvedValue([]);
   mockTxChatMessageCreate.mockResolvedValue({});
+  mockTxChatMessageUpdate.mockResolvedValue({});
+  mockTxJobAssetFindUnique.mockReset().mockResolvedValue({ candidatePoolVersion: 1 });
+  mockCommercialCopyBackfillRunFindFirst.mockResolvedValue({
+    id: 'commercial-copy-run',
+    completedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+  mockCommercialCopyBackfillItemFindMany.mockResolvedValue([]);
   mockChatMessageCreate.mockResolvedValue({
     id: 'asst-1',
     role: 'assistant',
@@ -454,12 +598,7 @@ describe('selection context query gating', () => {
       selectionOwnerEvidence: expect.any(Object),
       selectionAssumptions: expect.any(Object),
     });
-    expect(mockLoadSelectionDecisionState).toHaveBeenCalledWith(
-      jobId,
-      'user-123',
-      { previewReport: null, discoveryData: null },
-      true,
-    );
+    expect(mockLoadSelectionDecisionState).not.toHaveBeenCalled();
   });
 
   it('grounds G3 in the server-derived decision state without making optional work a gate', async () => {
@@ -470,44 +609,12 @@ describe('selection context query gating', () => {
         solution_name: 'Signal Desk',
         market_fit_score: 0.7,
       }],
+      selectionDraft: {
+        schemaVersion: 1,
+        items: [{ ideaId: 'idea-1', ideaRevision: 2, titleSnapshot: 'Signal Desk' }],
+      },
+      selectionDraftVersion: 2,
     }));
-    mockLoadSelectionDecisionState.mockResolvedValue({
-      schemaVersion: 1,
-      jobId,
-      status: 'AWAITING_SELECTION',
-      shortlist: {
-        version: 2,
-        items: [{ ideaId: 'idea-1', ideaRevision: 2, title: 'Signal Desk' }],
-      },
-      profile: null,
-      founderFit: null,
-      challenges: [],
-      ownerEvidence: [],
-      assumptions: [],
-      experiments: [],
-      conclusions: [],
-      staleCounts: {
-        shortlist: 0,
-        profile: 0,
-        founderFit: 0,
-        challenges: 1,
-        ownerEvidence: 0,
-        assumptions: 0,
-        experiments: 0,
-        conclusions: 0,
-        total: 1,
-      },
-      deepResearch: { eligible: true, optionalWorkRequired: false, blockers: [] },
-      nextAction: {
-        kind: 'analyze_founder_fit',
-        target: 'founder_fit',
-        reason: 'Refresh founder fit for the exact revisions in the current shortlist.',
-        required: false,
-        ideas: [{ ideaId: 'idea-1', ideaRevision: 2, title: 'Signal Desk' }],
-        lens: null,
-        records: [],
-      },
-    });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/chat`)
@@ -518,10 +625,10 @@ describe('selection context query gating', () => {
     const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
     expect(systemPrompt).toContain('Server-derived selection decision state');
     expect(systemPrompt).toContain('Deep Research: available now; optional decision work does not block it');
-    expect(systemPrompt).toContain('Recommended optional next step: analyze founder fit');
+    expect(systemPrompt).toContain('Recommended optional next step:');
     expect(systemPrompt).toContain('Exact target: R1 revision 2');
     expect(systemPrompt).toContain('Never author, infer, or claim a different status');
-    expect(systemPrompt).toContain('Historical/stale artifacts excluded from current state: 1');
+    expect(systemPrompt).toContain('Historical/stale artifacts excluded from current state: 0');
   });
 
   describe('without the decision tools grant', () => {
@@ -592,14 +699,9 @@ describe('selection context query gating', () => {
       expect(names).toContain('propose_new_idea');
     });
 
-    it('passes the grant through to the decision-state projection', async () => {
+    it('projects decision state from the locked pool without invoking the re-reading loader', async () => {
       await promptFor();
-      expect(mockLoadSelectionDecisionState).toHaveBeenCalledWith(
-        jobId,
-        'user-123',
-        { previewReport: null, discoveryData: null },
-        false,
-      );
+      expect(mockLoadSelectionDecisionState).not.toHaveBeenCalled();
     });
   });
 });
@@ -607,7 +709,7 @@ describe('selection context query gating', () => {
 describe('idea synthesis reference resolution', () => {
   it('fills canonical parent identity server-side and rejects an out-of-range R-reference', async () => {
     const { assembleDossierBundle, resolveIdeaSynthesisPatch } = await import('../chat.js');
-    const bundle = assembleDossierBundle(null, [
+    const bundle = assembleDossierBundle(dossierContext([
       {
         idea_id: 'idea-1',
         idea_revision: 2,
@@ -620,7 +722,7 @@ describe('idea synthesis reference resolution', () => {
         solution_name: 'Briefing desk',
         source_segment: 'Agencies',
       },
-    ]);
+    ]));
     const base = {
       operation: 'combine' as const,
       source_refs: ['R1', 'R2'],
@@ -685,6 +787,30 @@ describe('idea synthesis reference resolution', () => {
     expect(result[0]).not.toHaveProperty('previewOnly');
     expect(result[1]).not.toHaveProperty('previewOnly');
     expect(result[2]).toMatchObject({ current: 'three', previewOnly: 'exact' });
+  });
+
+  it('never enriches a current revision from a unique-name stale revision', async () => {
+    const { canonicalDossierIdeas } = await import('../chat.js');
+    const canonical = [{
+      idea_id: 'idea-1',
+      idea_revision: 2,
+      solution_name: 'Unique name',
+      currentField: 'current revision',
+    }];
+    const stalePreview = [{
+      idea_id: 'idea-1',
+      idea_revision: 1,
+      solution_name: 'Unique name',
+      stalePerCandidateField: 'must stay quarantined',
+    }];
+
+    const [result] = canonicalDossierIdeas(canonical, stalePreview);
+
+    expect(
+      result,
+      'unique-name legacy enrichment must not copy a stale per-candidate field into a current revision',
+    ).not.toHaveProperty('stalePerCandidateField');
+    expect(result).toEqual(canonical[0]);
   });
 });
 
@@ -1469,6 +1595,102 @@ describe('GET /api/jobs/:jobId/chat/history', () => {
     expect(response.body.messages[0].content).toBe('hi');
   });
 
+  it('fences a historic assistant message that predates the contract without a matching audit', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const unsafeContent = 'Avoid subscription pricing because willingness to pay is weak.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
+    mockCommercialCopyBackfillRunFindFirst.mockResolvedValue({
+      id: 'commercial-copy-run',
+      completedAt: new Date('2026-08-09T12:00:00.000Z'),
+    });
+    mockChatMessageFindManyTop.mockResolvedValue([{
+      id: 'historic-assistant',
+      gateStage: 6,
+      role: 'assistant',
+      content: unsafeContent,
+      patchJson: { kind: 'unsafe_action' },
+      toolCallsJson: [{ name: 'unsafe_tool' }],
+      suggestionsJson: ['Repeat the unsafe claim'],
+      origin: 'user_chat',
+      model: 'gpt-4.1-mini',
+      truncated: false,
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.publicationState).toBe('DEGRADED');
+    expect(response.body.publicationBlockedMessages).toBe(1);
+    expect(response.body.messages[0]).toEqual(expect.objectContaining({
+      content: 'This earlier analyst message is temporarily unavailable while its publication safety is verified.',
+      patchJson: null,
+      toolCallsJson: null,
+      suggestionsJson: null,
+    }));
+    expect(response.body.messages[0].content).not.toContain(unsafeContent);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Fenced 1 unreconciled'));
+    error.mockRestore();
+  });
+
+  it('serves a historic assistant message only when the completed audit hash matches', async () => {
+    const reconciledContent = 'Buyers demonstrably pay for tooling; Deep Research validates.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
+    mockCommercialCopyBackfillRunFindFirst.mockResolvedValue({
+      id: 'commercial-copy-run',
+      completedAt: new Date('2026-08-09T12:00:00.000Z'),
+    });
+    mockCommercialCopyBackfillItemFindMany.mockResolvedValue([{
+      targetId: 'historic-assistant',
+      resultSha256: createHash('sha256').update(reconciledContent).digest('hex'),
+    }]);
+    mockChatMessageFindManyTop.mockResolvedValue([{
+      id: 'historic-assistant',
+      gateStage: 6,
+      role: 'assistant',
+      content: reconciledContent,
+      patchJson: null,
+      toolCallsJson: null,
+      suggestionsJson: null,
+      origin: 'user_chat',
+      model: 'gpt-4.1-mini',
+      truncated: false,
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.publicationState).toBe('READY');
+    expect(response.body.messages[0].content).toBe(reconciledContent);
+  });
+
+  it('degrades without crashing when the historic publication audit schema is unavailable', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
+    mockCommercialCopyBackfillRunFindFirst.mockRejectedValue(new Error('relation does not exist'));
+    mockChatMessageFindManyTop.mockResolvedValue([{
+      id: 'unverifiable-assistant',
+      gateStage: 6,
+      role: 'assistant',
+      content: 'Unverifiable historic prose',
+      origin: 'user_chat',
+      model: 'gpt-4.1-mini',
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.publicationState).toBe('DEGRADED');
+    expect(response.body.messages[0].content).toContain('temporarily unavailable');
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('could not read the backfill run; failing closed'),
+      expect.any(Error),
+    );
+    error.mockRestore();
+  });
+
   // The 30-turn cap is enforced GLOBALLY per job (all gates), but the client used to
   // count only the segment it had loaded — understating usage ~3x. Report the real
   // number so the UI can show the budget that is actually enforced.
@@ -1486,6 +1708,76 @@ describe('GET /api/jobs/:jobId/chat/history', () => {
     // Two user turns across two different gates; receipts/assistant rows don't count.
     expect(response.body.usedTurns).toBe(2);
     expect(response.body.maxTurns).toBe(30);
+  });
+
+  it('excludes a stale opening from completed chat history', async () => {
+    const currentIdeas = [{ idea_id: 'idea-current', idea_revision: 4, solution_name: 'Current idea' }];
+    const staleOpening = 'The old candidate remains my recommendation.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED', solutionIdeas: currentIdeas }));
+    mockChatMessageFindManyTop.mockResolvedValue([
+      {
+        id: 'opening-old',
+        gateStage: 5,
+        role: 'assistant',
+        content: staleOpening,
+        patchJson: null,
+        origin: openingOriginForFingerprint('{"version":1,"ideas":[["idea-old",1]]}'),
+        truncated: false,
+        createdAt: new Date('2026-08-01T00:00:00Z'),
+      },
+      {
+        id: 'report-answer',
+        gateStage: 6,
+        role: 'assistant',
+        content: 'Current completed-report answer',
+        patchJson: null,
+        origin: 'user_chat',
+        truncated: false,
+        createdAt: new Date('2026-08-02T00:00:00Z'),
+      },
+    ]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.messages.map((row: { content: string }) => row.content)).toEqual([
+      'Current completed-report answer',
+    ]);
+    expect(response.body.messages.some((row: { content: string }) => row.content === staleOpening)).toBe(false);
+  });
+
+  it('cannot serve an opening that only matches an obsolete pre-lock pool', async () => {
+    const preLockIdeas = [{ idea_id: 'idea-old', idea_revision: 1, solution_name: 'Old idea' }];
+    const lockedIdeas = [{ idea_id: 'idea-current', idea_revision: 5, solution_name: 'Current idea' }];
+    const staleOpening = 'This opening was current only before the lock.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED', solutionIdeas: preLockIdeas }));
+    mockTxJobFindUnique.mockResolvedValueOnce({
+      status: 'COMPLETED',
+      niche: 'test niche',
+      gateStage: null,
+      activeDispatchId: null,
+      solutionIdeas: lockedIdeas,
+    });
+    mockChatMessageFindManyTop.mockResolvedValueOnce([{
+      id: 'opening-old',
+      gateStage: 5,
+      role: 'assistant',
+      content: staleOpening,
+      patchJson: null,
+      toolCallsJson: null,
+      suggestionsJson: null,
+      origin: openingOriginForFingerprint('{"version":1,"ideas":[["idea-old",1]]}'),
+      truncated: false,
+      createdAt: new Date('2026-08-01T00:00:00Z'),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.messages).toEqual([]);
+    expect(mockTxJobFindUnique).toHaveBeenCalledTimes(1);
+    expect(mockJobFindFirst.mock.calls[0][0].select).toEqual({ id: true });
+    expect(mockChatMessageFindManyTop).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1549,6 +1841,8 @@ describe('POST /api/jobs/:jobId/chat — the dossier speaks English', () => {
       makePreviewReport({
         alternative_solutions: [
           {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
             solution_name: 'Sol1',
             description: 'A tool',
             // Free text the Python pipeline authored — it leaks raw keys, and whatever
@@ -1666,6 +1960,285 @@ describe('POST /api/jobs/:jobId/chat — prompt history hygiene', () => {
     // The model needs the RECENT turns; `asc` + `take` silently handed it the oldest.
     expect(query.orderBy).toEqual({ createdAt: 'desc' });
   });
+
+  it('excludes a stale opening after the candidate pool changes', async () => {
+    const currentIdeas = [{ idea_id: 'idea-current', idea_revision: 2, solution_name: 'Current idea' }];
+    const staleOpening = 'The removed candidate is still the best choice.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: currentIdeas }));
+    mockChatMessageFindManyTx.mockResolvedValue([
+      {
+        gateStage: 5,
+        role: 'assistant',
+        content: staleOpening,
+        origin: openingOriginForFingerprint('{"version":1,"ideas":[["idea-removed",1]]}'),
+      },
+      { gateStage: 5, role: 'user', content: 'What should I build?', origin: 'user_chat' },
+    ]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Reassess the current candidates' });
+
+    expect(response.status).toBe(200);
+    const query = mockChatMessageFindManyTx.mock.calls[0][0] as any;
+    expect(query.select.origin).toBe(true);
+    expect(mockTxJobFindUnique).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ solutionIdeas: true }),
+    }));
+    const modelHistory = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(modelHistory.some((row) => row.content === staleOpening)).toBe(false);
+  });
+
+  it('excludes ordinary assistant prose bound to an obsolete pool from analyst replay', async () => {
+    const obsoleteFraming = 'The removed candidate is the safest buyer wedge.';
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockChatMessageFindManyTx.mockResolvedValue([
+      { gateStage: 5, role: 'user', content: 'Which buyer should I pursue?', origin: 'user_chat' },
+      {
+        gateStage: 5,
+        role: 'assistant',
+        content: obsoleteFraming,
+        origin: 'user_chat',
+        candidatePoolVersion: 2,
+      },
+    ]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Use only the current shortlist' });
+
+    expect(response.status).toBe(200);
+    const modelHistory = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(
+      modelHistory.some((row) => row.content === obsoleteFraming),
+      'STALE_POOL_ASSISTANT_PROSE_IS_EXCLUDED_FROM_REPLAY',
+    ).toBe(false);
+  });
+
+  it('blocks the stale-preview Concept Forge laundering path before analyst prompting', async () => {
+    const stalePreviewGuidance = 'STALE_PREVIEW_BUYER_GUIDANCE';
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      selectionConceptSets: [{
+        id: 'old-concept-set',
+        candidatePoolVersion: 2,
+        artifact: makeConceptSetArtifact(stalePreviewGuidance),
+      }],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'What branch directions are current?' });
+
+    expect(response.status).toBe(200);
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(
+      systemPrompt.includes(stalePreviewGuidance),
+      'STALE_CONCEPT_FORGE_PREVIEW_GUIDANCE_CANNOT_REACH_ANALYST',
+    ).toBe(false);
+  });
+
+  it('keeps chat working but excludes persisted opening and preview framing when the live fingerprint is unresolvable', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const staleOpening = 'Persisted advice that must not be replayed without a live fingerprint.';
+    const previewSentinel = 'UNVERIFIED PREVIEW SAYS BUILD THIS';
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [{ solution_name: 'Legacy candidate without durable identity', market_fit_score: 0.7 }],
+    }));
+    mockChatMessageFindManyTx.mockResolvedValue([{
+      gateStage: 5,
+      role: 'assistant',
+      content: staleOpening,
+      origin: openingOriginForFingerprint(portfolioFingerprint),
+    }]);
+    mockGetPreviewReportForJob.mockResolvedValue({
+      alternative_solutions: [{
+        idea_id: 'idea-sol1',
+        idea_revision: 1,
+        solution_name: previewSentinel,
+      }],
+      idea_portfolio_summary: previewSentinel,
+      idea_portfolio_summary_fingerprint: portfolioFingerprint,
+      idea_theses: { theses: [{ display_label: previewSentinel }], uncovered_families: [] },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'What can you tell me safely?' });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('Hello there');
+    const modelMessages = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(
+      modelMessages.some((row) => row.content === staleOpening),
+      'FAIL-CLOSED REGRESSION: an opening with an unresolvable live fingerprint must not reach the analyst',
+    ).toBe(false);
+    expect(modelMessages[0].content).toContain(
+      'I cannot verify the saved candidate framing against the live candidate pool',
+    );
+    expect(modelMessages[0].content).not.toContain(previewSentinel);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+      'reason=unresolvable_candidate_pool',
+    ));
+    warning.mockRestore();
+  });
+
+  it('keeps chat working but excludes persisted opening and preview framing for a legacy null fingerprint', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const staleOpening = 'Persisted legacy advice that must not be replayed.';
+    const previewSentinel = 'LEGACY NULL PREVIEW SAYS BUILD THIS';
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockChatMessageFindManyTx.mockResolvedValue([{
+      gateStage: 5,
+      role: 'assistant',
+      content: staleOpening,
+      origin: openingOriginForFingerprint(portfolioFingerprint),
+    }, {
+      gateStage: 5,
+      role: 'user',
+      content: 'Earlier ordinary question',
+      origin: 'user_chat',
+    }]);
+    mockGetPreviewReportForJob.mockResolvedValue({
+      alternative_solutions: [{
+        idea_id: 'idea-sol1',
+        idea_revision: 1,
+        solution_name: previewSentinel,
+      }],
+      idea_portfolio_summary: previewSentinel,
+      idea_portfolio_summary_fingerprint: null,
+      market_reality: { incumbents: [{ name: previewSentinel }] },
+      idea_theses: { theses: [{ display_label: previewSentinel }], uncovered_families: [] },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'What can you tell me safely?' });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('Hello there');
+    const modelMessages = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(
+      modelMessages.some((row) => row.content === staleOpening),
+      'FAIL-CLOSED LEGACY-NULL REGRESSION: a matching-origin opening must not be replayed without a stored preview fingerprint',
+    ).toBe(false);
+    expect(modelMessages.some((row) => row.content === 'Earlier ordinary question')).toBe(true);
+    expect(modelMessages[0].content).toContain(
+      'The saved portfolio guidance does not match the current candidate set',
+    );
+    expect(modelMessages[0].content).not.toContain(previewSentinel);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+      'reason=legacy_missing_fingerprint',
+    ));
+    warning.mockRestore();
+  });
+
+  it('filters a stale stage-five opening from completed chat while retaining other stages', async () => {
+    const currentIdeas = [{ idea_id: 'idea-current', idea_revision: 3, solution_name: 'Current idea' }];
+    const staleOpening = 'Choose the candidate that was removed.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED', solutionIdeas: currentIdeas }));
+    mockChatMessageFindManyTx.mockResolvedValue([
+      { gateStage: 6, role: 'assistant', content: 'Current report context', origin: 'user_chat' },
+      {
+        gateStage: 5,
+        role: 'assistant',
+        content: staleOpening,
+        origin: openingOriginForFingerprint('{"version":1,"ideas":[["idea-old",1]]}'),
+      },
+      { gateStage: 4, role: 'user', content: 'Earlier pain-stage question', origin: 'user_chat' },
+      { gateStage: 1, role: 'assistant', content: 'Earlier audience-stage answer', origin: 'user_chat' },
+    ]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Summarize the final report' });
+
+    expect(response.status).toBe(200);
+    const modelHistory = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(modelHistory.some((row) => row.content === staleOpening)).toBe(false);
+    expect(modelHistory.some((row) => row.content === 'Earlier audience-stage answer')).toBe(true);
+    expect(modelHistory.some((row) => row.content === 'Earlier pain-stage question')).toBe(true);
+    expect(modelHistory.some((row) => row.content === 'Current report context')).toBe(true);
+  });
+
+  it('excludes a legacy stage-five opening with no origin binding', async () => {
+    const legacyOpening = 'Legacy opening with an obsolete recommendation.';
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockChatMessageFindManyTx.mockResolvedValue([
+      { gateStage: 5, role: 'assistant', content: legacyOpening, origin: null },
+    ]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Review what is current now' });
+
+    expect(response.status).toBe(200);
+    const modelHistory = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(modelHistory.some((row) => row.content === legacyOpening)).toBe(false);
+  });
+
+  it('uses one locked pool for both validated history and the G3 dossier', async () => {
+    const preLockIdeas = [{
+      idea_id: 'idea-before-lock',
+      idea_revision: 1,
+      solution_name: 'Obsolete pre-lock idea',
+      short_description: 'Must not reach the model',
+    }];
+    const lockedIdeas = [{
+      idea_id: 'idea-locked',
+      idea_revision: 3,
+      solution_name: 'Canonical locked idea',
+      short_description: 'The pool captured under the advisory lock',
+      market_fit_score: 0.82,
+    }];
+    const lockedFingerprint = '{"version":1,"ideas":[["idea-locked",3]]}';
+    const lockedOpening = 'This opening belongs to the canonical locked pool.';
+
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: preLockIdeas }));
+    mockTxJobFindUnique.mockResolvedValueOnce({
+      status: 'AWAITING_SELECTION',
+      niche: 'test niche',
+      gateStage: null,
+      activeDispatchId: null,
+      solutionIdeas: lockedIdeas,
+      candidatePoolVersion: 1,
+    });
+    mockChatMessageFindManyTx.mockResolvedValueOnce([{
+      gateStage: 5,
+      role: 'assistant',
+      content: lockedOpening,
+      origin: selectionOpeningOrigin('verified:1'),
+    }]);
+    mockGetPreviewReportForJob.mockResolvedValue({
+      alternative_solutions: preLockIdeas,
+      idea_portfolio_summary: 'Current guidance for the locked pool.',
+      idea_portfolio_summary_fingerprint: lockedFingerprint,
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Use the current candidates' });
+
+    expect(response.status).toBe(200);
+    expect(mockTxJobFindUnique).toHaveBeenCalledTimes(2);
+    expect(mockTxJobFindUnique).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ solutionIdeas: true }),
+    }));
+    expect(mockJobFindFirst.mock.calls[0][0].select.solutionIdeas).toBeUndefined();
+    expect(mockLoadSelectionDecisionState).not.toHaveBeenCalled();
+
+    const modelMessages = mockChatCompleteStream.mock.calls[0][0].messages as Array<{ content: string }>;
+    expect(modelMessages.some((row) => row.content === lockedOpening)).toBe(true);
+    expect(modelMessages[0].content).toContain('Canonical locked idea');
+    expect(modelMessages[0].content).not.toContain('Obsolete pre-lock idea');
+  });
 });
 
 // ============================================
@@ -1723,6 +2296,8 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
       makePreviewReport({
         alternative_solutions: [
           {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
             solution_name: 'Sol1',
             description: 'A tool',
             incumbent_parity: 'shipped by Aftershoot: culls RAW batches',
@@ -1756,6 +2331,8 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
       makePreviewReport({
         alternative_solutions: [
           {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
             solution_name: 'Sol1',
             description: 'A tool',
             incumbent_parity: 'shipped by evidence: the data source misses the buyer',
@@ -1781,6 +2358,8 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
       makePreviewReport({
         alternative_solutions: [
           {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
             solution_name: 'Sol1',
             description: 'A tool',
             red_team_verdict: 'killed',
@@ -1877,14 +2456,28 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
   });
 
   it('adds the adjacent-niche pivot instruction only when the pool is weak', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob());
-
     // Weak: free-culture wallet + no idea clears the market-fit bar.
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [{
+        idea_id: 'idea-weak',
+        idea_revision: 1,
+        solution_name: 'WeakIdea',
+        description: 'x',
+        market_fit_score: 0.35,
+      }],
+    }));
     mockGetPreviewReportForJob.mockResolvedValue(
       makePreviewReport({
         alternative_solutions: [
-          { solution_name: 'WeakIdea', description: 'x', market_fit_score: 0.35 },
+          {
+            idea_id: 'idea-weak',
+            idea_revision: 1,
+            solution_name: 'WeakIdea',
+            description: 'x',
+            market_fit_score: 0.35,
+          },
         ],
+        idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["idea-weak",1]]}',
       })
     );
     await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi' });
@@ -1893,6 +2486,7 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(weakPrompt).toContain('/new?niche=');
 
     // Healthy: a strong idea clears the bar even with the same free-culture wallet.
+    mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi' });
     const healthyPrompt = mockChatCompleteStream.mock.calls[1][0].messages[0].content as string;
@@ -1903,9 +2497,242 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
 // ============================================
 // G3 opening message (2026-07-12) — LLM-generated first message, idempotent, fail-soft.
 // ============================================
+describe('candidate-derived dossier values', () => {
+  it('quarantines the whole preview snapshot on fingerprint mismatch', async () => {
+    const {
+      assembleDossierBundle,
+      buildG3Dossier,
+      PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    } = await import('../chat.js');
+    const stalePreviewIdeas = Array.from({ length: 6 }, (_, index) => ({
+      idea_id: `stale-${index + 1}`,
+      idea_revision: 1,
+      solution_name: `Stale preview ${index + 1}`,
+      market_fit_score: 0.99 - index * 0.01,
+    }));
+    const canonicalIdeas = Array.from({ length: 12 }, (_, index) => ({
+      idea_id: `canonical-${index + 1}`,
+      idea_revision: 1,
+      solution_name: `Canonical ${index + 1}`,
+      market_fit_score: (index + 1) / 20,
+    }));
+
+    const bundle = assembleDossierBundle(dossierContext(
+      canonicalIdeas,
+      {
+        alternative_solutions: stalePreviewIdeas,
+        idea_portfolio_summary: 'STALE portfolio guidance',
+        idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["stale-1",1]]}',
+        market_reality: {
+          wallet: { wallet_class: 'STALE wallet class', evidence: 'STALE wallet evidence' },
+          incumbents: [{ name: 'STALE incumbent' }],
+        },
+        audience_mapping: {
+          audience_segments: [{ segment_name: 'STALE audience segment' }],
+        },
+        idea_theses: {
+          theses: [{
+            display_label: 'Stale six-candidate thesis',
+            members: stalePreviewIdeas.map((idea) => ({ name: idea.solution_name })),
+          }],
+          uncovered_families: [{
+            display_label: 'Stale uncovered family',
+            reason: 'no_surviving_idea',
+          }],
+        },
+        research_metadata: {
+          funnel_counts: { pains_identified: 20, candidates_shown: 6 },
+        },
+        niche_difficulty_verdict: {
+          difficulty_level: 'STALE difficulty level',
+          headline: 'STALE difficulty headline',
+          narrative_summary: 'STALE difficulty narrative',
+        },
+        examined_ruled_out: [{ solution_name: 'STALE ruled-out idea' }],
+        idea_validation: {
+          idea_name: 'Stale preview 1',
+          user_idea_text: 'The original pitch',
+          outcome: 'worth_testing',
+        },
+      },
+      'content_mismatch',
+    ));
+    const dossier = buildG3Dossier('job-1', 'constructed mismatch', bundle);
+
+    expect(bundle.canonical.ideas).toHaveLength(12);
+    expect(bundle.canonical.ideas.map((idea) => idea.solution_name)).toEqual(
+      canonicalIdeas.map((idea) => idea.solution_name),
+    );
+    expect(bundle.canonical.maxVisibleMf).toBe(0.6);
+    expect(bundle.canonical.topIdeas).toEqual([
+      { name: 'Canonical 12', mf: 0.6 },
+      { name: 'Canonical 11', mf: 0.55 },
+      { name: 'Canonical 10', mf: 0.5 },
+    ]);
+    expect(bundle.run).toEqual({
+      verification: 'untrusted',
+      reason: 'content_mismatch',
+      degradedCopy: PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    });
+    expect(dossier).not.toContain('Stale six-candidate thesis');
+    expect(dossier).not.toContain('Stale uncovered family');
+    expect(dossier).not.toContain('candidates shown: 6');
+    expect(
+      dossier,
+      'no preview-derived sentinel may reach the analyst dossier as current after a fingerprint mismatch',
+    ).not.toContain('STALE');
+    expect(dossier).not.toContain("THE USER'S SUBMITTED IDEA");
+  });
+
+  it('quarantines the whole preview snapshot when the live fingerprint cannot be resolved', async () => {
+    const {
+      assembleDossierBundle,
+      buildG3Dossier,
+      PORTFOLIO_GUIDANCE_UNRESOLVABLE_COPY,
+    } = await import('../chat.js');
+    const canonicalIdeas = [{
+      idea_id: 'compatibility-id-added-after-lock',
+      idea_revision: 1,
+      solution_name: 'Canonical legacy idea',
+      market_fit_score: 0.61,
+    }];
+    const previewSentinel = 'UNVERIFIED PREVIEW FRAMING';
+
+    const bundle = assembleDossierBundle(dossierContext(canonicalIdeas, {
+      alternative_solutions: [{
+        idea_id: 'preview-idea',
+        idea_revision: 1,
+        solution_name: previewSentinel,
+      }],
+      idea_portfolio_summary: previewSentinel,
+      idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["preview-idea",1]]}',
+      market_reality: {
+        wallet: { wallet_class: previewSentinel, evidence: previewSentinel },
+        incumbents: [{ name: previewSentinel }],
+      },
+      audience_mapping: { audience_segments: [{ segment_name: previewSentinel }] },
+      idea_theses: { theses: [{ display_label: previewSentinel }], uncovered_families: [] },
+      niche_difficulty_verdict: { difficulty_level: previewSentinel },
+      examined_ruled_out: [{ solution_name: previewSentinel }],
+      research_metadata: { funnel_counts: { candidates_shown: 99 } },
+      idea_validation: { idea_name: previewSentinel },
+    }, 'unresolvable_candidate_pool'));
+    const dossier = buildG3Dossier('job-1', 'unresolvable fingerprint', bundle);
+
+    expect(bundle.run).toEqual({
+      verification: 'untrusted',
+      reason: 'unresolvable_candidate_pool',
+      degradedCopy: PORTFOLIO_GUIDANCE_UNRESOLVABLE_COPY,
+    });
+    expect(bundle.canonical.ideas).toEqual(canonicalIdeas);
+    expect(
+      dossier,
+      'FAIL-CLOSED: an unresolvable live fingerprint must never expose preview-derived candidate framing',
+    ).not.toContain(previewSentinel);
+    expect(dossier).toContain(PORTFOLIO_GUIDANCE_UNRESOLVABLE_COPY);
+  });
+
+  it('quarantines legacy preview framing when the stored fingerprint is null', async () => {
+    const {
+      assembleDossierBundle,
+      buildG3Dossier,
+      PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    } = await import('../chat.js');
+    const canonicalIdeas = [{
+      idea_id: 'idea-live',
+      idea_revision: 2,
+      solution_name: 'Canonical live idea',
+      market_fit_score: 0.72,
+    }];
+    const previewSentinel = 'LEGACY NULL PREVIEW FRAMING';
+
+    const bundle = assembleDossierBundle(dossierContext(canonicalIdeas, {
+      alternative_solutions: [{
+        ...canonicalIdeas[0],
+        legacy_detail: previewSentinel,
+      }],
+      idea_portfolio_summary: previewSentinel,
+      idea_portfolio_summary_fingerprint: null,
+      market_reality: {
+        wallet: { wallet_class: previewSentinel, evidence: previewSentinel },
+        incumbents: [{ name: previewSentinel }],
+      },
+      audience_mapping: { audience_segments: [{ segment_name: previewSentinel }] },
+      idea_theses: { theses: [{ display_label: previewSentinel }], uncovered_families: [] },
+      niche_difficulty_verdict: { difficulty_level: previewSentinel },
+      examined_ruled_out: [{ solution_name: previewSentinel }],
+      research_metadata: { funnel_counts: { candidates_shown: 99 } },
+      idea_validation: { idea_name: previewSentinel },
+    }, 'legacy_missing_fingerprint'));
+    const dossier = buildG3Dossier('job-1', 'legacy null fingerprint', bundle);
+
+    expect(bundle.run).toEqual({
+      verification: 'untrusted',
+      reason: 'legacy_missing_fingerprint',
+      degradedCopy: PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    });
+    expect(bundle.canonical.ideas).toEqual(canonicalIdeas);
+    expect(
+      dossier,
+      'FAIL-CLOSED REGRESSION: a legacy null fingerprint must never expose preview-derived candidate framing',
+    ).not.toContain(previewSentinel);
+    expect(dossier).toContain(PORTFOLIO_GUIDANCE_DEGRADED_COPY);
+  });
+});
+
+describe('portfolio-summary fingerprint guard', () => {
+  const liveIdeas = [{ idea_id: 'idea-live', idea_revision: 2, solution_name: 'Live idea' }];
+  const liveFingerprint = '{"version":1,"ideas":[["idea-live",2]]}';
+  const staleGuidance = 'Stale guidance says to build the removed candidate.';
+
+  it('keeps portfolio guidance when its fingerprint matches the canonical live pool', async () => {
+    const { assembleDossierBundle } = await import('../chat.js');
+    const bundle = assembleDossierBundle(dossierContext(liveIdeas, {
+      alternative_solutions: liveIdeas,
+      idea_portfolio_summary: 'Current guidance covers Live idea.',
+      idea_portfolio_summary_fingerprint: liveFingerprint,
+    }));
+
+    expect(bundle.run.verification).toBe('verified');
+    expect(bundle.run.verification === 'verified' && bundle.run.portfolioSummary)
+      .toBe('Current guidance covers Live idea.');
+  });
+
+  it('replaces mismatched guidance with explicit degraded copy and never repeats stale prose', async () => {
+    const { assembleDossierBundle, PORTFOLIO_GUIDANCE_DEGRADED_COPY } = await import('../chat.js');
+    const bundle = assembleDossierBundle(dossierContext(liveIdeas, {
+      alternative_solutions: liveIdeas,
+      idea_portfolio_summary: staleGuidance,
+      idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["idea-old",1]]}',
+    }, 'content_mismatch'));
+
+    expect(bundle.run).toMatchObject({
+      verification: 'untrusted',
+      degradedCopy: PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    });
+    expect(JSON.stringify(bundle.run)).not.toContain(staleGuidance);
+  });
+
+  it('degrades gracefully when a legacy summary has no fingerprint', async () => {
+    const { assembleDossierBundle, PORTFOLIO_GUIDANCE_DEGRADED_COPY } = await import('../chat.js');
+
+    expect(() => assembleDossierBundle(dossierContext(liveIdeas, {
+      alternative_solutions: liveIdeas,
+      idea_portfolio_summary: staleGuidance,
+    }, 'legacy_missing_fingerprint'))).not.toThrow();
+    expect(assembleDossierBundle(dossierContext(liveIdeas, {
+      alternative_solutions: liveIdeas,
+      idea_portfolio_summary: staleGuidance,
+    }, 'legacy_missing_fingerprint')).run).toMatchObject({
+      verification: 'untrusted',
+      degradedCopy: PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+    });
+  });
+});
+
 describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
   it('synthesizes and persists ONE LLM-generated opening message when history is empty', async () => {
-    mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
+    mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop
       .mockResolvedValueOnce([]) // initial read: empty history
@@ -1916,6 +2743,7 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
           role: 'assistant',
           content: 'Generated opening note with a pivot suggestion.',
           patchJson: null,
+          origin: openingOriginForFingerprint(portfolioFingerprint),
           truncated: false,
           createdAt: new Date(),
         },
@@ -1945,6 +2773,36 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     expect(response.body.messages[0].content).toBe('Generated opening note with a pivot suggestion.');
   });
 
+  it('serves a degraded opening and keeps POST chat usable for a legacy missing pool version', async () => {
+    const { PORTFOLIO_GUIDANCE_DEGRADED_COPY } = await import('../chat.js');
+    const legacyJob = makeJob({ candidatePoolVersion: null });
+    mockJobFindFirst.mockResolvedValue(legacyJob);
+    mockTxJobAssetFindUnique.mockResolvedValue({ candidatePoolVersion: null });
+    mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport({
+      idea_portfolio_summary: 'LEGACY RUN FRAMING MUST NOT REACH CHAT',
+    }));
+
+    const historyResponse = await request(app)
+      .get(`/api/jobs/${jobId}/chat/history`)
+      .set(authHeaders);
+
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.body.messages[0].content).toContain(PORTFOLIO_GUIDANCE_DEGRADED_COPY);
+    expect(historyResponse.body.messages[0].content).not.toContain('LEGACY RUN FRAMING');
+    expect(mockChatComplete).not.toHaveBeenCalled();
+
+    const chatResponse = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Can we still review the current candidate?' });
+
+    expect(chatResponse.status).toBe(200);
+    expect(chatResponse.text).toContain('Hello there');
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain(PORTFOLIO_GUIDANCE_DEGRADED_COPY);
+    expect(systemPrompt).not.toContain('LEGACY RUN FRAMING');
+  });
+
   it('is idempotent — does not regenerate when the thread already has messages', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
@@ -1960,8 +2818,161 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     expect(response.body.messages).toHaveLength(1);
   });
 
+  it('replaces a persisted opening when the canonical candidate fingerprint changes', async () => {
+    const currentIdeas = [{ idea_id: 'idea-current', idea_revision: 1, solution_name: 'Current idea' }];
+    const oldFingerprint = '{"version":1,"ideas":[["idea-old",1]]}';
+    const { openingOriginForFingerprint } = await import('../../utils/ideaPortfolioFingerprint.js');
+    const oldOrigin = openingOriginForFingerprint(oldFingerprint);
+    const currentOrigin = selectionOpeningOrigin('untrusted:1:1:content_mismatch');
+    const staleOpening = 'The removed idea is still my top recommendation.';
+    const degradedOpening =
+      'The saved portfolio guidance does not match the current candidate set, so I am not presenting it as current. I can still help you review the ideas currently shown.\n\nAsk me about any idea, or tell me what to change.';
+
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: currentIdeas }));
+    mockGetPreviewReportForJob.mockResolvedValue({
+      alternative_solutions: currentIdeas,
+      idea_portfolio_summary: 'Build the removed idea first.',
+      idea_portfolio_summary_fingerprint: oldFingerprint,
+    });
+    mockChatMessageFindManyTop
+      .mockResolvedValueOnce([{
+        id: 'opening-old',
+        gateStage: 5,
+        role: 'assistant',
+        content: staleOpening,
+        patchJson: null,
+        origin: oldOrigin,
+        truncated: false,
+        createdAt: new Date(),
+      }])
+      .mockResolvedValueOnce([{
+        id: 'opening-old',
+        gateStage: 5,
+        role: 'assistant',
+        content: degradedOpening,
+        patchJson: null,
+        origin: currentOrigin,
+        truncated: false,
+        createdAt: new Date(),
+      }]);
+    mockChatMessageFindManyTx.mockResolvedValueOnce([{ id: 'opening-old', origin: oldOrigin }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockChatComplete).not.toHaveBeenCalled();
+    expect(mockTxChatMessageUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'opening-old' },
+      data: expect.objectContaining({ content: degradedOpening, origin: currentOrigin }),
+    }));
+    expect(response.body.messages).toHaveLength(1);
+    expect(response.body.messages[0].content).toBe(degradedOpening);
+    expect(response.body.messages[0].content).not.toContain(staleOpening);
+  });
+
+  it('does not serve a persisted opening when the live fingerprint cannot be resolved', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const staleOpening = 'Treat the old preview winner as the current recommendation.';
+    const degradedOpening =
+      'I cannot verify the saved candidate framing against the live candidate pool, so I am leaving that framing out. I can still help with the candidate details currently available.\n\nAsk me about any idea, or tell me what to change.';
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [{ solution_name: 'Legacy candidate without durable identity' }],
+    }));
+    mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport({
+      idea_portfolio_summary: 'Unverified preview recommendation.',
+    }));
+    mockChatMessageFindManyTop.mockResolvedValueOnce([{
+      id: 'opening-unverifiable',
+      gateStage: 5,
+      role: 'assistant',
+      content: staleOpening,
+      patchJson: null,
+      toolCallsJson: null,
+      suggestionsJson: null,
+      origin: openingOriginForFingerprint(portfolioFingerprint),
+      truncated: false,
+      createdAt: new Date(),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockChatComplete).not.toHaveBeenCalled();
+    expect(mockTxChatMessageUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'opening-unverifiable' },
+      data: expect.objectContaining({
+        content: degradedOpening,
+        origin: selectionOpeningOrigin('untrusted:1:1:unresolvable_candidate_pool'),
+      }),
+    }));
+    expect(
+      response.body.messages.some((row: { content: string }) => row.content === staleOpening),
+      'FAIL-CLOSED REGRESSION: persisted opening must not be served when its live fingerprint is unresolvable',
+    ).toBe(false);
+    expect(response.body.messages[0].content).toBe(degradedOpening);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+      'reason=unresolvable_candidate_pool',
+    ));
+    warning.mockRestore();
+  });
+
+  it('replaces a matching-origin opening when the preview fingerprint is legacy null', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { openingOriginForFingerprint } = await import('../../utils/ideaPortfolioFingerprint.js');
+    const currentOrigin = openingOriginForFingerprint(portfolioFingerprint);
+    const untrustedOrigin = selectionOpeningOrigin('untrusted:1:1:legacy_missing_fingerprint');
+    const staleOpening = 'Legacy advice with no preview candidate-set binding.';
+    const degradedOpening =
+      'The saved portfolio guidance does not match the current candidate set, so I am not presenting it as current. I can still help you review the ideas currently shown.\n\nAsk me about any idea, or tell me what to change.';
+
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({ idea_portfolio_summary_fingerprint: null }),
+    );
+    mockChatMessageFindManyTop
+      .mockResolvedValueOnce([{
+        id: 'opening-legacy',
+        gateStage: 5,
+        role: 'assistant',
+        content: staleOpening,
+        patchJson: null,
+        origin: currentOrigin,
+        truncated: false,
+        createdAt: new Date(),
+      }, {
+        id: 'ordinary-user-turn',
+        gateStage: 5,
+        role: 'user',
+        content: 'Can we still discuss the current ideas?',
+        patchJson: null,
+        origin: 'user_chat',
+        truncated: false,
+        createdAt: new Date(),
+      }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockTxChatMessageUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'opening-legacy' },
+      data: expect.objectContaining({ content: degradedOpening, origin: untrustedOrigin }),
+    }));
+    expect(
+      response.body.messages.some((row: { content: string }) => row.content === staleOpening),
+      'FAIL-CLOSED LEGACY-NULL REGRESSION: a matching-origin opening must not be served without a stored preview fingerprint',
+    ).toBe(false);
+    expect(response.body.messages.some((row: { content: string }) => row.content === degradedOpening)).toBe(true);
+    expect(response.body.messages.some(
+      (row: { content: string }) => row.content === 'Can we still discuss the current ideas?',
+    )).toBe(true);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+      'reason=legacy_missing_fingerprint',
+    ));
+    warning.mockRestore();
+  });
+
   it('creates the G3 opening when history contains only earlier checkpoint messages', async () => {
-    mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
+    mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop
       .mockResolvedValueOnce([
@@ -1969,7 +2980,16 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
       ])
       .mockResolvedValueOnce([
         { id: 'g1', gateStage: 1, role: 'assistant', content: 'Stage 1 summary', patchJson: null, truncated: false, createdAt: new Date() },
-        { id: 'g3', gateStage: 5, role: 'assistant', content: 'Idea summary', patchJson: null, truncated: false, createdAt: new Date() },
+        {
+          id: 'g3',
+          gateStage: 5,
+          role: 'assistant',
+          content: 'Idea summary',
+          patchJson: null,
+          origin: openingOriginForFingerprint(portfolioFingerprint),
+          truncated: false,
+          createdAt: new Date(),
+        },
       ]);
 
     const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
@@ -1977,13 +2997,15 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     expect(response.status).toBe(200);
     expect(mockChatComplete).toHaveBeenCalledTimes(1);
     expect(mockTxChatMessageCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ gateStage: 5, origin: 'opening' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ gateStage: 5, origin: expect.stringMatching(/^opening:/) }),
+      }),
     );
     expect(response.body.messages).toHaveLength(2);
   });
 
   it('fails soft to the deterministic composition when the LLM call throws', async () => {
-    mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
+    mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
@@ -2011,9 +3033,18 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
   });
 
   it('flags weakPool=true for a free-culture wallet where no idea clears the market-fit bar', async () => {
-    mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
+    const weakIdeas = [{
+      idea_id: 'idea-weak',
+      idea_revision: 1,
+      solution_name: 'WeakIdea',
+      market_fit_score: 0.35,
+    }];
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: weakIdeas }));
     mockGetPreviewReportForJob.mockResolvedValue(
-      makePreviewReport({ alternative_solutions: [{ solution_name: 'WeakIdea', market_fit_score: 0.35 }] })
+      makePreviewReport({
+        alternative_solutions: weakIdeas,
+        idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["idea-weak",1]]}',
+      })
     );
     mockChatMessageFindManyTop
       .mockResolvedValueOnce([])
@@ -2808,6 +3839,8 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
       makePreviewReport({
         alternative_solutions: [
           {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
             solution_name: 'Sol1',
             description: 'A tool for doing a thing',
             incumbent_parity: 'SpreadsheetCo covers the basics for free',
@@ -3582,5 +4615,72 @@ describe('new selection dossier block builders', () => {
     expect(parseDecisionHandoffArtifact(null)).toBeNull();
     expect(parseDecisionHandoffArtifact({ action: 'BUILD' })).toBeNull();
     expect(parseDecisionHandoffArtifact({ decision: {} })).toBeNull();
+  });
+});
+
+describe('idea-check analyst context ("Check my idea" runs)', () => {
+  const previewReport = {
+    alternative_solutions: [
+      {
+        idea_id: 'seed-1',
+        idea_revision: 1,
+        solution_name: 'CloseCue',
+        headline: 'Slack Bot That Chases Missing Month-End Documents',
+        source_frame: 'user_seed',
+        generation_operation_id: 'validate',
+        description: 'Chases missing receipts over Slack.',
+        value_proposition: 'Faster month-end close.',
+      },
+      {
+        idea_id: 'alt-1',
+        idea_revision: 1,
+        solution_name: 'AltName',
+        headline: 'Alt Headline',
+        description: 'd',
+        value_proposition: 'v',
+      },
+    ],
+    idea_portfolio_summary_fingerprint: '{"version":1,"ideas":[["alt-1",1],["seed-1",1]]}',
+    idea_validation: {
+      idea_name: 'CloseCue',
+      user_idea_text: 'A Slack bot for freelance bookkeepers that chases missing receipts',
+      outcome: 'occupied',
+      headline: 'Real problem, and a named competitor already ships the core of CloseCue.',
+      evidence_confidence: 'High',
+      evidence_confidence_reason: '8 linked posts from 8 accounts.',
+      refinement: null,
+      kill_risks: [{ claim: 'Buyers already use bookkeeping suites', source: 'adversarial_review' }],
+      pivot: { outcome: 'rejected' },
+    },
+  };
+
+  it('carries idea_validation into the bundle and leads the dossier with the user idea', async () => {
+    const { assembleDossierBundle, buildG3Dossier } = await import('../chat.js');
+    const bundle = assembleDossierBundle(dossierContext(previewReport.alternative_solutions, previewReport));
+    expect(bundle.run.verification === 'verified' && bundle.run.ideaValidation)
+      .toMatchObject({ idea_name: 'CloseCue' });
+
+    const dossier = buildG3Dossier('job-1', 'the pitch text', bundle);
+    expect(dossier).toContain("THE USER'S SUBMITTED IDEA");
+    expect(dossier).toContain('product spec "CloseCue"');
+    // The seed candidate itself is flagged, and named the way every UI surface names it.
+    expect(dossier).toContain("THIS IS THE USER'S OWN IDEA");
+    expect(dossier).toContain('[R1] CloseCue');
+    // Verdict essentials reach the analyst in plain words.
+    expect(dossier).toContain('Already shipped by a competitor');
+    expect(dossier).toContain('Buyers already use bookkeeping suites [stress test]');
+    expect(dossier).toContain('scored no better');
+    // Faithful run: the development is stated, not implied.
+    expect(dossier).toContain('The spec keeps everything the user stated');
+  });
+
+  it('stays silent for non-validate runs', async () => {
+    const { assembleDossierBundle, buildG3Dossier } = await import('../chat.js');
+    const ideas = [{ idea_id: 'idea-x', idea_revision: 1, solution_name: 'X', headline: 'H', description: 'd' }];
+    const bundle = assembleDossierBundle(dossierContext(ideas, { alternative_solutions: ideas }));
+    expect(bundle.run.verification === 'verified' && bundle.run.ideaValidation).toBeNull();
+    const dossier = buildG3Dossier('job-1', 'a plain niche', bundle);
+    expect(dossier).not.toContain("THE USER'S SUBMITTED IDEA");
+    expect(dossier).not.toContain("THE USER'S OWN IDEA");
   });
 });

@@ -7,6 +7,8 @@
   import ShareReportModal from "$lib/components/ShareReportModal.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
+  import { ANALYST_PANEL_TITLE } from "$lib/components/chat/analystSurface";
+  import { ASK_ANALYST_LABEL } from "$lib/selection/labels";
   import FinalDecisionWorkspace from "$lib/components/decision/FinalDecisionWorkspace.svelte";
   import Sheet from "$lib/components/ui/Sheet.svelte";
 
@@ -80,7 +82,7 @@
             onclick={() => (analystOpen = true)}
           >
             <MessageSquare class="w-4 h-4" aria-hidden="true" />
-            <span>Ask analyst</span>
+            <span>{ASK_ANALYST_LABEL}</span>
           </button>
         {/if}
         <button
@@ -103,7 +105,7 @@
     {/snippet}
   </ReportContent>
 
-  <Sheet open={analyst && analystOpen} title="Report analyst" onClose={() => (analystOpen = false)}>
+  <Sheet open={analyst && analystOpen} title={ANALYST_PANEL_TITLE} onClose={() => (analystOpen = false)}>
     {#if analyst && analystOpen}
       <CompletedAnalyst {jobId} compact />
     {/if}

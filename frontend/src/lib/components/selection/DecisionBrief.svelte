@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { saveSelectionDecisionProfile } from "$lib/api";
+  import { getSolutions, saveSelectionDecisionProfile } from "$lib/api";
   import {
     FOUNDER_CONTEXT_OVERLAY_TITLE,
     FOUNDER_CONTEXT_SAVED,
@@ -11,7 +11,9 @@
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import SegmentControl from "$lib/components/ui/SegmentControl.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import type { AudienceDriftNotice } from "$lib/types/report";
   import type {
+    BuildModel,
     DecisionProfilePreset,
     DistributionAdvantage,
     RevenueHorizon,
@@ -37,15 +39,59 @@
     /** Blocks saving while the host workspace is not interactive (e.g. the job
      *  is REGENERATING). The editor stays open so a dirty draft is preserved. */
     disabled?: boolean;
+    /** Recommendation-scoped drift from the three-way audience comparison. */
+    audienceDrift?: AudienceDriftNotice | null;
   }
 
-  let { jobId, profile, onSaved, variant = "card", hideSummary = false, disabled = false }: Props = $props();
+  let {
+    jobId,
+    profile,
+    onSaved,
+    variant = "card",
+    hideSummary = false,
+    disabled = false,
+    audienceDrift = undefined,
+  }: Props = $props();
+
+  let verifiedAudienceDrift = $state<AudienceDriftNotice | null>(null);
+  /** True when this run's report was produced before the buyer comparison existed at all. */
+  let audienceCheckUnavailable = $state(false);
+  const renderedAudienceDrift = $derived(
+    audienceDrift === undefined ? verifiedAudienceDrift : audienceDrift,
+  );
+
+  $effect(() => {
+    if (audienceDrift !== undefined) return;
+    let cancelled = false;
+    void getSolutions(jobId)
+      .then((response) => {
+        if (cancelled) return;
+        const mapping = response.artifactVerification === "verified"
+          ? response.previewReport?.audience_mapping
+          : null;
+        verifiedAudienceDrift = mapping?.audience_drift_notice ?? null;
+        // The asset's content hash proves the bytes are the ones the worker registered. It
+        // proves nothing about WHEN they were written, so a report materialized before the
+        // buyer comparison shipped verifies cleanly and then has no comparison to report.
+        // Absence of the field is the only evidence of that, and it must not read as "no
+        // buyer change was found" — that is a claim this run never made.
+        audienceCheckUnavailable = !!mapping && !("audience_drift_notice" in mapping);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          verifiedAudienceDrift = null;
+          audienceCheckUnavailable = false;
+        }
+      });
+    return () => { cancelled = true; };
+  });
 
   const DEFAULT_PROFILE: SelectionDecisionProfile = {
     preset: "balanced",
     weeklyTime: "10_20",
     budget: "1k_5k",
     team: "solo",
+    buildModel: "self",
     revenueHorizon: "6_months",
     distributionAdvantages: [],
     strengths: "",
@@ -75,8 +121,12 @@
   ];
   const TEAM_OPTIONS: Array<{ value: TeamShape; label: string }> = [
     { value: "solo", label: "Solo" },
-    { value: "small_team", label: "Small team" },
-    { value: "funded_team", label: "Funded team" },
+    { value: "small_team", label: "Small in-house team" },
+    { value: "funded_team", label: "Funded in-house team" },
+  ];
+  const BUILD_MODEL_OPTIONS: Array<{ value: BuildModel; label: string }> = [
+    { value: "self", label: "I will build the software" },
+    { value: "contractor", label: "Hire a contractor or agency to build it" },
   ];
   const HORIZON_OPTIONS: Array<{ value: RevenueHorizon; label: string }> = [
     { value: "30_days", label: "Revenue within 30 days" },
@@ -123,8 +173,11 @@
    *  screen readers (the overlay itself unmounts on success). */
   let savedAnnouncement = $state("");
 
-  const optionLabel = <T extends string>(options: Array<{ value: T; label: string }>, value: T) =>
-    options.find((option) => option.value === value)?.label ?? value;
+  const optionLabel = <T extends string>(
+    options: Array<{ value: T; label: string }>,
+    value: T | undefined,
+    missing = "Not specified",
+  ) => value ? (options.find((option) => option.value === value)?.label ?? value) : missing;
 
   function cloneProfile(value: SelectionDecisionProfile): SelectionDecisionProfile {
     return { ...value, distributionAdvantages: [...value.distributionAdvantages] };
@@ -190,6 +243,7 @@
       draft.weeklyTime !== base.weeklyTime ||
       draft.budget !== base.budget ||
       draft.team !== base.team ||
+      draft.buildModel !== base.buildModel ||
       draft.revenueHorizon !== base.revenueHorizon ||
       draft.strengths !== base.strengths ||
       draft.hardConstraints !== base.hardConstraints
@@ -253,6 +307,20 @@
   }
 </script>
 
+{#if renderedAudienceDrift}
+  <aside class="decision-audience-drift" role="note" aria-label="Audience mismatch before recommendation">
+    <strong>Before you act on this recommendation</strong>
+    <p>{renderedAudienceDrift.message}</p>
+  </aside>
+{:else if audienceCheckUnavailable}
+  <aside class="decision-audience-unchecked" role="note" aria-label="Audience check unavailable">
+    <p>
+      This run finished before the buyer comparison existed, so nothing here has checked the
+      recommendation against the audience you asked for. Compare them yourself before you build.
+    </p>
+  </aside>
+{/if}
+
 {#if hideSummary}
   <!-- Editor-only mount: the host surface states the constraints itself. -->
 {:else if variant === "summary"}
@@ -264,6 +332,7 @@
           <span>{optionLabel(TIME_OPTIONS, profile.weeklyTime)}</span>
           <span>{optionLabel(BUDGET_OPTIONS, profile.budget)}</span>
           <span>{optionLabel(TEAM_OPTIONS, profile.team)}</span>
+          <span>{optionLabel(BUILD_MODEL_OPTIONS, profile.buildModel, "Build model not specified")}</span>
           <span>{optionLabel(HORIZON_OPTIONS, profile.revenueHorizon)}</span>
           {#if profile.distributionAdvantages.length > 0}
             <span>{profile.distributionAdvantages.map((value) => optionLabel(CHANNEL_OPTIONS, value)).join(", ")}</span>
@@ -291,6 +360,7 @@
         <div><dt>Time</dt><dd>{optionLabel(TIME_OPTIONS, profile.weeklyTime)}</dd></div>
         <div><dt>Budget</dt><dd>{optionLabel(BUDGET_OPTIONS, profile.budget)}</dd></div>
         <div><dt>Team</dt><dd>{optionLabel(TEAM_OPTIONS, profile.team)}</dd></div>
+        <div><dt>Build model</dt><dd>{optionLabel(BUILD_MODEL_OPTIONS, profile.buildModel, "Not specified (legacy profile)")}</dd></div>
         <div><dt>Horizon</dt><dd>{optionLabel(HORIZON_OPTIONS, profile.revenueHorizon)}</dd></div>
       </dl>
     {:else}
@@ -364,14 +434,27 @@
           </div>
 
           <div class="field capacity-grid__team">
-            <span class="field-label" id="brief-team-label">Team</span>
+            <span class="field-label" id="brief-team-label">Team size</span>
             <SegmentControl
               density="compact"
-              label="Team"
+              label="Team size"
               labelledBy="brief-team-label"
               options={TEAM_OPTIONS}
               value={draft.team}
               onChange={(value) => (draft.team = value as TeamShape)}
+            />
+          </div>
+
+          <div class="field capacity-grid__build-model">
+            <span class="field-label" id="brief-build-model-label">Who builds the software?</span>
+            <p class="field-hint">This is separate from team size. It changes how founder fit evaluates delivery.</p>
+            <SegmentControl
+              density="compact"
+              label="Who builds the software?"
+              labelledBy="brief-build-model-label"
+              options={BUILD_MODEL_OPTIONS}
+              value={draft.buildModel ?? ""}
+              onChange={(value) => (draft.buildModel = value as BuildModel)}
             />
           </div>
         </div>
@@ -463,6 +546,45 @@
 </FormOverlay>
 
 <style>
+  .decision-audience-drift {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 48%, var(--color-border));
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 8%, var(--color-bg-surface));
+  }
+  .decision-audience-drift strong {
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 800;
+  }
+  .decision-audience-drift p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+  /* A missing check is a gap in what we know, not a warning about the buyer — neutral chrome
+     so it cannot be mistaken for the notice above it. */
+  .decision-audience-unchecked {
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+  }
+  .decision-audience-unchecked p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+
   /* Phase-1b display-only summary row (DESIGN_SYSTEM §5.6). */
   .brief-row {
     display: flex;
@@ -537,7 +659,7 @@
   .empty-copy { max-width: 34rem; }
   .profile-summary {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     margin: 0;
   }
   .profile-summary div { min-width: 0; padding: 0 var(--space-3); border-left: 1px solid var(--color-border); }
@@ -650,7 +772,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
   }
-  .capacity-grid__team {
+  .capacity-grid__team,
+  .capacity-grid__build-model {
     grid-column: 1 / -1;
   }
   .capacity-grid :global(.segment-track) {
@@ -746,7 +869,8 @@
   @media (max-width: 640px) {
     .preset-seg :global(.segment-cards) { grid-template-columns: 1fr; }
     .capacity-grid { grid-template-columns: 1fr; }
-    .capacity-grid__team { grid-column: auto; }
+    .capacity-grid__team,
+    .capacity-grid__build-model { grid-column: auto; }
     .notes-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 560px) {

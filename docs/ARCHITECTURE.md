@@ -843,6 +843,34 @@ TOKEN_SOFT_CAP=400000               # If enabled
 
 ---
 
+## "Check my idea" (entry_mode='validate_idea')
+
+A 4th research entry mode: the user submits their own product idea as free text (the
+`niche` field carries it — 2000-char cap for this mode). The run rides the normal
+interactive `research` task; `entry_mode` branches in exactly two stage-internal places:
+
+1. **Stage 1** — an additive idea-check pre-step parses the pitch (canonical brief +
+   inferred fields → `state.user_idea_text/user_idea_brief/user_idea_inferred_fields`,
+   checkpoint-metadata persisted) and derives the market the idea competes in; the
+   working `niche_description` is then **rebound to the derived market** (in
+   `stage_1_validate_niche` AND `resume_from_checkpoint`) so thread-relevance validation
+   never grades scraped threads against a product pitch.
+2. **End of Stage 5** — `ResearchFlow._inject_validate_seed()` runs the idea through
+   `UnifiedSolutionCrew.execute_seed_pipeline` on the warm crew (fidelity-locked,
+   pain-anchored), with a full snapshot/restore of the crew's per-op scratch state, an
+   optional single accept-guarded wedge-pivot revision (recorded on
+   `state.user_idea_pivot` regardless of outcome), and an unconditional
+   `stage_5_3_refinement` checkpoint save. The seed/pivot carry durable markers
+   (`generation_operation_id='validate'|'validate_pivot'` on `source_frame='user_seed'`
+   ideas), protected by a keep-guard in `_finalize_idea_pool`.
+
+The run ends at AWAITING_SELECTION with an `idea_validation` block in the preview report
+(`src/nicheiq/report/idea_validation_block.py` — pure state reshape, enum-driven; see
+`docs/VALIDATION_METHODOLOGY.md`). The frontend renders a distinct report page for these
+runs (SelectionWorkbench mounts only behind a disclosure); the existing paid Deep
+Research continuation produces the authoritative Go/No-Go. Guided mode (chatMode) is
+blocked for this entry mode.
+
 ## See Also
 
 - [CLAUDE.md](../CLAUDE.md) - Core patterns and best practices

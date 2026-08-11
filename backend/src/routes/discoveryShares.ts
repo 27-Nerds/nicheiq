@@ -3,13 +3,20 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../services/db.js';
 import { getJob } from '../services/jobService.js';
-import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
-import { sanitizeDiscoveryData, sanitizePreviewReport } from './schemas/sharedDiscoveryPayload.js';
+import { getDiscoveryDataForJob } from '../services/assetService.js';
+import { getPreviewReportForJob } from '../services/selectionBoundary/rawPreviewReport.js';
+import {
+  applyPreviewFieldAllowlist,
+  sanitizeDiscoveryData,
+  sanitizePreviewReport,
+} from './schemas/sharedDiscoveryPayload.js';
 import { DispatchKind, JobStatus, Prisma } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
 import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import { ideaPortfolioFingerprint } from '../utils/ideaPortfolioFingerprint.js';
+import { toNicheDisplay } from '../utils/jobFormatter.js';
 import {
   DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
   isDiscoveryShareLifecycleOpen,
@@ -202,6 +209,29 @@ async function buildDiscoveryFindings(jobId: string) {
   }
 
   return findings;
+}
+
+/**
+ * The `candidatePoolVersion` half of the owner-side boundary, expressed as a predicate the
+ * share can AND into its own check.
+ *
+ * Returns true ONLY when the Job and its PREVIEW_REPORT asset both carry a version and the
+ * two differ. A null on either side means the pair predates migration 20260809180000 (which
+ * leaves Job.candidatePoolVersion NULL until the next solutionIdeas write); those shares keep
+ * the fingerprint-only legacy path rather than failing closed the day the migration lands.
+ */
+async function candidatePoolVersionsDisagree(
+  jobId: string,
+  jobPoolVersion: number | null,
+): Promise<boolean> {
+  if (jobPoolVersion === null || jobPoolVersion === undefined) return false;
+  const asset = await prisma.jobAsset.findUnique({
+    where: { jobId_assetType: { jobId, assetType: 'PREVIEW_REPORT' } },
+    select: { candidatePoolVersion: true },
+  });
+  const artifactPoolVersion = asset?.candidatePoolVersion ?? null;
+  if (artifactPoolVersion === null) return false;
+  return jobPoolVersion !== artifactPoolVersion;
 }
 
 
@@ -488,6 +518,7 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
             id: true,
             niche: true,
             solutionIdeas: true,
+            candidatePoolVersion: true,
             ...DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
           },
         },
@@ -513,7 +544,41 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
     ]);
 
     const discoveryData = sanitizeDiscoveryData(rawDiscoveryData);
-    const previewReport = sanitizePreviewReport(rawPreviewReport);
+    // Finding D2 on a public URL. A visitor votes on `solutions` above, which is always
+    // the LIVE pool; the preview asset is a snapshot of whatever pool the run last
+    // produced. Pool-scoped preview fields therefore need the same boundary the owner
+    // gets from loadCurrentSelectionContext: trust them only while the pool is settled
+    // AND the stored portfolio fingerprint still names exactly the ideas being served.
+    // Every other state fails closed, including a legacy report carrying no fingerprint
+    // and a mid-regeneration pool that has already grown past its snapshot.
+    const previewRecord = rawPreviewReport !== null
+      && typeof rawPreviewReport === 'object'
+      && !Array.isArray(rawPreviewReport)
+      ? rawPreviewReport as Record<string, unknown>
+      : null;
+    const storedFingerprint = typeof previewRecord?.idea_portfolio_summary_fingerprint === 'string'
+      ? previewRecord.idea_portfolio_summary_fingerprint
+      : null;
+    const fingerprintCurrent = share.job.status === JobStatus.AWAITING_SELECTION
+      && storedFingerprint !== null
+      && storedFingerprint === ideaPortfolioFingerprint(share.job.solutionIdeas);
+    // Supplementary AND-condition, not a replacement: loadCurrentSelectionContext also binds
+    // Job.candidatePoolVersion to the PREVIEW_REPORT asset's, catching a pool mutation whose
+    // rewritten snapshot happens to fingerprint-match. Routing the share through that loader
+    // instead would fail every pre-deploy share closed — migration 20260809180000 leaves
+    // Job.candidatePoolVersion NULL until the next solutionIdeas write — so a null on either
+    // side stays on the legacy path and only two present-and-different versions withhold.
+    const poolArtifactsCurrent = fingerprintCurrent
+      && !(await candidatePoolVersionsDisagree(share.jobId, share.job.candidatePoolVersion));
+    const sanitizedPreviewReport = sanitizePreviewReport(rawPreviewReport);
+    // The classification runs on BOTH branches. Pool staleness decides only the `pool` half;
+    // a top-level key with no classification is a field this boundary has never reasoned
+    // about, and a current pool says nothing about it, so it never reaches the public URL.
+    const previewReport = applyPreviewFieldAllowlist(
+      sanitizedPreviewReport,
+      poolArtifactsCurrent ? 'serve' : 'withhold',
+    );
+    const evidenceFramingWithheld = previewRecord !== null && !poolArtifactsCurrent;
 
     // SEO headers (conditional based on admin indexing toggle)
     if (!share.allowIndexing) {
@@ -525,10 +590,17 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
     res.json({
       shareType: 'discovery',
       niche: share.job.niche,
+      // Display-safe short label — same word-boundary truncation as formatJobResponse.
+      // `niche` above stays verbatim.
+      nicheDisplay: toNicheDisplay(share.job.niche),
       solutions,
       discoveryFindings, // @deprecated — remove next release; use discoveryData + previewReport
       discoveryData,
       previewReport,
+      // Honest signal for the visitor: the ranked list is current, the guidance about it
+      // is not. Carries no reason code — the public payload states the fact, not the
+      // internal artifact state that produced it.
+      evidenceFramingWithheld,
       voteSummary,
       allowIndexing: share.allowIndexing,
     });

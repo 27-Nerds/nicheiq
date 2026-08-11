@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
-import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
+import { getDiscoveryDataForJob } from '../services/assetService.js';
+import { getPreviewReportForJob } from '../services/selectionBoundary/rawPreviewReport.js';
 import { prisma } from '../services/db.js';
 import {
   ChallengeAssessmentError,

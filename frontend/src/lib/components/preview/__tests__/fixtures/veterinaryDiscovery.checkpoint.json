@@ -1,0 +1,905 @@
+{
+  "methodology": {
+    "urls_searched": 424,
+    "urls_relevant": 129,
+    "filtering_rate": 30.4,
+    "quality_tier": "EXCELLENT",
+    "pain_point_quality_tier": "GOLD",
+    "pain_point_confidence": 0.98,
+    "total_engagement": 9749,
+    "avg_engagement": 104.8
+  },
+  "hero_quote": {
+    "text": "We are a small clinic so I log my drugs after surgeries, at referral we logged them as we took them out (which is what you may need to do to keep on top of things) with 2 people signing.",
+    "post_id": "1q33gex",
+    "source_url": "https://reddit.com/comments/1q33gex",
+    "upvotes": 23,
+    "subreddit": "VetTech",
+    "pain_point_title": "Reconcile controlled medication dispensing, wastage, and physical counts"
+  },
+  "quotes": {
+    "Reconcile controlled medication dispensing, wastage, and physical counts": [
+      {
+        "text": "We are a small clinic so I log my drugs after surgeries, at referral we logged them as we took them out (which is what you may need to do to keep on top of things) with 2 people signing.",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "So I'm starting a gig in an outpatient office under a physician and have found out they dont have any process for documenting or keeping tab of their sample medications they give to patients.",
+        "post_id": "clv1wy",
+        "source_url": "https://reddit.com/comments/clv1wy",
+        "upvotes": 25,
+        "subreddit": "pharmacy"
+      },
+      {
+        "text": "It was a huge project to make the list, but it definitely saved me time and helped me to catch some things.",
+        "post_id": "tpok24",
+        "source_url": "https://reddit.com/comments/tpok24",
+        "upvotes": 4,
+        "subreddit": "VetTech"
+      }
+    ],
+    "Prepare complete controlled-substance records for DEA audits": [
+      {
+        "text": "we do 20-30 surgeries a day so i sometimes can start logging halfway through but usually log everything after",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "So I'm starting a gig in an outpatient office under a physician and have found out they dont have any process for documenting or keeping tab of their sample medications they give to patients.",
+        "post_id": "clv1wy",
+        "source_url": "https://reddit.com/comments/clv1wy",
+        "upvotes": 25,
+        "subreddit": "pharmacy"
+      },
+      {
+        "text": "I have gripes about it like everyone else (waiting in line to get your drugs, needing something in an emergency, the rare case that a door doesn't work), but the inventory logging and the safety behind it can't be understated.",
+        "post_id": "w0xpqt",
+        "source_url": "https://reddit.com/comments/w0xpqt",
+        "upvotes": 16,
+        "subreddit": "VetTech"
+      }
+    ],
+    "Dispense urgent medications when Cubex hardware or identification fails": [
+      {
+        "text": "It\u2019s also very slow, doesn\u2019t always recognize fingerprints well, and the Cubex crew who set up our machine were rude and unwilling to help us with maintenance or tech issues.",
+        "post_id": "w0xpqt",
+        "source_url": "https://reddit.com/comments/w0xpqt",
+        "upvotes": 16,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "They are extremely slow to fix software problems (The current issue is over a month old and they just pushed the potential fix out at least 3 weeks.) It's a great machine that cuts down on controlled substance headaches when it works, but their responsiveness to veterinary medicine is horrible.",
+        "post_id": "u4arir",
+        "source_url": "https://reddit.com/comments/u4arir",
+        "upvotes": 9,
+        "subreddit": "Veterinary"
+      }
+    ],
+    "Synchronize Cubex dispensing with AVImark, Cornerstone, and ezyVet": [
+      {
+        "text": "We have the vials in the cubex system but we can\u2019t figure out how to make it so when we order cytopoint 70-80lbs in ezyvet, the cubex knows to dispense 2 40mg vials.",
+        "post_id": "1g3puy1",
+        "source_url": "https://reddit.com/comments/1g3puy1",
+        "upvotes": 6,
+        "subreddit": "VetTech"
+      }
+    ],
+    "Match PIMS inventory counts and reports to physical stock": [
+      {
+        "text": "I left a year ago and they're still having inventory issues, its been over a year and a half that they had the team come in.",
+        "post_id": "1n7lzyk",
+        "source_url": "https://reddit.com/comments/1n7lzyk",
+        "upvotes": 9,
+        "subreddit": "partscounter"
+      },
+      {
+        "text": "My team is constantly juggling ongoing projects, cycle counts, and pop-up fires \u2014 and the frustration is real across the board.",
+        "post_id": "1uk6pr2",
+        "source_url": "https://reddit.com/comments/1uk6pr2",
+        "upvotes": 5,
+        "subreddit": "InventoryManagement"
+      },
+      {
+        "text": "When people forget, that means someone still has to manually go around and check inventory levels anyway.",
+        "post_id": "1bio097",
+        "source_url": "https://reddit.com/comments/1bio097",
+        "upvotes": 45,
+        "subreddit": "labrats"
+      }
+    ],
+    "Prevent PIMS inventory errors from corrupting medication valuation": [
+      {
+        "text": "Now it wasn't exact like if something was broken or meds got spilled etc so one person was in charge of inventory and every so often and to go and count things to make sure there wasn't huge discrepancies and to throw out expired things.",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "* For a while, sales orders have been created but not properly confirmed in the system * Products were physically delivered to customers, but: * Deliveries were not validated in Odoo * Inventory moves were not processed * There are now: * Multiple unconfirmed or partially processed sales orders * Pe",
+        "post_id": "1rvrq9u",
+        "source_url": "https://reddit.com/comments/1rvrq9u",
+        "upvotes": 7,
+        "subreddit": "Odoo"
+      }
+    ],
+    "Detect low medication stock before fixed-day ordering causes stockouts": [
+      {
+        "text": "I always order my refills 3 days earlier because the pharmacy is routinely out of stock.",
+        "post_id": "13e7koa",
+        "source_url": "https://reddit.com/comments/13e7koa",
+        "upvotes": 76,
+        "subreddit": "pharmacy"
+      },
+      {
+        "text": "28 days usually for me I\u2019ve done 27 on same adhd drugs lately when I know I\u2019m low on the supply and not sure if I\u2019m going to get another shipment of that medication",
+        "post_id": "13e7koa",
+        "source_url": "https://reddit.com/comments/13e7koa",
+        "upvotes": 76,
+        "subreddit": "pharmacy"
+      },
+      {
+        "text": "Agree with the users, for each item in the inventory, a 'low stock' number of units, which when reached, the item will be reordered.",
+        "post_id": "1bio097",
+        "source_url": "https://reddit.com/comments/1bio097",
+        "upvotes": 45,
+        "subreddit": "labrats"
+      }
+    ],
+    "Reorder medications between scheduled supplier-ordering days": [
+      {
+        "text": "Over the years it has been difficult for me to get them to prescribe my medication in a timely manner.",
+        "post_id": "1v4ti5b",
+        "source_url": "https://reddit.com/comments/1v4ti5b",
+        "upvotes": 60,
+        "subreddit": "Bellingham"
+      },
+      {
+        "text": "Absolutely, we took a vacation across the country a couple of years ago for 3 weeks, I knew I was going to run out of some medications before I got back and asked the pharmacy if I could get them filled a bit early, they said no.",
+        "post_id": "1jmmnv7",
+        "source_url": "https://reddit.com/comments/1jmmnv7",
+        "upvotes": 30,
+        "subreddit": "Epilepsy"
+      },
+      {
+        "text": "I always order my refills 3 days earlier because the pharmacy is routinely out of stock.",
+        "post_id": "13e7koa",
+        "source_url": "https://reddit.com/comments/13e7koa",
+        "upvotes": 76,
+        "subreddit": "pharmacy"
+      }
+    ],
+    "Track medication lots and expiration dates through inspection": [
+      {
+        "text": "boxhero does not have notifications for expiration date, and sortly i think is overpriced for a sort of thing what i am looking for.",
+        "post_id": "1v0w4s0",
+        "source_url": "https://reddit.com/comments/1v0w4s0",
+        "upvotes": 14,
+        "subreddit": "InventoryManagement"
+      },
+      {
+        "text": "We have Cornerstone as our PIMS and I feel like the inventory logs it pulls just don\u2019t have enough information.",
+        "post_id": "1pdhbl0",
+        "source_url": "https://reddit.com/comments/1pdhbl0",
+        "upvotes": 10,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "insane amount of expired supplies (controlled drugs, surgery gloves, over $1000 in idexx supplies/tests, injectable meds, rattlesnake vx & antivenin\u2026.the list goes on)",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      }
+    ],
+    "Access accurate medication inventory during mobile and cross-location work": [
+      {
+        "text": "i recently started at a new clinic and when doing inventory, realized some drugs weren\u2019t accounted for and when the previous staff all walked out, the owner never did inventory.",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "Still working on using it to keep automatic inventory, but that's difficult unless you have separate \"labs\" for whatever space you stock items at.",
+        "post_id": "1bio097",
+        "source_url": "https://reddit.com/comments/1bio097",
+        "upvotes": 45,
+        "subreddit": "labrats"
+      },
+      {
+        "text": "I left a year ago and they're still having inventory issues, its been over a year and a half that they had the team come in.",
+        "post_id": "1n7lzyk",
+        "source_url": "https://reddit.com/comments/1n7lzyk",
+        "upvotes": 9,
+        "subreddit": "partscounter"
+      }
+    ],
+    "Compare medication stock across multiple hospital locations": [
+      {
+        "text": "Still working on using it to keep automatic inventory, but that's difficult unless you have separate \"labs\" for whatever space you stock items at.",
+        "post_id": "1bio097",
+        "source_url": "https://reddit.com/comments/1bio097",
+        "upvotes": 45,
+        "subreddit": "labrats"
+      },
+      {
+        "text": "Sometimes 6 times per day is not enough and we still get stock outs and phone calls in between of things being out.",
+        "post_id": "uawlf4",
+        "source_url": "https://reddit.com/comments/uawlf4",
+        "upvotes": 12,
+        "subreddit": "PharmacyTechnician"
+      },
+      {
+        "text": "We had to make sure no one had a stock out or low stock situation before leaving.",
+        "post_id": "uawlf4",
+        "source_url": "https://reddit.com/comments/uawlf4",
+        "upvotes": 12,
+        "subreddit": "PharmacyTechnician"
+      }
+    ],
+    "Transfer Cubex and inventory procedures to new clinic staff": [
+      {
+        "text": "i recently started at a new clinic and when doing inventory, realized some drugs weren\u2019t accounted for and when the previous staff all walked out, the owner never did inventory.",
+        "post_id": "1q33gex",
+        "source_url": "https://reddit.com/comments/1q33gex",
+        "upvotes": 23,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "Our hospital is so busy there hasn\u2019t been time for me to really learn more than how to dispense drugs and I can also do cycle counting for when I\u2019m doing inventory for ordering.",
+        "post_id": "1etco32",
+        "source_url": "https://reddit.com/comments/1etco32",
+        "upvotes": 3,
+        "subreddit": "VetTech"
+      },
+      {
+        "text": "We used cubex for all dispensing and inventory stocking, and I was the only one left who knew how it worked before I quit.",
+        "post_id": "1etco32",
+        "source_url": "https://reddit.com/comments/1etco32",
+        "upvotes": 3,
+        "subreddit": "VetTech"
+      }
+    ],
+    "Maintain inventory operations without a single expert administrator": [
+      {
+        "text": "I left a year ago and they're still having inventory issues, its been over a year and a half that they had the team come in.",
+        "post_id": "1n7lzyk",
+        "source_url": "https://reddit.com/comments/1n7lzyk",
+        "upvotes": 9,
+        "subreddit": "partscounter"
+      },
+      {
+        "text": "My team is constantly juggling ongoing projects, cycle counts, and pop-up fires \u2014 and the frustration is real across the board.",
+        "post_id": "1uk6pr2",
+        "source_url": "https://reddit.com/comments/1uk6pr2",
+        "upvotes": 5,
+        "subreddit": "InventoryManagement"
+      },
+      {
+        "text": "The only parts department employees are the parts director, managers, inventory specialist and 3-4 countermen on stand by to answer questions by the people counting.",
+        "post_id": "1n7lzyk",
+        "source_url": "https://reddit.com/comments/1n7lzyk",
+        "upvotes": 9,
+        "subreddit": "partscounter"
+      }
+    ]
+  },
+  "audience": {
+    "segments": [
+      {
+        "segment_name": "Independent Single-Location General Practices with Manual Drug Logs",
+        "size_estimate": "Large",
+        "pain_point_alignment": [
+          "Medication and supply counts are managed through paper logs, spreadsheets, reorder tags, notebooks, or staff memory; one discussion says drugs were not logged for almost a month of surgeries.",
+          "Expired medications, inconsistent bottle sizes, undocumented waste, and missing controlled-substance records create reconciliation and audit risk.",
+          "Staff discover stockouts too late because ordering is periodic or dependent on someone noticing that an item is low."
+        ],
+        "motivation_drivers": [
+          "Replace fragmented paper and spreadsheet processes with simple veterinary-specific inventory workflows.",
+          "Track controlled substances, waste, lot numbers, expirations, and patient-linked administration accurately.",
+          "Reduce stockouts and emergency ordering without adding complicated software.",
+          "Give technicians a practical system that requires little training and fits existing practice-management software."
+        ],
+        "expertise_level": "Intermediate",
+        "budget_sensitivity": "High",
+        "discovery_channels": [
+          "r/VetTech",
+          "r/Veterinary",
+          "Veterinary technician peer recommendations",
+          "Google searches for veterinary drug logging and inventory software",
+          "Practice-management software communities"
+        ]
+      },
+      {
+        "segment_name": "Specialty, Emergency, and Referral Hospitals with High-Volume Controlled-Drug Workflows",
+        "size_estimate": "Medium",
+        "pain_point_alignment": [
+          "High-throughput hospitals need secure, rapid access to controlled drugs while maintaining automatic logs, authorization controls, cycle counts, and patient-level billing.",
+          "Automated dispensing systems can be slow, malfunction, require difficult restocking, or fail to pass medication orders correctly into veterinary practice software.",
+          "Complex medications such as weight-based products may require multiple vial strengths or bundles, creating inventory and invoicing discrepancies."
+        ],
+        "motivation_drivers": [
+          "Prevent diversion and make every controlled-drug movement traceable.",
+          "Maintain emergency access without sacrificing compliance or clinical speed.",
+          "Integrate dispensing, inventory, patient records, and billing.",
+          "Support lot, expiry, waste, and reconciliation reporting across high-volume departments."
+        ],
+        "expertise_level": "Advanced",
+        "budget_sensitivity": "Low",
+        "discovery_channels": [
+          "r/VetTech",
+          "r/Veterinary",
+          "Veterinary technology and practice-management discussions",
+          "Vendor demonstrations and peer referrals",
+          "Specialty and emergency hospital management networks"
+        ]
+      },
+      {
+        "segment_name": "Mobile and House-Call Veterinary Practices Managing Vehicle-Based Stock",
+        "size_estimate": "Small",
+        "pain_point_alignment": [
+          "Mobile practitioners need access to inventory and patient records away from a fixed clinic or server.",
+          "Medication quantities can become distributed across vehicles, storage sites, and temporary field locations, making accurate counts and replenishment difficult.",
+          "The digest specifically identifies cloud access as particularly valuable for mobile practices, while a mobile-practice discussion reports that inventory functionality in an otherwise capable system was poor."
+        ],
+        "motivation_drivers": [
+          "Know what is available in each vehicle before visits.",
+          "Record medication use at the point of care, including controlled substances and waste.",
+          "Reorder or transfer stock without returning to a central office.",
+          "Use a lightweight cloud workflow that works on phones or tablets."
+        ],
+        "expertise_level": "Intermediate",
+        "budget_sensitivity": "High",
+        "discovery_channels": [
+          "r/VetTech",
+          "r/Veterinary",
+          "Mobile veterinary peer referrals",
+          "Google searches for mobile veterinary practice software",
+          "Cloud practice-management software communities"
+        ]
+      },
+      {
+        "segment_name": "Corporate-Owned and Multi-Location Veterinary Hospital Groups Seeking Central Oversight",
+        "size_estimate": "Medium",
+        "pain_point_alignment": [
+          "Multiple locations need centralized visibility, location-level stock control, transfers, standardized policies, and consolidated reporting.",
+          "Corporate discussions describe decisions being made centrally while managers lack timely visibility into workflow inefficiency, equipment needs, and operational data.",
+          "Practice software discussions identify multi-location use as a meaningful differentiator and report that inventory can become unreliable during software changes or integrations."
+        ],
+        "motivation_drivers": [
+          "Standardize controlled-substance procedures and inventory policies across hospitals.",
+          "Compare usage, stockouts, expirations, discrepancies, and purchasing across locations.",
+          "Reduce dependence on local spreadsheets and inconsistent manager processes.",
+          "Create auditable central oversight without slowing clinical teams."
+        ],
+        "expertise_level": "Advanced",
+        "budget_sensitivity": "Low",
+        "discovery_channels": [
+          "r/veterinaryprofession",
+          "r/Veterinary",
+          "Veterinary operations and hospital-management networks",
+          "Practice-management vendor demonstrations",
+          "Peer referrals from regional and hospital managers"
+        ]
+      },
+      {
+        "segment_name": "University-Affiliated Teaching and Research Hospitals with High-Volume Clinical Drug Use",
+        "size_estimate": "Small",
+        "pain_point_alignment": [
+          "Teaching and research environments have many users, changing workflows, multiple authorization levels, and high medication throughput.",
+          "The digest includes university-hospital and research-lab discussions describing inventory hoarding, spreadsheets, incomplete documentation, and the need for dedicated accountability.",
+          "Complexity arises from separating clinical use, research or teaching use, lot tracking, expiry control, and audit documentation."
+        ],
+        "motivation_drivers": [
+          "Create role-based accountability for students, technicians, clinicians, and researchers.",
+          "Maintain reliable perpetual inventory and audit trails across departments.",
+          "Reduce expired stock, duplicate ordering, and undocumented consumption.",
+          "Generate reports suitable for institutional oversight and regulatory review."
+        ],
+        "expertise_level": "Advanced",
+        "budget_sensitivity": "Medium",
+        "discovery_channels": [
+          "r/VetTech",
+          "r/Veterinary",
+          "University veterinary hospital networks",
+          "Research-lab inventory discussions",
+          "Institutional procurement and compliance channels"
+        ]
+      }
+    ],
+    "primary_target": "Independent Single-Location General Practices with Manual Drug Logs",
+    "prioritization_rationale": "This is the clearest reachable segment in the digest: r/VetTech and r/Veterinary contain direct discussions about veterinary drug logging, expired medications, reorder points, controlled-substance counts, VetSnap, Cubex, and practice-management inventory failures. It has strong alignment with a veterinary-specific inventory and compliance product, but high budget sensitivity means the offer should be simple, affordable, and deployable alongside existing practice software. Specialty hospitals and corporate groups have higher willingness to pay, but their purchasing cycles, integrations, and implementation requirements are materially heavier.",
+    "community_hubs": [
+      "r/VetTech",
+      "r/Veterinary",
+      "r/veterinaryprofession",
+      "r/Pets",
+      "r/dogs",
+      "r/AskVet",
+      "r/InventoryManagement",
+      "r/BusinessLogBooks",
+      "r/pharmacy",
+      "r/PharmacyTechnician"
+    ],
+    "common_vocabulary": [
+      "drug logging",
+      "controlled drugs",
+      "cycle counting",
+      "reorder points",
+      "reorder tags",
+      "order book",
+      "central stock",
+      "paper logs",
+      "inventory management",
+      "inventory aspect",
+      "lot numbers",
+      "expired supplies",
+      "waste",
+      "count back",
+      "outside prescriptions"
+    ],
+    "content_preferences": "The strongest evidence supports practical peer-led tutorials, implementation checklists, workflow comparisons, and tool reviews rather than broad brand advertising. Content should demonstrate real veterinary scenarios such as logging a controlled drug during surgery, reconciling waste, tracking bottle sizes, setting reorder points, handling expired medication, and integrating with EzyVet, Neo, Avimark, or Cubex.",
+    "tools_currently_used": [
+      "VetSnap",
+      "Cubex",
+      "EzyVet",
+      "IDEXX Neo",
+      "Avimark",
+      "Cornerstone",
+      "Covetrus Pulse",
+      "Excel",
+      "Google Sheets",
+      "paper log books"
+    ],
+    "frustrations_with_existing": [
+      "Paper logs, spreadsheets, notebooks, and manual updates drift away from physical inventory because staff forget to record administrations, waste, receipts, or location movements.",
+      "Practice-management inventory is described as cumbersome, inaccurate, or capable of producing implausible counts, including prices or inventory values changing unexpectedly.",
+      "Automated dispensing systems can be slow during emergencies, difficult to restock, unreliable during outages, or frustrating when fingerprints, doors, or software integrations fail.",
+      "Software integrations can fail to pass orders correctly, create duplicate charges, mishandle weight-based bundles, or require manual re-entry.",
+      "Existing tools often have steep learning curves, poor support, difficult migrations, weak reporting, or insufficient flexibility for multi-location and mobile workflows."
+    ]
+  },
+  "influencers": [
+    {
+      "name": "u/Boxofchocholates",
+      "platform": "Reddit",
+      "relevance_score": 1.0,
+      "content_focus": "Practice ownership, startup, mobile-clinic operations, and business-management questions.",
+      "top_subreddits": [
+        "r/physicianassistant"
+      ],
+      "top_posts": [
+        {
+          "title": "I am a PA that has opened multiple medical practices - AMA",
+          "subreddit": "physicianassistant",
+          "score": 338,
+          "url": "https://www.reddit.com/r/physicianassistant/comments/1ehvkzf/i_am_a_pa_that_has_opened_multiple_medical/"
+        },
+        {
+          "title": "Geriatrics was the specialty of the mobile clinic.  This worked well because obviously that group...",
+          "subreddit": "physicianassistant",
+          "score": 64,
+          "url": "https://www.reddit.com/r/physicianassistant/comments/1ehvkzf/i_am_a_pa_that_has_opened_multiple_medical/"
+        },
+        {
+          "title": "Yes, I have owned small businesses since high school (landscaping, car detailing) and through col...",
+          "subreddit": "physicianassistant",
+          "score": 37,
+          "url": "https://www.reddit.com/r/physicianassistant/comments/1ehvkzf/i_am_a_pa_that_has_opened_multiple_medical/"
+        }
+      ]
+    },
+    {
+      "name": "u/iputmytrustinyou",
+      "platform": "Reddit",
+      "relevance_score": 0.86,
+      "content_focus": "Pet-prescription access, outside-pharmacy policies, and veterinary medication purchasing experiences.",
+      "top_subreddits": [
+        "r/Pets",
+        "r/dogs"
+      ],
+      "top_posts": [
+        {
+          "title": "Vet office requiring prescription purchases through their store\u2026",
+          "subreddit": "Pets",
+          "score": 173,
+          "url": "https://www.reddit.com/r/Pets/comments/1nms9hs/vet_office_requiring_prescription_purchases/"
+        },
+        {
+          "title": "My vet will no longer allow me to go through chewy.  They want me to use their store for prescrip...",
+          "subreddit": "dogs",
+          "score": 70,
+          "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/"
+        },
+        {
+          "title": "I\u2019m sorry.  It is awful the way some of these places operate.",
+          "subreddit": "dogs",
+          "score": 14,
+          "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/"
+        }
+      ]
+    },
+    {
+      "name": "u/Stormallthetime",
+      "platform": "Reddit",
+      "relevance_score": 0.79,
+      "content_focus": "Chewy authorization disputes, written prescriptions, and clinic-pharmacy communication.",
+      "top_subreddits": [
+        "r/dogs"
+      ],
+      "top_posts": [
+        {
+          "title": "Vet refusing to authorize meds over the phone through Chewy?",
+          "subreddit": "dogs",
+          "score": 239,
+          "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/"
+        },
+        {
+          "title": "I really don't want to change vets when I know our next appointment is euthanasia. But I'm really...",
+          "subreddit": "dogs",
+          "score": 69,
+          "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/"
+        },
+        {
+          "title": "They gave me a paper prescription, which has to be sent via snail-mail. \n\nI honestly think it's t...",
+          "subreddit": "dogs",
+          "score": 6,
+          "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/"
+        }
+      ]
+    },
+    {
+      "name": "u/JemCanuck",
+      "platform": "Reddit",
+      "relevance_score": 0.78,
+      "content_focus": "Controlled-medication treatment and refill experiences, including pharmacy stigma and compliance procedures.",
+      "top_subreddits": [
+        "r/ADHD"
+      ],
+      "top_posts": [
+        {
+          "title": "Why are doctors/pharmacists so condescending and power-trippy when prescribing?",
+          "subreddit": "ADHD",
+          "score": 428,
+          "url": "https://www.reddit.com/r/ADHD/comments/16k74h8/why_are_doctorspharmacists_so_condescending_and/"
+        },
+        {
+          "title": "It doesn't happen with all pharmacists or whoever happens to be dispensing it that day - but ofte...",
+          "subreddit": "ADHD",
+          "score": 12,
+          "url": "https://www.reddit.com/r/ADHD/comments/16k74h8/why_are_doctorspharmacists_so_condescending_and/"
+        },
+        {
+          "title": "Yes, I think sensitivity is definitely an issue and yes, I did have a paranoid and suspicious par...",
+          "subreddit": "ADHD",
+          "score": 11,
+          "url": "https://www.reddit.com/r/ADHD/comments/16k74h8/why_are_doctorspharmacists_so_condescending_and/"
+        }
+      ]
+    },
+    {
+      "name": "u/SometimesSufficient",
+      "platform": "Reddit",
+      "relevance_score": 0.75,
+      "content_focus": "Veterinary technician workload, staffing, compensation, and burnout.",
+      "top_subreddits": [
+        "r/VetTech"
+      ],
+      "top_posts": [
+        {
+          "title": "Pay is just cruel.",
+          "subreddit": "VetTech",
+          "score": 291,
+          "url": "https://www.reddit.com/r/VetTech/comments/19egwuv/pay_is_just_cruel/"
+        },
+        {
+          "title": "I also think this way for veterinarians - just didn\u2019t mention it since it\u2019s a tech sub. I planned...",
+          "subreddit": "VetTech",
+          "score": 11,
+          "url": "https://www.reddit.com/r/VetTech/comments/19egwuv/pay_is_just_cruel/"
+        },
+        {
+          "title": "I know how much it costs to run a clinic. I was just ranting about how heartbreaking and unfair i...",
+          "subreddit": "VetTech",
+          "score": 5,
+          "url": "https://www.reddit.com/r/VetTech/comments/19egwuv/pay_is_just_cruel/"
+        }
+      ]
+    },
+    {
+      "name": "u/lochnessie03",
+      "platform": "Reddit",
+      "relevance_score": 0.74,
+      "content_focus": "Independent veterinary practice economics, corporate ownership, and medication pricing.",
+      "top_subreddits": [
+        "r/Pets"
+      ],
+      "top_posts": [
+        {
+          "title": "Please support local veterinary clinics/hospitals",
+          "subreddit": "Pets",
+          "score": 123,
+          "url": "https://www.reddit.com/r/Pets/comments/1snk23c/please_support_local_veterinary_clinicshospitals/"
+        },
+        {
+          "title": "So there are two groups-\n1. For money\n2. They are old (65+) and new vets are not wanting to buy i...",
+          "subreddit": "Pets",
+          "score": 9,
+          "url": "https://www.reddit.com/r/Pets/comments/1snk23c/please_support_local_veterinary_clinicshospitals/"
+        },
+        {
+          "title": "\ud83e\udef6 thank you for the support, we are lucky to have dedicated pet owners like you. It saddens me to...",
+          "subreddit": "Pets",
+          "score": 4,
+          "url": "https://www.reddit.com/r/Pets/comments/1snk23c/please_support_local_veterinary_clinicshospitals/"
+        }
+      ]
+    },
+    {
+      "name": "u/Kinolee",
+      "platform": "Reddit",
+      "relevance_score": 0.7,
+      "content_focus": "Controlled-prescription transfers, DEA rules, and electronic pharmacy-system limitations.",
+      "top_subreddits": [
+        "r/pharmacy"
+      ],
+      "top_posts": [
+        {
+          "title": "Inability to transfer controlled prescriptions according to the new DEA rule due to the limitations of technology",
+          "subreddit": "pharmacy",
+          "score": 60,
+          "url": "https://www.reddit.com/r/pharmacy/comments/16h6bw0/inability_to_transfer_controlled_prescriptions/"
+        },
+        {
+          "title": "Thank you!  This is exactly the info I was looking for, and you explained it very well.",
+          "subreddit": "pharmacy",
+          "score": 28,
+          "url": "https://www.reddit.com/r/pharmacy/comments/16h6bw0/inability_to_transfer_controlled_prescriptions/"
+        },
+        {
+          "title": "Yes of course we ask first.  But patients can't possibly know what supply their preferred pharmac...",
+          "subreddit": "pharmacy",
+          "score": 23,
+          "url": "https://www.reddit.com/r/pharmacy/comments/16h6bw0/inability_to_transfer_controlled_prescriptions/"
+        }
+      ]
+    },
+    {
+      "name": "u/Distinct-Feedback-68",
+      "platform": "Reddit",
+      "relevance_score": 0.7,
+      "content_focus": "Pharmacist perspectives on controlled-substance refill timing and compliance.",
+      "top_subreddits": [
+        "r/pharmacy"
+      ],
+      "top_posts": [
+        {
+          "title": "You have the respect of every pharmacist with this post.",
+          "subreddit": "pharmacy",
+          "score": 129,
+          "url": "https://www.reddit.com/r/pharmacy/comments/13e7koa/controlled_medications/"
+        },
+        {
+          "title": "Controlled medications",
+          "subreddit": "pharmacy",
+          "score": 76,
+          "url": "https://www.reddit.com/r/pharmacy/comments/13e7koa/controlled_medications/"
+        },
+        {
+          "title": "The DEA and the Boards argue that people end up with 24 days extra per year when consistently fil...",
+          "subreddit": "pharmacy",
+          "score": 13,
+          "url": "https://www.reddit.com/r/pharmacy/comments/13e7koa/controlled_medications/"
+        }
+      ]
+    }
+  ],
+  "social_posts_sample": [
+    {
+      "title": "LPT: You can ask your vet for a written script to fill your pet\u2019s prescription at a pharmacy rather than being charged overinflated prices at the vet\u2019s office.",
+      "subreddit": "LifeProTips",
+      "score": 3135,
+      "num_comments": 68,
+      "url": "https://www.reddit.com/r/LifeProTips/comments/1tv7w8a/lpt_you_can_ask_your_vet_for_a_written_script_to/",
+      "created_utc": "2026-06-02T23:29:00+00:00"
+    },
+    {
+      "title": "What do pharmacists do while you wait for medication?",
+      "subreddit": "NoStupidQuestions",
+      "score": 2139,
+      "num_comments": 260,
+      "url": "https://www.reddit.com/r/NoStupidQuestions/comments/1p4jl4b/what_do_pharmacists_do_while_you_wait_for/",
+      "created_utc": "2025-11-23T10:34:09+00:00"
+    },
+    {
+      "title": "It's pretty funny that people with ADHD are tasked not to lose those really small pills because it's a controlled substance",
+      "subreddit": "ADHD",
+      "score": 894,
+      "num_comments": 94,
+      "url": "https://www.reddit.com/r/ADHD/comments/180dht6/its_pretty_funny_that_people_with_adhd_are_tasked/",
+      "created_utc": "2023-11-21T09:52:47+00:00"
+    },
+    {
+      "title": "Why are doctors/pharmacists so condescending and power-trippy when prescribing?",
+      "subreddit": "ADHD",
+      "score": 428,
+      "num_comments": 83,
+      "url": "https://www.reddit.com/r/ADHD/comments/16k74h8/why_are_doctorspharmacists_so_condescending_and/",
+      "created_utc": "2023-09-16T13:05:42+00:00"
+    },
+    {
+      "title": "I am a PA that has opened multiple medical practices - AMA",
+      "subreddit": "physicianassistant",
+      "score": 338,
+      "num_comments": 70,
+      "url": "https://www.reddit.com/r/physicianassistant/comments/1ehvkzf/i_am_a_pa_that_has_opened_multiple_medical/",
+      "created_utc": "2024-08-01T23:49:11+00:00"
+    },
+    {
+      "title": "Pay is just cruel.",
+      "subreddit": "VetTech",
+      "score": 291,
+      "num_comments": 91,
+      "url": "https://www.reddit.com/r/VetTech/comments/19egwuv/pay_is_just_cruel/",
+      "created_utc": "2024-01-24T13:19:28+00:00"
+    },
+    {
+      "title": "What is your horror story about someone picking up a narcotic or controlled substance?",
+      "subreddit": "TalesFromThePharmacy",
+      "score": 262,
+      "num_comments": 111,
+      "url": "https://www.reddit.com/r/TalesFromThePharmacy/comments/ywwya2/what_is_your_horror_story_about_someone_picking/",
+      "created_utc": "2022-11-16T15:46:12+00:00"
+    },
+    {
+      "title": "Vet refusing to authorize meds over the phone through Chewy?",
+      "subreddit": "dogs",
+      "score": 239,
+      "num_comments": 219,
+      "url": "https://www.reddit.com/r/dogs/comments/1mqd3oo/vet_refusing_to_authorize_meds_over_the_phone/",
+      "created_utc": "2025-08-14T21:00:46+00:00"
+    },
+    {
+      "title": "is it legal for my vet to force me to get medicine through them?",
+      "subreddit": "AskVet",
+      "score": 180,
+      "num_comments": 25,
+      "url": "https://www.reddit.com/r/AskVet/comments/1r5fb8r/is_it_legal_for_my_vet_to_force_me_to_get/",
+      "created_utc": "2026-02-15T14:00:02+00:00"
+    },
+    {
+      "title": "Vet office requiring prescription purchases through their store\u2026",
+      "subreddit": "Pets",
+      "score": 173,
+      "num_comments": 75,
+      "url": "https://www.reddit.com/r/Pets/comments/1nms9hs/vet_office_requiring_prescription_purchases/",
+      "created_utc": "2025-09-21T13:40:43+00:00"
+    }
+  ],
+  "subreddit_names": [
+    "r/ADHD",
+    "r/AskVet",
+    "r/Bellingham",
+    "r/BusinessLogBooks",
+    "r/BusinessPH",
+    "r/ChronicPain",
+    "r/ERP",
+    "r/Epilepsy",
+    "r/FamilyMedicine",
+    "r/FieldsOfMistriaGame",
+    "r/FulfillmentByAmazon",
+    "r/IndiaBusiness",
+    "r/IndustrialMaintenance",
+    "r/InventoryManagement",
+    "r/LifeProTips",
+    "r/Netsuite",
+    "r/NoStupidQuestions",
+    "r/Odoo",
+    "r/POS",
+    "r/PainManagement",
+    "r/PetAdvice",
+    "r/Pets",
+    "r/PharmacyTechnician",
+    "r/TalesFromThePharmacy",
+    "r/VetTech",
+    "r/Veterinary",
+    "r/dogs",
+    "r/labrats",
+    "r/logistics",
+    "r/partscounter",
+    "r/pharmacy",
+    "r/physicianassistant",
+    "r/supplychain",
+    "r/u_elogic_commerce",
+    "r/veterinaryprofession",
+    "r/webdevelopment"
+  ],
+  "subreddit_post_counts": {
+    "InventoryManagement": 24,
+    "VetTech": 10,
+    "Veterinary": 9,
+    "pharmacy": 8,
+    "Pets": 5,
+    "veterinaryprofession": 3,
+    "ADHD": 3,
+    "PharmacyTechnician": 2,
+    "BusinessLogBooks": 2,
+    "NoStupidQuestions": 1
+  },
+  "data_attribution": "Public community activity from r/ADHD, r/AskVet, r/Bellingham, r/BusinessLogBooks, r/BusinessPH, r/ChronicPain, r/ERP, r/Epilepsy, r/FamilyMedicine, r/FieldsOfMistriaGame, r/FulfillmentByAmazon, r/IndiaBusiness, r/IndustrialMaintenance, r/InventoryManagement, r/LifeProTips, r/Netsuite, r/NoStupidQuestions, r/Odoo, r/POS, r/PainManagement, r/PetAdvice, r/Pets, r/PharmacyTechnician, r/TalesFromThePharmacy, r/VetTech, r/Veterinary, r/dogs, r/labrats, r/logistics, r/partscounter, r/pharmacy, r/physicianassistant, r/supplychain, r/u_elogic_commerce, r/veterinaryprofession, r/webdevelopment",
+  "sources_searched": {
+    "reddit": {
+      "enabled": true,
+      "posts_found": 93
+    },
+    "twitter": {
+      "enabled": false,
+      "posts_found": 0
+    },
+    "hackernews": {
+      "enabled": true,
+      "posts_found": 0
+    },
+    "youtube": {
+      "enabled": true,
+      "posts_found": 0
+    }
+  },
+  "discussion_trend": [
+    {
+      "month": "2025-08",
+      "count": 1
+    },
+    {
+      "month": "2025-09",
+      "count": 3
+    },
+    {
+      "month": "2025-10",
+      "count": 4
+    },
+    {
+      "month": "2025-11",
+      "count": 1
+    },
+    {
+      "month": "2025-12",
+      "count": 4
+    },
+    {
+      "month": "2026-01",
+      "count": 2
+    },
+    {
+      "month": "2026-02",
+      "count": 2
+    },
+    {
+      "month": "2026-03",
+      "count": 7
+    },
+    {
+      "month": "2026-04",
+      "count": 6
+    },
+    {
+      "month": "2026-05",
+      "count": 4
+    },
+    {
+      "month": "2026-06",
+      "count": 4
+    },
+    {
+      "month": "2026-07",
+      "count": 12
+    }
+  ],
+  "discussion_growth_pct": 133
+}

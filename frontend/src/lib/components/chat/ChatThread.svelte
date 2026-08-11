@@ -13,8 +13,22 @@
   // no typing dots, no chat-app kitsch; the composer is one field with the send
   // control inside it, and orange stays on the send action alone.
   import { tick } from "svelte";
+  import { page } from "$app/state";
   import { ArrowRight, ArrowDown, Check, Coins, Loader2, Maximize2, Minimize2, Search, Wand2, X } from "lucide-svelte";
   import Composer from "./Composer.svelte";
+  import {
+    ANALYST_ACTION_NOT_HERE_LEAD,
+    ANALYST_ACTION_NOT_HERE_LINK,
+    ANALYST_ACTION_NOT_HERE_TAIL,
+    ANALYST_BILLING_HREF,
+    ANALYST_ENTITLEMENT_UNAVAILABLE_NOTICE,
+    ANALYST_LOCKED_LEAD,
+    ANALYST_LOCKED_LINK,
+    ANALYST_LOCKED_TAIL,
+    ANALYST_PANEL_TITLE,
+    analystEntitlement,
+  } from "./analystSurface";
+  import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
   import IdeaReferenceText from "$lib/components/IdeaReferenceText.svelte";
   import {
     streamChat,
@@ -303,7 +317,63 @@
   );
   const historyLoaded = $derived(chatLedger.historyLoaded);
   const loadFailed = $derived(chatLedger.loadFailed);
-  let locked = $state(false); // 402 on send — not entitled
+  // Entitlement is known BEFORE the first keystroke: it rides on the (app) layout
+  // data every navigation already loaded. It used to be discovered only by sending —
+  // the user composed a message, spent the send, and got a 402 back. `refused402`
+  // stays as the server's word on it (the grant can be revoked mid-session, and the
+  // endpoint is the only authority), but it is no longer how the user finds out.
+  const entitlement = $derived(analystEntitlement(page.data));
+  let refused402 = $state(false);
+  const locked = $derived(entitlement === "denied" || refused402);
+  // A failed entitlement fetch is not a revoked grant. Saying "Subscribe" to a
+  // subscriber because one request timed out is worse than offering a composer
+  // the backend may refuse, so this state keeps the composer and says only what
+  // is true: we could not check.
+  const entitlementUnchecked = $derived(entitlement === "unavailable" && !refused402);
+  // Live result links and the "not here" note point at the HUB that owns the
+  // action, never at a bare fragment. `#idea-select-0` / `#examined-ruled-out`
+  // are mounted only by SelectionWorkbench / RuledOutList, so on the
+  // /selection/* routes (which mount this thread too) a fragment-only href
+  // navigated nowhere while onCollapse closed the panel. `rankedIdeasHref` is
+  // the repo's single anchor authority.
+  const rankedIdeasLink = $derived(rankedIdeasHref(jobId));
+  /** A settled result names ONE candidate, so its link has to open that one.
+   *  `rankedIdeasHref` scrolls to the first ranked row, which contradicts
+   *  "View evaluated candidate" for every result but the top-ranked one — the
+   *  `?detailTab=overview&ideaId=` query is what actually opens the named
+   *  candidate (the idiom EvaluationActivity already ships). The anchor stays
+   *  as the floor for receipts that carry no idea identity. */
+  function acceptedResultHref(result: SeedResultSummary | undefined): string {
+    return result?.idea_id
+      ? `/jobs/${jobId}?detailTab=overview&ideaId=${encodeURIComponent(result.idea_id)}&ideaRevision=${result.idea_revision ?? 1}`
+      : rankedIdeasHref(jobId);
+  }
+  /** `#examined-ruled-out` is rendered inside the appendix body, which ships
+   *  `hidden` (display:none) until the reader expands it — and a display:none
+   *  target has no box, so fragment navigation is a NO-OP that leaves the reader
+   *  at the top of the hub with the list still shut. The query param is the
+   *  mechanism: SelectionWorkbench's deep-link $effect consumes `evaluationId`
+   *  and opens the ruled-out record itself. Bare fragment only when the receipt
+   *  carries no operation identity — a weak landing beats a dead one.
+   *
+   *  The id comes off the LEDGER ACTIVITY, not the result summary. The evaluation id
+   *  rides the receipt ENVELOPE (`evaluationId`, set to the dispatch id by every
+   *  settled-receipt writer); the result summary only ever carries an `evaluation_id`
+   *  when EXACT SYNTHESIS stamped one onto the idea, and it never carries a
+   *  `dispatch_id` because the receipt builder does not emit one. Reading the result
+   *  therefore worked for synthesis and left every plain user seed — the flagship
+   *  "Evaluate my idea" flow — on the dead fragment. `result.evaluation_id` stays only
+   *  as a secondary fallback for a card whose activity has not been reduced yet. */
+  function demotedResultHref(
+    result: SeedResultSummary | undefined,
+    sourceMessageId: string,
+  ): string {
+    const evaluationId = chatLedger.seedActivity(sourceMessageId)?.evaluationId
+      ?? result?.evaluation_id;
+    return evaluationId
+      ? `/jobs/${jobId}?evaluationId=${encodeURIComponent(evaluationId)}#examined-ruled-out`
+      : `/jobs/${jobId}#examined-ruled-out`;
+  }
   // Seeded from the host-persisted draft ONCE at mount (the host remounts this
   // component per open, so a live two-way sync would be circular for no gain).
   // svelte-ignore state_referenced_locally
@@ -536,7 +606,7 @@
         if (!input.trim()) input = text;
         failedSynthesisIntent = synthesisIntent;
         if (e instanceof ApiError && e.status === 402) {
-          locked = true;
+          refused402 = true;
         } else if (e instanceof ApiError && e.status === 409) {
           sendError = "This checkpoint moved on. Your message wasn't sent.";
         } else {
@@ -723,6 +793,14 @@
   );
 </script>
 
+<!-- The refusal names a destination AND goes there. Rendered by every proposal
+     card whose host cannot carry the action out. -->
+{#snippet actionNotHere()}
+  <p class="proposal-note">{ANALYST_ACTION_NOT_HERE_LEAD}
+    <a class="proposal-note-link" href={rankedIdeasLink}>{ANALYST_ACTION_NOT_HERE_LINK}</a>
+    {ANALYST_ACTION_NOT_HERE_TAIL}</p>
+{/snippet}
+
 <aside
   class="chat-thread chat-thread--{dock}"
   class:chat-thread--readonly={readOnly}
@@ -733,7 +811,9 @@
     <header class="chat-head">
       <div class="chat-identity">
         <div class="chat-title-line">
-          <span class="chat-title">{dock === "main" ? "Conversation" : "Analyst"}</span>
+          <!-- One name in both docks. The dock decides the geometry, never the
+               identity of the thing you are talking to. -->
+          <span class="chat-title">{ANALYST_PANEL_TITLE}</span>
           <span class="chat-grounding">
             <Search class="chat-grounding-icon" aria-hidden="true" />
             Dossier-backed
@@ -916,7 +996,11 @@
                       {copilotButtonLabel(copilotAction)}
                     </button>
                   </div>
-                  {#if !copilotSupported}
+                  <!-- A disabled button with no reason reads as a bug. Name the screen
+                       that owns the action instead. -->
+                  {#if !onCopilotAction}
+                    {@render actionNotHere()}
+                  {:else if !copilotSupported}
                     <p class="proposal-note proposal-note--warn">This draft type is not connected to a safe prefill yet. Open the workspace manually; no values were applied.</p>
                   {:else if copilotActionFeedback[msg.id]}
                     <p
@@ -1001,7 +1085,9 @@
                     {#if !readOnly}
                       <a
                         class="seed-card-result-link"
-                        href={synthesisOutcome === "accepted" ? "#solution-selector" : "#examined-ruled-out"}
+                        href={synthesisOutcome === "accepted"
+                          ? acceptedResultHref(synthesisResult)
+                          : demotedResultHref(synthesisResult, msg.id)}
                         onclick={() => onCollapse?.()}
                       >
                         {synthesisOutcome === "accepted" ? "View evaluated candidate" : "View why it was ruled out"}
@@ -1049,7 +1135,7 @@
                     <button
                       type="button"
                       class="ledger-btn ledger-btn--primary seed-card-evaluate"
-                      disabled={applying || operationBlocked || seedCost == null}
+                      disabled={applying || operationBlocked || !onSeedSubmit || seedCost == null}
                       onclick={() => applyPatch(msg)}
                     >
                       <span>Evaluate variant</span>
@@ -1061,7 +1147,12 @@
                       Dismiss
                     </button>
                   </div>
-                  {#if seedCost == null}
+                  <!-- Order matters: a host with no evaluate handler will NEVER have a
+                       price either, and "Price hasn't loaded yet" invited a wait that
+                       never ends. Say which screen owns the action instead. -->
+                  {#if !onSeedSubmit}
+                    {@render actionNotHere()}
+                  {:else if seedCost == null}
                     <p class="proposal-note">Price hasn't loaded yet. Try again in a moment.</p>
                   {/if}
                 {:else if synthesisOutcome === "pending"}
@@ -1137,7 +1228,9 @@
                     {#if !readOnly}
                       <a
                         class="seed-card-result-link"
-                        href={seedOutcome === "accepted" ? "#solution-selector" : "#examined-ruled-out"}
+                        href={seedOutcome === "accepted"
+                          ? acceptedResultHref(seedResult)
+                          : demotedResultHref(seedResult, msg.id)}
                         onclick={() => onCollapse?.()}
                       >
                         {seedOutcome === "accepted" ? "View full candidate details" : "View why it was ruled out"}
@@ -1154,7 +1247,7 @@
                     <button
                       type="button"
                       class="ledger-btn ledger-btn--primary seed-card-evaluate"
-                      disabled={applying || operationBlocked || seedCost == null}
+                      disabled={applying || operationBlocked || !onSeedSubmit || seedCost == null}
                       onclick={() => applyPatch(msg)}
                     >
                       <span>Evaluate my idea</span>
@@ -1166,7 +1259,9 @@
                       Dismiss
                     </button>
                   </div>
-                  {#if seedCost == null}
+                  {#if !onSeedSubmit}
+                    {@render actionNotHere()}
+                  {:else if seedCost == null}
                     <p class="proposal-note">Price hasn't loaded yet. Try again in a moment.</p>
                   {/if}
                 {:else if seedOutcome === "pending"}
@@ -1228,12 +1323,13 @@
                 {:else if readOnly}
                   <p class="proposal-note">Proposed here. Never applied.</p>
                 {:else}
+                  {@const canApply = gate ? Boolean(onApplyGatePatch) : Boolean(onApplyPatch)}
                   <div class="proposal-actions">
                     <button
                       type="button"
                       class="ledger-btn ledger-btn--primary proposal-apply"
                       class:is-busy={applying}
-                      disabled={applying || operationBlocked || (gate && applyCapReached)}
+                      disabled={applying || operationBlocked || !canApply || (gate && applyCapReached)}
                       onclick={() => applyPatch(msg)}
                     >
                       {#if applying}
@@ -1247,7 +1343,13 @@
                       Keep as is
                     </button>
                   </div>
-                  {#if gate && applyCapReached}
+                  <!-- Applying belongs to the host that owns the mutation. Without that
+                       handler this button used to stay enabled and swallow the click.
+                       The destination is named only for the selection patch: a gate
+                       patch belongs to its checkpoint, not to ranked ideas. -->
+                  {#if !canApply && !gate}
+                    {@render actionNotHere()}
+                  {:else if gate && applyCapReached}
                     <p class="proposal-note proposal-note--warn">
                       Change limit reached for this checkpoint (5 max). Continue research to move forward.
                     </p>
@@ -1315,7 +1417,9 @@
   {/if}
 
   {#if locked}
-    <p class="chat-status chat-status--locked" role="status">Guided chat is a subscriber feature. Upgrade to ask the analyst about these ideas.</p>
+    <p class="chat-status chat-status--locked" role="status">{ANALYST_LOCKED_LEAD}
+      <a class="chat-status-link" href={ANALYST_BILLING_HREF}>{ANALYST_LOCKED_LINK}</a>
+      {ANALYST_LOCKED_TAIL}</p>
   {:else if operationBlocked}
     <div class="chat-operation" role="status" aria-live="polite">
       <span class="chat-operation-pulse" aria-hidden="true"></span>
@@ -1344,7 +1448,16 @@
     </p>
   {/if}
 
-  {#if !operationBlocked}
+  <!-- The entitlement request failed. This says so and stops there: the composer
+       stays, and the backend's 402 (which flips `locked`) is the only thing
+       allowed to tell the user they lack a subscription. -->
+  {#if entitlementUnchecked && !operationBlocked && !atTurnCap}
+    <p class="chat-status chat-status--unchecked" role="status">{ANALYST_ENTITLEMENT_UNAVAILABLE_NOTICE}</p>
+  {/if}
+
+  <!-- No composer without the grant. Offering one and refusing the send is how the
+       402 used to reach the user: after they had written the message. -->
+  {#if !operationBlocked && !locked}
     <div class="chat-input">
       <Composer
         bind:this={composerRef}
@@ -1672,9 +1785,16 @@
      rather than a placeholder that would otherwise replace already-loaded
      messages when entitlement is lost mid-conversation (send() sets `locked`,
      not the history load — see ChatThread's script block). */
-  .chat-status--locked {
+  .chat-status--locked,
+  .chat-status--unchecked {
     padding: var(--space-1-5) var(--space-3) 0;
     color: var(--color-text-secondary);
+  }
+  .chat-status-link {
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   .chat-operation {
     position: relative;
@@ -2192,6 +2312,12 @@
     line-height: 1.45;
     color: var(--color-text-secondary);
   }
+  .proposal-note-link {
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .proposal-note--applied {
     color: var(--color-success-text);
   }
@@ -2649,6 +2775,7 @@
     .chat-thread--main .chat-input,
     .chat-thread--main .chat-error,
     .chat-thread--main .chat-status--locked,
+    .chat-thread--main .chat-status--unchecked,
     .chat-thread--main .chat-operation {
       padding-left: var(--space-3);
       padding-right: var(--space-3);

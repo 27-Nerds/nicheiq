@@ -26,6 +26,7 @@
     REVIEW_AND_START_LABEL,
   } from "$lib/selection/labels";
   import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
+  import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
   interface Props {
     jobStatus: string;
@@ -137,8 +138,12 @@
         : `/jobs/${jobId}`
       : undefined,
   );
-  const hubSectionHref = (sectionId: string): string | undefined =>
-    nested && jobId ? `/jobs/${jobId}#${sectionId}` : undefined;
+  const hubSectionHref = (sectionId: string): string | undefined => {
+    if (!nested || !jobId) return undefined;
+    return sectionId === "opportunities"
+      ? rankedIdeasHref(jobId)
+      : `/jobs/${jobId}#${sectionId}`;
+  };
 
   // Gate-rail step states, derived purely from which gate the job is CURRENTLY
   // sitting at (gateStage is only non-null while AWAITING_GATE) — Niche precedes
@@ -198,6 +203,12 @@
     entryMode === "deep_idea" || entryMode === "pain_research" || entryMode === "pain_remix",
   );
   const discoveryLabel = $derived(isSeeded ? "SEEDED" : "WHAT");
+  // "Check my idea" runs land on a verdict about ONE idea — "Choose ideas" is
+  // discovery vocabulary and reads wrong beside it. Same journey, mode-true name
+  // (matches the progress screen's "Your verdict" phase label).
+  const chooseIdeasLabel = $derived(
+    entryMode === "validate_idea" ? "Your verdict" : CHOOSE_IDEAS_LABEL,
+  );
 
   const phaseBadges = $derived.by((): Record<string, PhaseBadge> => {
     // deep_idea jobs skip discovery (stages 1-5) and run deep-research straight away —
@@ -255,14 +266,18 @@
   const moreItemsTooltip = $derived(rolledUpLocked.map(s => s.label).join(' · '));
   const discoveryPhase = PHASES.find(p => p.id === 'discovery')!;
   const opportunitySection = discoveryPhase.sections.find(s => s.id === 'opportunities');
+  const marketReadSection: SectionConfig = { id: 'market-read', label: 'Market Read', icon: FileText };
   const availableSectionSet = $derived(
     availableSectionIds ? new Set(availableSectionIds) : null,
   );
   const contextSections = $derived(
-    discoveryPhase.sections.filter(
-      s => s.id !== 'opportunities'
-        && (!availableSectionSet || availableSectionSet.has(s.id))
-    )
+    [
+      ...(availableSectionSet?.has('market-read') ? [marketReadSection] : []),
+      ...discoveryPhase.sections.filter(
+        s => s.id !== 'opportunities'
+          && (!availableSectionSet || availableSectionSet.has(s.id))
+      ),
+    ]
   );
   const selectionTrackedSections = $derived.by(() => [
     opportunitySection,
@@ -452,7 +467,7 @@
           onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, opportunitySection)}
         >
           {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
-          {CHOOSE_IDEAS_LABEL}
+          {chooseIdeasLabel}
         </SidebarNavItem>
       {/if}
       {#if toolItems.some((item) => item.href)}
@@ -775,10 +790,10 @@
   <span>Selection step</span>
   <strong>
     {activeTool === "choose"
-      ? CHOOSE_IDEAS_LABEL
+      ? chooseIdeasLabel
       : activeTool === "review"
         ? REVIEW_AND_START_LABEL
-        : toolItems.find((item) => item.slug === activeTool)?.label ?? CHOOSE_IDEAS_LABEL}
+        : toolItems.find((item) => item.slug === activeTool)?.label ?? chooseIdeasLabel}
   </strong>
 </button>
 <nav class="selection-mobile-nav selection-mobile-nav--journey" aria-label="Research shortlist journey">
@@ -789,7 +804,7 @@
         class:active={activeTool === "choose"}
         aria-current={activeTool === "choose" ? "page" : undefined}
         href={hubSectionHref(opportunitySection.id)}
-      >{CHOOSE_IDEAS_LABEL}</a>
+      >{chooseIdeasLabel}</a>
     {:else}
       <button
         class="selection-mobile-item"
@@ -798,7 +813,7 @@
         aria-current={currentSection === opportunitySection.id ? "location" : undefined}
         onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
       >
-        {CHOOSE_IDEAS_LABEL}
+        {chooseIdeasLabel}
       </button>
     {/if}
   {/if}

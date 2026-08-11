@@ -1,0 +1,110 @@
+{
+  "_source": [
+    "The real top-level key universe of the PREVIEW_REPORT asset. Two independent sources, which agree exactly on all 25 keys except idea_portfolio_summary_fingerprint (added after every scanned asset was written).",
+    "observedIn: number of the 60 real preview-report assets under output/checkpoints/ (gitignored run artifacts) whose top level carried the key.",
+    "writtenByPipeline: the key is assigned via `report[\"<key>\"] = ...` inside ResearchFlow._materialize_preview_report (src/nicheiq/flows/research_flow.py), the sole writer of this asset."
+  ],
+  "assetsScanned": 60,
+  "keys": {
+    "alternative_solutions": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "audience_mapping": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "content_categorization": {
+      "observedIn": 53,
+      "writtenByPipeline": true
+    },
+    "data_quality_summary": {
+      "observedIn": 53,
+      "writtenByPipeline": true
+    },
+    "detailed_pain_points": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "evidence_appendix": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "examined_ruled_out": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    },
+    "generated_at": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "idea_portfolio_summary": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    },
+    "idea_portfolio_summary_fingerprint": {
+      "observedIn": 0,
+      "writtenByPipeline": true
+    },
+    "idea_theses": {
+      "observedIn": 8,
+      "writtenByPipeline": true
+    },
+    "idea_validation": {
+      "observedIn": 6,
+      "writtenByPipeline": true
+    },
+    "market_reality": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    },
+    "niche": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "niche_context": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "niche_difficulty_verdict": {
+      "observedIn": 26,
+      "writtenByPipeline": true
+    },
+    "overall_competitive_insights": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "overlap_groups": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    },
+    "pain_analysis_summary": {
+      "observedIn": 53,
+      "writtenByPipeline": true
+    },
+    "pain_point_analytics": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "pain_total_mentions": {
+      "observedIn": 53,
+      "writtenByPipeline": true
+    },
+    "research_metadata": {
+      "observedIn": 60,
+      "writtenByPipeline": true
+    },
+    "top_pain_categories": {
+      "observedIn": 53,
+      "writtenByPipeline": true
+    },
+    "user_adjusted": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    },
+    "user_adjustments": {
+      "observedIn": 20,
+      "writtenByPipeline": true
+    }
+  }
+}

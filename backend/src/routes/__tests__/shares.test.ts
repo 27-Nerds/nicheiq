@@ -7,6 +7,7 @@ import request from 'supertest';
 // ============================================
 const mockGetJob = vi.fn();
 const mockGetJobAsset = vi.fn();
+const mockGetReportJsonForJob = vi.fn();
 const mockFindUniqueShare = vi.fn();
 const mockCreateShare = vi.fn();
 const mockUpdateShare = vi.fn();
@@ -28,6 +29,10 @@ vi.mock('../../services/db.js', () => ({
 vi.mock('../../services/jobService.js', () => ({
   getJob: (...args: any[]) => mockGetJob(...args),
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
+}));
+
+vi.mock('../../services/assetService.js', () => ({
+  getReportJsonForJob: (...args: any[]) => mockGetReportJsonForJob(...args),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -149,6 +154,7 @@ let app: Express;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockGetReportJsonForJob.mockResolvedValue(JSON.parse(mockReadFileSync()));
 
   app = express();
   app.use(express.json());
@@ -484,13 +490,13 @@ describe('GET /api/shared/:shareToken', () => {
     });
     mockGetJobAsset.mockResolvedValue({ filePath: 'output/report.json' });
     mockUpdateShare.mockResolvedValue({});
-    mockReadFileSync.mockReturnValueOnce(JSON.stringify({
+    mockGetReportJsonForJob.mockResolvedValueOnce({
       niche: 'Test Niche',
       selection_rationale: privateNote,
       original_selection_reasoning: 'Strongest evidence and feasible acquisition path.',
       executive_summary: `Internal context: ${privateNote}`,
       nested: { note_copy: privateNote },
-    }));
+    });
 
     const response = await request(app)
       .get(`/api/shared/${TEST_SHARE_TOKEN}`)
@@ -612,7 +618,7 @@ describe('GET /api/shared/:shareToken', () => {
   });
 
   it('returns 404 when report file does not exist', async () => {
-    mockExistsSync.mockReturnValueOnce(false);
+    mockGetReportJsonForJob.mockResolvedValueOnce(null);
 
     mockFindUniqueShare.mockResolvedValue({
       ...activeShare,

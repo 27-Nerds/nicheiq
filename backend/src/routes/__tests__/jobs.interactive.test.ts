@@ -26,6 +26,11 @@ const mockChargeForStageWithPriceCasInTx = vi.fn();
 const mockGetJob = vi.fn();
 const mockGetDiscoveryDataForJob = vi.fn();
 const mockGetPreviewReportForJob = vi.fn();
+const mockLoadCurrentSelectionContext = vi.fn();
+const mockFormatJobResponse = vi.fn((job: any, options: any) => ({
+  id: job.id,
+  includeSolutionIdeas: options.includeSolutionIdeas,
+}));
 const mockDiscoveryShareUpdateMany = vi.fn();
 const mockTxDiscoveryShareUpdateMany = vi.fn();
 
@@ -124,7 +129,15 @@ vi.mock('../../services/jobService.js', () => ({
 
 vi.mock('../../services/assetService.js', () => ({
   getDiscoveryDataForJob: (...args: any[]) => mockGetDiscoveryDataForJob(...args),
+  getReportJsonPublicationForJob: vi.fn().mockResolvedValue({ status: 'missing' }),
+}));
+
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
   getPreviewReportForJob: (...args: any[]) => mockGetPreviewReportForJob(...args),
+}));
+
+vi.mock('../../services/currentSelectionContext.js', () => ({
+  loadCurrentSelectionContext: (...args: any[]) => mockLoadCurrentSelectionContext(...args),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -150,7 +163,7 @@ vi.mock('../../config.js', () => ({
 }));
 
 vi.mock('../../utils/jobFormatter.js', () => ({
-  formatJobResponse: vi.fn(),
+  formatJobResponse: (job: any, options: any) => mockFormatJobResponse(job, options),
 }));
 
 const mockBroadcastProgress = vi.fn();
@@ -352,6 +365,14 @@ beforeEach(async () => {
   // select-solution and regenerate-ideas short-circuit on this read before doing any work.
   mockDispatchFindFirst.mockResolvedValue(null);
   mockJobFindUnique.mockResolvedValue({ selectedSolutionRefs: [] });
+  mockLoadCurrentSelectionContext.mockResolvedValue({
+    canonical: { candidates: [], displayedCount: 0, version: 3 },
+    runArtifacts: {
+      verification: 'verified',
+      candidatePoolVersion: 3,
+      previewReport: { idea_portfolio_summary: 'Current framing' },
+    },
+  });
 
   // Default transaction: execute callback with tx that has job.updateMany
   mockTransaction.mockImplementation(async (callback: any) => {
@@ -378,6 +399,30 @@ beforeEach(async () => {
   app.use(express.json());
   const { jobsRouter } = await import('../jobs.js');
   app.use('/api/jobs', jobsRouter);
+});
+
+describe('GET /api/jobs/:jobId selection boundary', () => {
+  it('keeps the raw candidate pool out of the generic job payload during selection', async () => {
+    mockGetJob.mockResolvedValue({
+      id: jobId,
+      userId: 'user-123',
+      status: 'AWAITING_SELECTION',
+      activeDispatchId: null,
+      dispatches: [],
+      solutionIdeas: [{ solution_name: 'Raw candidate' }],
+    });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.includeSolutionIdeas).toBe(false);
+    expect(mockFormatJobResponse).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ includeSolutionIdeas: false }),
+    );
+  });
 });
 
 // ============================================
@@ -413,8 +458,47 @@ describe('selection artifacts during seed evaluation', () => {
     expect(response.body).toEqual({ metadata: { sourceCount: 12 } });
   });
 
-  it('continues serving the preview report while an exact seed dispatch is running', async () => {
+  it('rejects the raw preview endpoint while an exact seed dispatch is running', async () => {
     mockGetJob.mockResolvedValue(selectionMutationJob('RUNNING', 'SEED_IDEA'));
+    mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/preview-report`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('SELECTION_CONTEXT_REQUIRED');
+    expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['QUEUED', 'SEED_IDEA'],
+    ['QUEUED', 'REGENERATE'],
+    ['REGENERATING', 'REGENERATE'],
+  ] as const)(
+    'rejects raw selection artifacts while %s %s work is active',
+    async (status, kind) => {
+      mockGetJob.mockResolvedValue(selectionMutationJob(status, kind));
+      mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('SELECTION_CONTEXT_REQUIRED');
+      expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the raw preview compatibility endpoint for a failed historical run', async () => {
+    mockGetJob.mockResolvedValue({
+      id: jobId,
+      userId: 'user-123',
+      status: 'FAILED',
+      activeDispatchId: null,
+      dispatches: [],
+    });
     mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
 
     const response = await request(app)
@@ -424,25 +508,6 @@ describe('selection artifacts during seed evaluation', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ user_segments: [{ name: 'Bookkeepers' }] });
   });
-
-  it.each([
-    ['QUEUED', 'SEED_IDEA'],
-    ['QUEUED', 'REGENERATE'],
-    ['REGENERATING', 'REGENERATE'],
-  ] as const)(
-    'continues serving selection artifacts while %s %s work is active',
-    async (status, kind) => {
-      mockGetJob.mockResolvedValue(selectionMutationJob(status, kind));
-      mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
-
-      const response = await request(app)
-        .get(`/api/jobs/${jobId}/preview-report`)
-        .set(authHeaders);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ user_segments: [{ name: 'Bookkeepers' }] });
-    },
-  );
 
   it('does not expose selection artifacts during an initial discovery run', async () => {
     mockGetJob.mockResolvedValue({
@@ -1135,7 +1200,6 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
 describe('GET /api/jobs/:jobId/solutions', () => {
   it('returns solution data', async () => {
     mockJobFindFirst.mockResolvedValue({
-      solutionIdeas: [{ name: 'Sol1', idea_id: 'idea_persisted', idea_revision: 1 }],
       selectedSolution: 'Sol1',
       selectedSolutions: ['Sol1'],
       selectedSolutionIds: ['idea_persisted'],
@@ -1146,6 +1210,24 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       ideasRegeneratedAt: null,
       ideaBatchCompletedCount: 0,
       status: 'AWAITING_SELECTION',
+    });
+    mockLoadCurrentSelectionContext.mockResolvedValue({
+      canonical: {
+        candidates: [{ name: 'Sol1', idea_id: 'idea_persisted', idea_revision: 1 }],
+        displayedCount: 1,
+        version: 8,
+      },
+      runArtifacts: {
+        verification: 'verified',
+        candidatePoolVersion: 8,
+        previewReport: {
+          idea_portfolio_summary: 'Version eight framing',
+          overlap_groups: [{
+            group_id: 'group-1',
+            idea_names: ['Sol1', 'Sol1 companion'],
+          }],
+        },
+      },
     });
 
     const response = await request(app)
@@ -1174,6 +1256,58 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       ideaBatchCompletedCount: 0,
       maxIdeaBatches: 10,
       status: 'AWAITING_SELECTION',
+      candidatePoolVersion: 8,
+      artifactVerification: 'verified',
+      artifactReason: null,
+      previewReport: {
+        idea_portfolio_summary: 'Version eight framing',
+        overlap_groups: [{
+          group_id: 'group-1',
+          idea_names: ['Sol1', 'Sol1 companion'],
+        }],
+      },
+    });
+  });
+
+  it('returns canonical candidates but no preview when the artifact binding is untrusted', async () => {
+    mockJobFindFirst.mockResolvedValue({
+      selectedSolution: null,
+      selectedSolutions: [],
+      selectedSolutionIds: [],
+      selectionRationale: null,
+      selectionDraft: null,
+      selectionDraftVersion: 0,
+      ideaBatchCompletedCount: 0,
+      activeDispatchId: null,
+      status: 'AWAITING_SELECTION',
+    });
+    mockLoadCurrentSelectionContext.mockResolvedValue({
+      canonical: {
+        candidates: [{ solution_name: 'Current', idea_id: 'idea-current', idea_revision: 2 }],
+        displayedCount: 1,
+        version: 9,
+      },
+      runArtifacts: {
+        verification: 'untrusted',
+        reason: 'version_mismatch',
+        candidatePoolVersion: 9,
+        artifactPoolVersion: 8,
+      },
+    });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/solutions`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.solutionIdeas).toEqual([
+      expect.objectContaining({ idea_id: 'idea-current', idea_revision: 2 }),
+    ]);
+    expect(response.body).toMatchObject({
+      candidatePoolVersion: 9,
+      artifactVerification: 'untrusted',
+      artifactReason: 'version_mismatch',
+      previewReport: null,
     });
   });
 

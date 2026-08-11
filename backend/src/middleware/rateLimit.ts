@@ -226,3 +226,71 @@ export async function checkChatRateLimit(userId: string): Promise<SuggestRateLim
     };
   }
 }
+
+/**
+ * Redis-based rate limiter for the clarify-intake call (backend/src/routes/suggest.ts,
+ * mode 'clarify_idea'). Mirror of `checkSuggestRateLimit` — same hourly/daily counter
+ * shape, own Redis keyspace and config knobs (`CONFIG.clarifyRateHourly`/
+ * `clarifyRateDaily`) so this gate never shares a bucket with the other suggest
+ * modes: clarify-intake is part of the paid "Check my idea" submit path and must
+ * not be starved by unrelated Feeling-Lucky/auto-complete usage, or vice versa.
+ * The route treats a 429 here as a fail-open signal (show the failopen card),
+ * never a blocking error.
+ */
+export async function checkClarifyRateLimit(userId: string): Promise<SuggestRateLimitResult> {
+  const hourlyKey = `nicheiq:clarify:rate:${userId}:hourly`;
+  const dailyKey = `nicheiq:clarify:rate:${userId}:daily`;
+
+  const hourlyLimit = CONFIG.clarifyRateHourly;
+  const dailyLimit = CONFIG.clarifyRateDaily;
+
+  try {
+    const [hourlyCount, dailyCount] = await Promise.all([
+      redis.get(hourlyKey),
+      redis.get(dailyKey),
+    ]);
+
+    const currentHourly = parseInt(hourlyCount || '0', 10);
+    const currentDaily = parseInt(dailyCount || '0', 10);
+
+    if (currentHourly >= hourlyLimit) {
+      const ttl = await redis.ttl(hourlyKey);
+      return {
+        allowed: false,
+        remaining: { hourly: 0, daily: Math.max(0, dailyLimit - currentDaily) },
+        retryAfter: ttl > 0 ? ttl : 3600,
+      };
+    }
+
+    if (currentDaily >= dailyLimit) {
+      const ttl = await redis.ttl(dailyKey);
+      return {
+        allowed: false,
+        remaining: { hourly: Math.max(0, hourlyLimit - currentHourly), daily: 0 },
+        retryAfter: ttl > 0 ? ttl : 86400,
+      };
+    }
+
+    const pipeline = redis.pipeline();
+    pipeline.incr(hourlyKey);
+    pipeline.expire(hourlyKey, 3600);
+    pipeline.incr(dailyKey);
+    pipeline.expire(dailyKey, 86400);
+    await pipeline.exec();
+
+    return {
+      allowed: true,
+      remaining: {
+        hourly: hourlyLimit - currentHourly - 1,
+        daily: dailyLimit - currentDaily - 1,
+      },
+    };
+  } catch (error) {
+    console.error('Clarify rate limit check failed:', error);
+    // Fail open in case of Redis errors (but log it) — never block the submit gate.
+    return {
+      allowed: true,
+      remaining: { hourly: hourlyLimit, daily: dailyLimit },
+    };
+  }
+}

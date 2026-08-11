@@ -275,6 +275,53 @@ describe("EvidenceChallenge", () => {
     expect(view.getByText(malformedExcerpt)).toBeInTheDocument();
   });
 
+  it("wires cited sources, captured text, and run details to tracked disclosure bodies", async () => {
+    const malformedChallenge: SelectionChallenge = {
+      ...challenge,
+      evidenceSnapshot: [{
+        ...challenge.evidenceSnapshot[0],
+        kind: "competitor_fact",
+        excerpt: '{"focus":"esports match tracking",broken}',
+      }],
+    };
+    apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [malformedChallenge], stale: [] });
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    await waitFor(() => expect(view.getByText("Review perspectives disagree")).toBeInTheDocument());
+
+    const citedSummary = view.getByText("1 cited source").closest("summary");
+    expect(citedSummary).toHaveAttribute("aria-expanded", "false");
+    const citedBodyId = citedSummary?.getAttribute("aria-controls");
+    expect(citedBodyId).toBeTruthy();
+    expect(view.container.querySelector(`#${citedBodyId}`)).toBeInTheDocument();
+    const citedDetails = citedSummary!.closest("details")!;
+    citedDetails.open = true;
+    await fireEvent(citedDetails, new Event("toggle"));
+    expect(citedSummary).toHaveAttribute("aria-expanded", "true");
+
+    const capturedSummary = view.getByText("View captured text").closest("summary");
+    expect(capturedSummary).toHaveAttribute("aria-expanded", "false");
+    const capturedBodyId = capturedSummary?.getAttribute("aria-controls");
+    expect(capturedBodyId).toBeTruthy();
+    expect(view.container.querySelector(`#${capturedBodyId}`)?.tagName).toBe("PRE");
+    const capturedDetails = capturedSummary!.closest("details")!;
+    capturedDetails.open = true;
+    await fireEvent(capturedDetails, new Event("toggle"));
+    expect(capturedSummary).toHaveAttribute("aria-expanded", "true");
+
+    const runSummary = view.getByText("Run details").closest("summary");
+    expect(runSummary).toHaveAttribute("aria-expanded", "false");
+    const runBodyId = runSummary?.getAttribute("aria-controls");
+    expect(runBodyId).toBeTruthy();
+    expect(view.container.querySelector(`#${runBodyId}`)?.tagName).toBe("P");
+    const runDetails = runSummary!.closest("details")!;
+    runDetails.open = true;
+    await fireEvent(runDetails, new Event("toggle"));
+    expect(runSummary).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("captures the gap question as a grounded assumption draft", async () => {
     apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge], stale: [] });
     const onTrackRisk = vi.fn();
@@ -551,7 +598,7 @@ describe("EvidenceChallenge", () => {
     const chip = await view.findByText("Recheck");
     expect(chip.closest(".issue-badge")).toHaveAttribute(
       "title",
-      "Needs recheck — this review predates the current check method or evidence.",
+      "Needs recheck. This review predates the current check method or evidence.",
     );
     const demandTab = view.getByRole("tab", { name: /predates the current check method/ });
     expect(demandTab).toBeInTheDocument();

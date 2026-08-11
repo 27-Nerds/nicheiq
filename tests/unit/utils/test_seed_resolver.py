@@ -122,3 +122,49 @@ class TestSegmentPick:
     def test_empty_pains_and_segments_returns_empty_result(self):
         result = resolve_seed_anchors("anything", None, None, [], [])
         assert result == SeedAnchorResult(anchor_pain_titles=[], segment=None)
+
+
+# ── focus-term steering ("Check my idea" identity terms) ──
+
+FOCUS_PAINS = [
+    _pain("Cannot confirm player check-in and deliver timely game information",
+          "Coaches cannot finalize game-day rosters because parents do not respond "
+          "to texts about the game."),
+    _pain("Cannot prove equal playing time during active games",
+          "Coaches struggle to track playing time fairly while coaching the game."),
+    _pain("Cannot prepare rotation plans without paper or spreadsheets",
+          "Coaches rely on lineup cards and spreadsheets to manage rotation."),
+]
+
+SEED = ("A web app for youth soccer coaches that auto-generates fair playing-time "
+        "lineups from the roster and texts them to parents before each game, so "
+        "coaches stop juggling spreadsheets on the sideline")
+
+FOCUS = ["auto-generates fair playing-time lineups", "texts them to parents",
+         "stop juggling spreadsheets on the sideline"]
+
+
+def test_focus_terms_anchor_the_mechanism_pains_not_just_context():
+    result = resolve_seed_anchors(SEED, None, None, FOCUS_PAINS, [], focus_terms=FOCUS)
+    # Multi-anchor: every pain clearing BOTH floors anchors, mechanism-first.
+    assert "Cannot prove equal playing time during active games" in result.anchor_pain_titles
+    assert "Cannot prepare rotation plans without paper or spreadsheets" in (
+        result.anchor_pain_titles)
+    assert len(result.anchor_pain_titles) <= 3
+
+
+def test_without_focus_terms_single_anchor_contract_holds():
+    result = resolve_seed_anchors(SEED, None, None, FOCUS_PAINS, [])
+    assert len(result.anchor_pain_titles) == 1
+
+
+def test_focus_floor_rejects_context_only_matches():
+    # A pain sharing only audience/context words (coach, game, parent) must not anchor
+    # when focus terms are present and it shares <2 mechanism/problem stems.
+    context_pain = _pain(
+        "Coaches cannot get parents to volunteer for game snacks",
+        "Parents ignore requests about game-day snack duty for the team.")
+    result = resolve_seed_anchors(
+        SEED, None, None, [context_pain], [], focus_terms=FOCUS)
+    # Falls back to the best full-text match (single) rather than multi-anchoring it.
+    assert len(result.anchor_pain_titles) <= 1

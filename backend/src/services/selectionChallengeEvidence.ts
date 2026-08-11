@@ -7,6 +7,19 @@ import {
 } from '../types/selectionChallenge.js';
 import { ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
 import { walletClassLabel } from '../utils/selectionVocabulary.js';
+// `quality_caveats` and `niche_difficulty_verdict` are producer prose, not copy, and this
+// excerpt is rendered verbatim to the owner by EvidenceChallenge.svelte. See
+// utils/buyerFacingCaveat.ts, a held-by-test port of the frontend authority that already reads
+// the same fields on the report and shortlist surfaces. THE TWO FIELDS TAKE DIFFERENT ENTRY
+// POINTS because the coverage note owns a coverage/calibration stanza the verdict must not be
+// run through — not because they read "corpus" differently. Both of the verdict fields read
+// here mean the dataset a product would have to build; the EVIDENCE reading belongs to
+// `key_challenges`, which this path does not touch. See the gloss note in buyerFacingCaveat.ts.
+import {
+  buyerFacingCoverageNote,
+  buyerFacingVerdictHeadline,
+  buyerFacingVerdictNarrative,
+} from '../utils/buyerFacingCaveat.js';
 
 const SUBJECT_FIELDS = [
   'solution_name',
@@ -415,6 +428,24 @@ function audienceSources(preview: unknown): SourceInput[] {
   });
 }
 
+/**
+ * Read one producer field to the buyer, BEFORE anything clips it.
+ *
+ * ORDER IS THE WHOLE POINT. `text()` truncates at 1,500 characters (300 for the title), and
+ * the rules that carry the most weight are keyed to WHOLE producer sentences — a clip landing
+ * inside one stops it matching and prints the raw sentence instead. The longest verdict value
+ * under `output/` is 629 characters, so the clip is inert TODAY; the ordering does not depend
+ * on that staying true.
+ *
+ * Non-strings and blanks pass through untouched, so the `??` fallback below keeps the exact
+ * nullish semantics it had. A rule that emptied the field falls back to the stored value, the
+ * same guard the caveat loop applies.
+ */
+function buyerFacing(value: unknown, read: (value: string) => string): unknown {
+  if (typeof value !== 'string' || !value.trim()) return value;
+  return read(value) || value;
+}
+
 function caveatSources(preview: unknown): SourceInput[] {
   const pr = record(preview);
   const quality = record(pr.data_quality_summary);
@@ -424,16 +455,20 @@ function caveatSources(preview: unknown): SourceInput[] {
   const inputs: Array<{ title: string; excerpt: unknown; pointer: string }> = [];
 
   caveats.slice(0, 6).forEach((caveat, index) => {
+    const stored = text(caveat);
     inputs.push({
       title: `Data caveat ${index + 1}`,
-      excerpt: caveat,
+      // Falls back to the stored entry: a rule that emptied a caveat would lose the content.
+      excerpt: buyerFacingCoverageNote(stored) || stored,
       pointer: `/data_quality_summary/quality_caveats/${index}`,
     });
   });
-  if (hasValue(difficulty.narrative_summary ?? difficulty.headline)) {
+  const narrative = buyerFacing(difficulty.narrative_summary, buyerFacingVerdictNarrative);
+  const headline = buyerFacing(difficulty.headline, buyerFacingVerdictHeadline);
+  if (hasValue(narrative ?? headline)) {
     inputs.push({
-      title: text(difficulty.headline, 300) || 'Niche difficulty',
-      excerpt: difficulty.narrative_summary ?? difficulty.headline,
+      title: text(headline, 300) || 'Niche difficulty',
+      excerpt: narrative ?? headline,
       pointer: '/niche_difficulty_verdict',
     });
   }

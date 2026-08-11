@@ -34,6 +34,7 @@ import {
   type AnalystTokenUsage,
 } from './analystModelService.js';
 import { chatComplete, hasApiKeyForModel } from './openai.js';
+import type { CandidatePoolVersion } from './currentSelectionContext.js';
 import { checkSuggestedTest } from './selectionTestThresholds.js';
 import {
   conceptSetJsonSchema,
@@ -227,6 +228,8 @@ const ModelResponseSchema = z.object({
 
 export interface SelectionConceptSetInput {
   jobId: string;
+  /** Opaque proof that this input was assembled by CurrentSelectionContext. */
+  candidatePoolVersion: CandidatePoolVersion;
   purpose: SelectionConceptPurpose;
   targetTradeoff?: string;
   parents: IdeaRecord[];
@@ -238,6 +241,7 @@ export interface SelectionConceptSetInput {
 }
 
 export interface PreparedSelectionConceptSetInput {
+  candidatePoolVersion: CandidatePoolVersion;
   inputFingerprint: string;
   parents: SelectionConceptParent[];
   context: SelectionConceptSetArtifact['context'];
@@ -249,6 +253,7 @@ export interface PreparedSelectionConceptSetInput {
 }
 
 export interface GeneratedSelectionConceptSet {
+  candidatePoolVersion: CandidatePoolVersion;
   artifact: SelectionConceptSetArtifact;
   costUsd: number;
   usage: AnalystTokenUsage;
@@ -322,6 +327,7 @@ export function prepareSelectionConceptSetInput(
   };
   const inputFingerprint = sha256(fingerprintSource);
   return {
+    candidatePoolVersion: input.candidatePoolVersion,
     inputFingerprint,
     parents,
     context,
@@ -818,6 +824,7 @@ export async function generateSelectionConceptSet(
     createdAt,
   });
   return {
+    candidatePoolVersion: prepared.candidatePoolVersion,
     artifact,
     usage,
     costUsd: estimateAnalystCostUsd(model, usage),

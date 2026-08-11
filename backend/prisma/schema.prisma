@@ -382,9 +382,10 @@ model Job {
 
   // Interactive job flow
   jobMode                             String?   @db.VarChar(20) // 'interactive' or null (legacy one-shot)
-  entryMode                           String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea'
+  entryMode                           String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea' | 'validate_idea'
   ideaFocus                           String?   @db.VarChar(20) // 'auto' | 'novelty' | 'distribution' — soft ideation steer; stored so failed-before-checkpoint resumes keep it
   solutionIdeas                       Json? // Array of solution preview objects
+  candidatePoolVersion                Int? // Database-owned monotonic version; null means a legacy/unresolvable pool binding
   selectedSolution                    String?   @db.VarChar(255) // Name of winning solution (set by Phase 2 re-ranking)
   deepResearchRecommendedIdeaId       String?   @db.VarChar(100)
   deepResearchRecommendedIdeaRevision Int?
@@ -589,6 +590,9 @@ model SelectionConceptSet {
   id               String    @id @default(uuid())
   jobId            String
   job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  // Pool version used to derive this artifact. Null is legacy/untrusted and is never
+  // eligible for current analyst context.
+  candidatePoolVersion Int?
   purpose          String    @db.VarChar(32)
   inputFingerprint String    @db.Char(64)
   parentRefs       Json
@@ -604,8 +608,9 @@ model SelectionConceptSet {
   // and therefore CANNOT SEE — it is declared in SQL, not here, and there is deliberately
   // no @@index for the pair (one would only add drift; the partial index already serves
   // the lookup):
-  //   UNIQUE ("jobId", "inputFingerprint") WHERE "archivedAt" IS NULL
-  //   -- migration 20260727120000_concept_set_unique_live_only
+  //   UNIQUE ("jobId", "candidatePoolVersion", "inputFingerprint")
+  //     WHERE "archivedAt" IS NULL AND "candidatePoolVersion" IS NOT NULL
+  //   -- migration 20260809210000_secondary_artifact_pool_binding
   // A full unique constraint reserved the fingerprint forever, so re-asking for a
   // discarded set's inputs revived the discarded artifact instead of generating fresh
   // directions, and "Discard this set" could never be followed by different options.
@@ -613,6 +618,7 @@ model SelectionConceptSet {
   // — keep it. Read the live row with findFirst + archivedAt: null; findUnique on the
   // pair no longer type-checks, which is the intended signal.
   @@index([jobId, createdAt])
+  @@index([jobId, candidatePoolVersion], map: "SelectionConceptSet_jobId_poolVersion_idx")
 }
 
 model SelectionExperiment {
@@ -955,11 +961,65 @@ model JobAsset {
   assetType     AssetType
   filePath      String    @db.VarChar(500)
   fileSizeBytes Int?
+  // Set by the database whenever a PREVIEW_REPORT asset is published. A null value is
+  // intentionally untrusted legacy state rather than evidence that it matches version 0.
+  candidatePoolVersion Int?
+  // Publication fence for materialized commercial prose. Historical assets are PENDING until
+  // the Python-backed migration records the exact content hash; current writers stamp the hash
+  // only after the generation-time contract has run.
+  commercialCopyStatus    String    @default("PENDING") @db.VarChar(32)
+  commercialCopySha256    String?   @db.VarChar(64)
+  commercialCopyCheckedAt DateTime?
 
   // Timestamps
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([jobId, assetType])
+  @@index([jobId])
+}
+
+// Durable, operator-auditable ledger for the mandatory paying-wallet asset migration.
+model CommercialCopyBackfillRun {
+  id                  String   @id @default(uuid())
+  contractVersion     String   @db.VarChar(64)
+  status              String   @db.VarChar(24)
+  startedAt           DateTime @default(now())
+  completedAt         DateTime?
+  authoritativeAssets Int      @default(0)
+  assetsChanged       Int      @default(0)
+  assetsUnchanged     Int      @default(0)
+  assetsNotPaying     Int      @default(0)
+  assetsPartial       Int      @default(0)
+  assetsSkipped       Int      @default(0)
+  assetsConflicted    Int      @default(0)
+  chatChanged         Int      @default(0)
+  chatUnchanged       Int      @default(0)
+  chatConflicted      Int      @default(0)
+  error               String?  @db.Text
+  items               CommercialCopyBackfillItem[]
+
+  @@index([contractVersion, startedAt])
+}
+
+model CommercialCopyBackfillItem {
+  id            Int                       @id @default(autoincrement())
+  runId         String
+  run           CommercialCopyBackfillRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  targetKind    String                    @db.VarChar(24)
+  targetId      String                    @db.VarChar(64)
+  jobId         String
+  assetType     String?                   @db.VarChar(32)
+  sourcePath    String?                   @db.VarChar(500)
+  resultPath    String?                   @db.VarChar(500)
+  sourceSha256  String?                   @db.VarChar(64)
+  resultSha256  String?                   @db.VarChar(64)
+  status        String                    @db.VarChar(32)
+  reason        String?                   @db.Text
+  sectionResults Json?
+  createdAt     DateTime                  @default(now())
+
+  @@unique([runId, targetKind, targetId])
   @@index([jobId])
 }
 
@@ -983,6 +1043,9 @@ model ChatMessage {
   gateStage        Int // 1 | 4 | 5 | 6 (6 = completed report)
   role             String  @db.VarChar(16) // 'user' | 'assistant'
   content          String  @db.Text
+  // Set on stage-5 assistant prose derived from the selection pool. Null is legacy or
+  // non-pool-derived; a null/mismatched stage-5 assistant row is excluded from replay.
+  candidatePoolVersion Int?
   patchJson        Json? // Proposed patch (propose_modification tool args), assistant turns only
   // Read-only tool invocations made while resolving this turn (chat agent tools v1.1):
   // array of {name, args, label} — assistant turns only; the label is the same string
@@ -1006,6 +1069,7 @@ model ChatMessage {
 
   @@index([jobId])
   @@index([jobId, gateStage])
+  @@index([jobId, gateStage, candidatePoolVersion], map: "ChatMessage_jobId_gateStage_poolVersion_idx")
 }
 
 // ============================================

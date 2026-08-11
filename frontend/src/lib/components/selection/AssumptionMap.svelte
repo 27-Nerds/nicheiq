@@ -934,7 +934,7 @@
   .map-head h3 { max-width: 38ch; font-size: var(--text-xl); line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); text-wrap: balance; }
   .map-head > div > p:last-child { max-width: 65ch; margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
   .map-actions { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: var(--space-3); }
-  .map-count { flex: 0 0 auto; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; }
+  .map-count { flex: 0 0 auto; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; font-variant-numeric: tabular-nums; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .prefill-feedback { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
   .prefill-feedback.is-error { color: var(--color-error-text); }
@@ -980,7 +980,7 @@
   .assumption-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1-5); }
   .assumption-badges span { padding: var(--space-1) var(--space-1-5); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; }
   .assumption-badges .impact--decisive { border-color: color-mix(in srgb, var(--color-error-text) 45%, var(--color-border)); color: var(--color-error-text); }
-  .assumption h5 { max-width: 60ch; font-size: var(--text-lg); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
+  .assumption h5 { max-width: 60ch; font-size: var(--text-base); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
   .assumption-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--space-3) 0 0; border-top: 1px solid var(--color-border); }
   .assumption-detail div { min-width: 0; padding: var(--space-2) var(--space-3) var(--space-1) 0; }
   .assumption-detail dt { color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: 700; }

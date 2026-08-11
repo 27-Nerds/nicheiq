@@ -36,7 +36,7 @@ describe("ShareReportModal", () => {
 
     expect(
       await screen.findByText(
-        "Anyone with the link can view report findings and sources. Analyst conversations, Decision Lab records, and annotations stay private.",
+        "Anyone with the link can view report findings and sources. Your selection note, Analyst conversations, Decision Lab records, and annotations stay private.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Preview shared report" })).toHaveAttribute(

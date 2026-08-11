@@ -362,6 +362,25 @@ class TestPartitionedDivergent:
         d2 = usc._archetype_directive(None)  # unrestricted
         assert "directory" in d2 and "programmatic-SEO" in d2  # info-products presented as first-class
 
+    def test_archetype_directive_carries_no_ungated_monetization_steer(self):
+        """D1 round 16, Priority 6. This directive runs at IDEATION, where no wallet reading is in
+        scope, and it steers `project_type` — the sole gate on Stage-8 traffic monetization. It
+        used to call info-products "the strongest programmatic-SEO + low-maintenance ad/affiliate
+        play", which is a zero-price license at the one point in the pipeline that cannot see
+        whether this market pays. The product-shape encouragement stays; the commercial half does
+        not."""
+        from nicheiq.utils import niche_difficulty as nd
+
+        for directive in (usc._archetype_directive(None),
+                          usc._archetype_directive(["saas", "directory"]),
+                          usc._archetype_directive(None, preferred_type="directory")):
+            assert "ad/affiliate play" not in directive
+            assert not nd.has_zero_price_prescription(directive), directive
+            assert nd._paying_wallet_copy_rule_labels(directive) == [], directive
+        unrestricted = usc._archetype_directive(None)
+        assert "DISTRIBUTION property" in unrestricted
+        assert "monetization directive settles" in unrestricted
+
     def test_partitioned_brief_respects_allowed_project_types(self, monkeypatch):
         crew = self._crew()
         crew._data_menu_text = ""  # pre-cache: the (always-on) data-menu build adds no LLM call

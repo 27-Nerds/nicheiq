@@ -75,9 +75,15 @@ def _seg(pay):
 
 
 def test_directive_weak_wallet_no_commercial_pain():
+    from nicheiq.utils.niche_difficulty import has_zero_price_prescription
+
     out = derive_monetization_directive([_pain(0.2), _pain(0.3)], [_seg(0.15), _seg(0.2)])
     assert "weak-wallet niche" in out
-    assert "free tool" in out.lower()
+    # The wallet FACT survives; the commercial shape it used to prescribe ("DEFAULT to a free
+    # tool with distribution monetization ... NOT per-seat subscription") does not (D1 round 15).
+    assert "mean segment payability" in out
+    assert "commercial-intent bar" in out
+    assert not has_zero_price_prescription(out)
 
 
 def test_directive_mixed_niche_has_override():
@@ -94,7 +100,7 @@ def test_directive_viable_wallets():
 def test_directive_no_payability_data_is_neutral():
     out = derive_monetization_directive([_pain(0.5)], [])
     assert "MONETIZATION DIRECTIVE" in out
-    assert "do not default every idea to freemium" in out
+    assert "freemium subscription is not the automatic answer" in out
 
 
 # ---------------------------------------------------------------- Fix #3b

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ReviewPage from "./+page.svelte";
+import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
 const mocks = vi.hoisted(() => ({
   goto: vi.fn(),
@@ -42,7 +43,14 @@ function data(options: {
   ideas?: Array<Record<string, unknown>>;
   challenges?: Array<Record<string, unknown>>;
   assumptions?: Array<Record<string, unknown>>;
+  conclusions?: Array<Record<string, unknown>>;
   ownerEvidence?: Array<Record<string, unknown>>;
+  founderFitResults?: Array<Record<string, unknown>>;
+  founderFitStale?: boolean;
+  solutionVotes?: Record<string, number>;
+  solutionVotesById?: Record<string, number>;
+  voteRationales?: Array<Record<string, unknown>>;
+  collaboratorSignalsStatus?: "loaded" | "absent" | "unavailable";
   decisionTools?: boolean;
   status?: string;
   selectionRationale?: string | null;
@@ -63,6 +71,7 @@ function data(options: {
       scopeSource: "url",
       canonicalQuery: "?idea=idea-a%3A3",
     },
+    solutions: ideas,
     decisionState: {
       shortlist: {
         version: 7,
@@ -78,9 +87,33 @@ function data(options: {
       challenges: options.challenges ?? [],
       ownerEvidence: options.ownerEvidence ?? [],
       assumptions: options.assumptions ?? [],
+      conclusions: options.conclusions ?? [],
+      founderFit: options.founderFitResults
+        ? {
+            inputFingerprint: "founder-fit-fingerprint",
+            results: options.founderFitResults.map((result) => ({
+              idea: {
+                ideaId: result.ideaId,
+                ideaRevision: result.ideaRevision,
+                title: result.ideaTitle,
+              },
+              verdict: result.verdict,
+            })),
+          }
+        : null,
       staleCounts: { challenges: 0 },
       deepResearch: { eligible: true },
     },
+    founderFit: options.founderFitResults
+      ? {
+          stale: options.founderFitStale ?? false,
+          analysis: { results: options.founderFitResults },
+        }
+      : null,
+    solutionVotes: options.solutionVotes ?? {},
+    solutionVotesById: options.solutionVotesById ?? {},
+    voteRationales: options.voteRationales ?? [],
+    collaboratorSignalsStatus: options.collaboratorSignalsStatus ?? "loaded",
     creditBalance: options.balance ?? 731,
     stageCosts: { deep_research: 100 },
     billingLoadState: {
@@ -104,7 +137,7 @@ describe("selection review page", () => {
     await fireEvent.input(view.getByLabelText(/Why these ideas\?/), {
       target: { value: "Strongest buyer evidence." },
     });
-    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research" }));
 
     await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledWith("job-1", {
       clientRequestId: expect.any(String),
@@ -120,16 +153,21 @@ describe("selection review page", () => {
     const view = render(ReviewPage, { props: { data: data({ saved: false }) } });
 
     expect(view.getByText("This linked scope does not match your saved shortlist yet.")).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
     expect(mocks.selectSolution).not.toHaveBeenCalled();
   });
 
-  it("states the exact credit shortfall and keeps the commit disabled", () => {
-    const view = render(ReviewPage, { props: { data: data({ balance: 60 }) } });
+  it("keeps balance-after-charge in the canonical record when the balance is insufficient", () => {
+    const view = render(ReviewPage, { props: { data: data({ balance: 94 }) } });
 
-    expect(view.getByText("You need 40 more credits before you can start.")).toBeInTheDocument();
-    expect(view.getByRole("link", { name: "Add credits" })).toHaveAttribute("href", "/billing");
-    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    expect(view.getByLabelText("Credit summary"))
+      .toHaveTextContent("FLAT PRICE 100 CREDITS · COVERS 1-3 IDEAS · BALANCE AFTER -6");
+    expect(view.getByLabelText("Credit summary")).not.toHaveTextContent("SHORT");
+    expect(view.queryByRole("link", { name: /top up/i })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: /top up/i })).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
+    expect(view.container.textContent?.match(/\bcredits?\b/gi)).toHaveLength(2);
+    expect(view.container.textContent?.match(/\b(?:price|charge|cost)\b/gi)).toHaveLength(1);
   });
 
   it("routes a losing concurrent-start tab to authoritative progress", async () => {
@@ -141,7 +179,7 @@ describe("selection review page", () => {
     ));
     const view = render(ReviewPage, { props: { data: data() } });
 
-    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research" }));
 
     await waitFor(() => expect(mocks.invalidateAll).toHaveBeenCalled());
     expect(mocks.goto).toHaveBeenCalledWith("/jobs/job-1", { invalidateAll: true });
@@ -158,15 +196,15 @@ describe("selection review page", () => {
       .mockResolvedValueOnce({});
     const view = render(ReviewPage, { props: { data: data() } });
 
-    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research" }));
     expect(await view.findByRole("heading", { name: "Review the updated confirmation" }))
       .toHaveFocus();
     expect(view.getByText(/Nothing was charged or started/)).toBeInTheDocument();
     expect(mocks.goto).not.toHaveBeenCalled();
-    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
 
     await fireEvent.click(view.getByRole("button", { name: "Use this updated scope and price" }));
-    await fireEvent.click(view.getByRole("button", { name: "Confirm updated scope · 100 credits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Confirm updated scope" }));
     await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledTimes(2));
     const [firstRequest, secondRequest] = mocks.selectSolution.mock.calls.map((call) => call[1]);
     expect(secondRequest.clientRequestId).not.toBe(firstRequest.clientRequestId);
@@ -182,8 +220,8 @@ describe("selection review page", () => {
     const view = render(ReviewPage, { props: { data: invalid as never } });
 
     expect(view.getByText("Credit information is invalid or unavailable. Reload before starting so you can confirm the exact charge.")).toBeInTheDocument();
-    expect(view.getAllByText("Unavailable").length).toBeGreaterThan(0);
-    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    expect(view.getByText("UNAVAILABLE")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
   });
 
   it("does not trust fallback billing values after an API failure", () => {
@@ -196,7 +234,7 @@ describe("selection review page", () => {
     expect(view.getByText(
       "Your credit balance and the current Deep Research price could not be loaded. Reload before starting so you can confirm the exact charge.",
     )).toBeInTheDocument();
-    expect(view.getAllByText("Unavailable")).toHaveLength(4);
+    expect(view.getAllByText("UNAVAILABLE")).toHaveLength(2);
     expect(view.getByRole("button", { name: "Reload credit information" })).toBeEnabled();
     expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
   });
@@ -227,6 +265,21 @@ describe("selection review page", () => {
     expect(view.getByText(/1 check found claims weakened or contradicted/)).toBeInTheDocument();
   });
 
+  it("uses singular grammar for one open question", () => {
+    const ideaRef = { ideaId: "idea-a", ideaRevision: 3, title: "Signal desk" };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          assumptions: [{ id: "a1", idea: ideaRef, ownerState: "OPEN" }],
+        }),
+      },
+    });
+
+    const question = view.getByRole("link", { name: "1 open question to resolve" });
+    expect(question.closest("p"))
+      .toHaveTextContent("1 open question to resolve is tracked but not yet answered.");
+  });
+
   it("stays quiet when no proof-work exists in scope", () => {
     const view = render(ReviewPage, { props: { data: data() } });
 
@@ -246,10 +299,13 @@ describe("selection review page", () => {
     // /sample-report is in the (public) route group: following it in-tab would
     // drop the user out of the app shell mid-commit.
     expect(sample).toHaveAttribute("target", "_blank");
-    expect(view.getByText("One price for up to 3 ideas — the same 100 credits for 1, 2, or 3.")).toBeInTheDocument();
-    expect(view.getByText("Starting locks this shortlist — ideas can’t be changed during the run.")).toBeInTheDocument();
-    expect(view.getByText("Any active discovery share link closes once Deep Research is successfully queued.")).toBeInTheDocument();
-    expect(view.getByText("If the run fails or finds too little data, credits are returned automatically.")).toBeInTheDocument();
+    expect(view.getByText(/Starting Deep Research locks this exact shortlist/)).toBeInTheDocument();
+    expect(view.getByText(/any active discovery share closes once the run is successfully queued/)).toBeInTheDocument();
+    expect(view.getByText("Run protection: if the run fails or finds too little data, credits return automatically.")).toBeInTheDocument();
+    expect(view.getByLabelText("Credit summary"))
+      .toHaveTextContent("FLAT PRICE 100 CREDITS · COVERS 1-3 IDEAS · BALANCE AFTER 631");
+    expect(view.container.textContent?.match(/\bcredits?\b/gi)).toHaveLength(2);
+    expect(view.container.textContent?.match(/\b(?:price|charge|cost)\b/gi)).toHaveLength(1);
   });
 
   it("does not offer a dead sample link when no verified sample is published", () => {
@@ -289,12 +345,133 @@ describe("selection review page", () => {
     expect(view.getByText(/Bundle · 4 pain signals/)).toBeInTheDocument();
   });
 
+  it("renders the provenance-safe saved decision receipt for each idea", () => {
+    const ideaRef = { ideaId: "idea-a", ideaRevision: 3, title: "Signal desk" };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          ideas: [{ ...idea, red_team_verdict: "weakened" }],
+          founderFitResults: [{
+            ideaId: "idea-a",
+            ideaRevision: 3,
+            ideaTitle: "Signal desk",
+            verdict: "needs_reshape",
+            summary: "The full scope exceeds the saved time budget.",
+            blockingConflict: null,
+            decisionChangingUnknown: "Whether a narrow weekly brief retains enough value.",
+          }],
+          assumptions: [
+            { id: "medium", idea: ideaRef, ownerState: "OPEN", impact: "MEDIUM", statement: "Whether buyers prefer email." },
+            { id: "decisive", idea: ideaRef, ownerState: "OPEN", impact: "DECISIVE", statement: "Whether teams will pay before integrations exist." },
+          ],
+          conclusions: [
+            { id: "latest", experimentId: "experiment-2", idea: ideaRef, outcome: "PASS" },
+            { id: "older", experimentId: "experiment-1", idea: ideaRef, outcome: "FAIL" },
+          ],
+          solutionVotesById: { "idea-a": 2 },
+          voteRationales: [{
+            solutionId: "idea-a",
+            solutionName: "Signal desk",
+            comment: "Clearest fit for our weekly review.",
+          }],
+        }),
+      },
+    });
+
+    const receipt = view.getByLabelText("Decision receipt for Signal desk");
+    expect(receipt).not.toHaveTextContent("Research verdict");
+    expect(receipt).toHaveTextContent("Founder fit Needs reshape: The full scope exceeds the saved time budget.");
+    expect(receipt).toHaveTextContent("Open question Whether teams will pay before integrations exist.");
+    expect(receipt).not.toHaveTextContent("Whether buyers prefer email.");
+    expect(receipt).toHaveTextContent("Latest test Passed");
+    expect(receipt).not.toHaveTextContent("Failed");
+    expect(receipt).toHaveTextContent("Collaborator signal 2 collaborator votes. Latest note: “Clearest fit for our weekly review.”");
+  });
+
+  it("does not render an unprovenanced generator-owned research verdict", () => {
+    const view = render(ReviewPage, {
+      props: { data: data({ ideas: [{ ...idea, red_team_verdict: "killed" }] }) },
+    });
+
+    expect(view.queryByText("Research verdict")).not.toBeInTheDocument();
+    expect(view.queryByText("Premise unproven")).not.toBeInTheDocument();
+  });
+
+  it("renders collaborator evidence when feedback loaded with votes", () => {
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          collaboratorSignalsStatus: "loaded",
+          solutionVotesById: { "idea-a": 1 },
+        }),
+      },
+    });
+
+    expect(view.getByLabelText("Decision receipt for Signal desk"))
+      .toHaveTextContent("Collaborator signal 1 collaborator vote");
+    expect(view.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("omits collaborator evidence without an outage warning when feedback loaded with no votes", () => {
+    const view = render(ReviewPage, {
+      props: { data: data({ collaboratorSignalsStatus: "loaded" }) },
+    });
+
+    expect(view.queryByLabelText("Decision receipt for Signal desk")).not.toBeInTheDocument();
+    expect(view.queryByText("Collaborator signal")).not.toBeInTheDocument();
+    expect(view.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("omits per-idea collaborator placeholders and shows one page warning when feedback fails", () => {
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          collaboratorSignalsStatus: "unavailable",
+          solutionVotesById: { "idea-a": 4, "idea-b": 2 },
+          voteRationales: [{
+            solutionId: "idea-a",
+            solutionName: "Signal desk",
+            comment: "This stale payload must not render during an outage.",
+          }],
+          ideas: [
+            idea,
+            {
+              idea_id: "idea-b",
+              idea_revision: 1,
+              solution_name: "Signal brief",
+              short_description: "Turns the same signals into a weekly brief.",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(view.queryByText("Collaborator signal")).not.toBeInTheDocument();
+    expect(view.queryByText("Could not be loaded")).not.toBeInTheDocument();
+    expect(view.queryByLabelText(/Decision receipt for/)).not.toBeInTheDocument();
+    expect(view.getAllByRole("status")).toHaveLength(1);
+    expect(view.getByRole("status")).toHaveTextContent(
+      "Collaborator feedback is temporarily unavailable. Saved votes or notes may be missing from this page.",
+    );
+  });
+
+  it("omits the entire decision receipt when an idea has no saved facts", () => {
+    const view = render(ReviewPage, { props: { data: data() } });
+
+    expect(view.queryByLabelText("Decision receipt for Signal desk")).not.toBeInTheDocument();
+    expect(view.queryByText("Research verdict")).not.toBeInTheDocument();
+    expect(view.queryByText("Founder fit")).not.toBeInTheDocument();
+    expect(view.queryByText("Open question")).not.toBeInTheDocument();
+    expect(view.queryByText("Latest test")).not.toBeInTheDocument();
+    expect(view.queryByText("Collaborator signal")).not.toBeInTheDocument();
+  });
+
   it("names the collection with the canonical shortlist vocabulary", () => {
     const view = render(ReviewPage, { props: { data: data() } });
 
     expect(view.getByRole("heading", { name: "Review your shortlist" })).toBeInTheDocument();
     expect(view.getByRole("link", { name: "Choose ideas" }))
-      .toHaveAttribute("href", "/jobs/job-1#opportunities");
+      .toHaveAttribute("href", rankedIdeasHref("job-1"));
     expect(view.queryByText("Edit selection")).toBeNull();
   });
 
@@ -318,10 +495,10 @@ describe("selection review page", () => {
     const view = render(ReviewPage, { props: { data: pageData as never } });
 
     for (const link of view.getAllByRole("link", { name: "Choose ideas" })) {
-      expect(link).toHaveAttribute("href", "/jobs/job-1#opportunities");
+      expect(link).toHaveAttribute("href", rankedIdeasHref("job-1"));
     }
     expect(view.getByRole("link", { name: "Change your shortlist" }))
-      .toHaveAttribute("href", "/jobs/job-1#opportunities");
+      .toHaveAttribute("href", rankedIdeasHref("job-1"));
   });
 
   it("states one shortlist record line at the gate", () => {
@@ -385,7 +562,7 @@ describe("selection review page", () => {
     expect(view.getByRole("heading", { name: "Why these ideas?" })).toBeInTheDocument();
     expect(view.getByText("Strongest buyer evidence and the clearest repeat workflow.")).toBeInTheDocument();
     expect(view.queryByLabelText(/Why these ideas\?/)).not.toBeInTheDocument();
-    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
     await fireEvent.click(view.getByRole("button", { name: /Signal desk/ }));
     await waitFor(() => expect(view.getAllByRole("dialog").length).toBeGreaterThan(0));
   });
@@ -411,7 +588,7 @@ describe("selection review page", () => {
     await fireEvent.input(field, { target: { value: "Updated reasoning." } });
     await waitFor(() => expect(sessionStorage.getItem(RATIONALE_KEY)).toBe("Updated reasoning."));
 
-    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research" }));
     await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledWith("job-1", expect.objectContaining({
       rationale: "Updated reasoning.",
     })));
@@ -421,7 +598,7 @@ describe("selection review page", () => {
   it("describes a blocked start button via the sr-only status node", () => {
     const view = render(ReviewPage, { props: { data: data({ saved: false }) } });
 
-    const button = view.getByRole("button", { name: "Start Deep Research · 100 credits" });
+    const button = view.getByRole("button", { name: "Start Deep Research" });
     expect(button).toHaveAttribute("aria-describedby", "start-research-status");
     expect(document.getElementById("start-research-status")?.textContent)
       .toContain("Save this exact research scope before starting research.");

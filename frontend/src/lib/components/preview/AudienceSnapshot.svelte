@@ -57,6 +57,13 @@
     </dl>
   </div>
 
+  {#if data.audience_drift_notice}
+    <aside class="audience-drift" role="note" aria-label="Audience mismatch">
+      <strong>Audience mismatch</strong>
+      <p>{data.audience_drift_notice.message}</p>
+    </aside>
+  {/if}
+
   {#if segments.length > 0}
     <div class="audience-snapshot__segments">
       {#each segments as segment, i}
@@ -226,6 +233,28 @@
     font-weight: 800;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+  }
+
+  .audience-drift {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 48%, var(--color-border));
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 8%, var(--color-bg-surface));
+    color: var(--color-text-primary);
+  }
+  .audience-drift strong {
+    font-size: var(--text-sm);
+    font-weight: 800;
+  }
+  .audience-drift p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    text-wrap: pretty;
   }
 
   .audience-snapshot__segments {

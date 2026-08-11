@@ -1,0 +1,24 @@
+{
+  "niche_difficulty_verdict": {
+    "difficulty_level": "medium",
+    "software_addressability": 0.723,
+    "headline": "Software Fit: Strong — automating inventory and controlled substance compliance",
+    "narrative_summary": "This niche is a strong fit for software: the pains are workflow or data problems a tool can directly own. There's room for a real product rather than a thin reference.",
+    "key_challenges": [
+      "The corpus drifts from the stated audience — tighten the wedge or the product will end up serving the wrong user.",
+      "Most ideas need a data corpus that doesn't exist yet — plan a cold-start play (seed it, scrape it, or partner) before the product is useful.",
+      "The niche already runs a dense tool ecosystem (10 tools web-verified, 3 with published pricing) — new products compete for attention inside an existing stack. Thin early signal; Deep Research validates.",
+      "The captured discussions in this run contain no explicit purchase intent. Treat this as a corpus evidence gap, not proof of weak market willingness to pay: web-verified prices show buyers already pay for tooling, so subscription pricing remains viable. Validate which pain and paid wedge will convert. Thin early signal; Deep Research validates."
+    ],
+    "key_strengths": [
+      "Most pains are workflow or data problems a tool can directly own.",
+      "There's room for a genuinely novel angle, not just a clone.",
+      "Buyers in this niche demonstrably pay for tooling ($99-399/mo DaySmart Vet, $299/mo single-vet, $290/mo IDEXX Neo, $300/mo VetSnap) — willingness-to-pay is not the primary risk. Thin early signal; Deep Research validates."
+    ],
+    "low_confidence": false,
+    "buyer_class": "smb-operator",
+    "buyer_class_note": "Buyers here are small-business operators — price-aware but used to paying for tools that save time or win customers.",
+    "audience_drift_notice": null
+  },
+  "idea_portfolio_summary": "Buyers in this niche demonstrably pay for tooling: willingness to pay is not the primary risk. Thin early signal; Deep Research validates."
+}

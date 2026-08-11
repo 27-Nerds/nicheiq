@@ -121,7 +121,7 @@
         {/each}
       </ul>
     {:else}
-      <p>Select 1–3 ideas to continue.</p>
+      <p>Select 1 to 3 ideas to continue.</p>
     {/if}
 
     {#if saveState === "saving"}

@@ -28,24 +28,33 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }
 
   const rawJob = await jobRes.json();
-  const normalizedJobSolutions = normalizeSolutionPreviews(rawJob.solutionIdeas);
-  const job = {
-    ...rawJob,
-    solutionIdeas: normalizedJobSolutions.solutions,
-  };
   // Paid pool mutations temporarily leave AWAITING_SELECTION even though the user
   // still owns the same selection workspace. Key off the exact dispatch kind and
   // its valid lifecycle states so initial Discovery and Deep Research queues keep
   // their lightweight progress-page data contracts.
   const selectionMutationActive =
     (
-      job.activeDispatchKind === 'SEED_IDEA'
-      && ['QUEUED', 'RUNNING'].includes(job.status)
+      rawJob.activeDispatchKind === 'SEED_IDEA'
+      && ['QUEUED', 'RUNNING'].includes(rawJob.status)
     )
     || (
-      job.activeDispatchKind === 'REGENERATE'
-      && ['QUEUED', 'REGENERATING'].includes(job.status)
+      rawJob.activeDispatchKind === 'REGENERATE'
+      && ['QUEUED', 'REGENERATING'].includes(rawJob.status)
     );
+  const selectionUiActive =
+    ['AWAITING_SELECTION', 'REGENERATING'].includes(rawJob.status)
+    || selectionMutationActive;
+
+  // Do not normalize or use a generic job payload's pool in selection states. The backend
+  // omits it there, and the only candidate/artifact snapshot this loader consumes is
+  // the version/fingerprint-checked /solutions response below.
+  const normalizedJobSolutions = selectionUiActive
+    ? { solutions: [], invalidCount: 0 }
+    : normalizeSolutionPreviews(rawJob.solutionIdeas);
+  let job = {
+    ...rawJob,
+    solutionIdeas: normalizedJobSolutions.solutions,
+  };
 
   // Phase 2: Conditional parallel fetches based on job status
   let reportSummary: ReportSummary | null = null;
@@ -55,12 +64,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let voteRationales: DiscoveryVoteRationale[] = [];
   let discoveryData: DiscoveryData | null = null;
   let previewReport: PreviewReport | null = null;
-  let invalidSolutionCount = normalizedJobSolutions.invalidCount;
+  let invalidSolutionCount = selectionUiActive ? 0 : normalizedJobSolutions.invalidCount;
   let solutionsFetchFailed = false;
   let discoveryDataFetchFailed = false;
   let previewReportFetchFailed = false;
   let metricExplanations: SelectionMetricExplanationsResponse | null = null;
   let annotationDocument: DiscoveryAnnotationResponse | null = null;
+  let selectionArtifactVerification: 'verified' | 'untrusted' | null = null;
+  let selectionArtifactReason: string | null = null;
   // Free-preview pain points for the "explore while you wait" list, shown only
   // while Phase 1 (discovery) is generating. Public endpoint; empty array hides
   // the list. Mirrors the parsing in (public)/+page.server.ts.
@@ -124,23 +135,45 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       fetchBackend(`/api/jobs/${params.jobId}/solutions`, { headers })
         .then(async (response) => {
           if (!response.ok) {
-            if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
+            solutionsFetchFailed = true;
             return null;
           }
           return response.json();
         })
         .then(d => {
           if (!d || !('solutionIdeas' in d)) {
-            if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
+            solutionsFetchFailed = true;
             return;
           }
           const normalized = normalizeSolutionPreviews(d.solutionIdeas);
           solutions = normalized.solutions;
           invalidSolutionCount = normalized.invalidCount;
+          selectionArtifactVerification = d.artifactVerification === 'verified'
+            ? 'verified'
+            : 'untrusted';
+          selectionArtifactReason = typeof d.artifactReason === 'string'
+            ? d.artifactReason
+            : null;
+          previewReport = d.artifactVerification === 'verified' && d.previewReport
+            ? d.previewReport as PreviewReport
+            : null;
+          job = {
+            ...job,
+            solutionIdeas: normalized.solutions,
+            selectedSolution: d.selectedSolution,
+            selectedSolutions: d.selectedSolutions,
+            selectedSolutionIds: d.selectedSolutionIds,
+            selectedSolutionRefs: d.selectedSolutionRefs,
+            selectionRationale: d.selectionRationale,
+            selectionDecisionProfile: d.selectionDecisionProfile,
+            selectionDraft: d.selectionDraft,
+            canRegenerate: d.canRegenerate,
+            ideaBatchCompletedCount: d.ideaBatchCompletedCount,
+            maxIdeaBatches: d.maxIdeaBatches,
+            activeOperation: d.activeOperation,
+          };
         })
-        .catch(() => {
-          if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
-        })
+        .catch(() => { solutionsFetchFailed = true; })
     );
   }
 
@@ -148,7 +181,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // every job that has reached a candidate pool so queued/running Deep Research
   // and completed runs do not silently lose collaborator feedback.
   if (
-    job.solutionIdeas.length > 0
+    selectionUiActive
+    || normalizedJobSolutions.solutions.length > 0
     || (job.selectedSolutions?.length ?? 0) > 0
     || (job.selectedSolutionIds?.length ?? 0) > 0
   ) {
@@ -191,14 +225,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         })
         .catch(() => { discoveryDataFetchFailed = true; })
     );
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
-        .then(async (response) => {
-          if (response.ok) previewReport = await response.json();
-          else if (![204, 404].includes(response.status)) previewReportFetchFailed = true;
-        })
-        .catch(() => { previewReportFetchFailed = true; })
-    );
+    if (!selectionUiActive) {
+      conditionalFetches.push(
+        fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
+          .then(async (response) => {
+            if (response.ok) previewReport = await response.json();
+            else if (![204, 404].includes(response.status)) previewReportFetchFailed = true;
+          })
+          .catch(() => { previewReportFetchFailed = true; })
+      );
+    }
   }
 
   await Promise.all(conditionalFetches);
@@ -216,6 +252,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     previewReportFetchFailed,
     solutionsFetchFailed,
     invalidSolutionCount,
+    selectionArtifactVerification,
+    selectionArtifactReason,
     userEmail: session.user.email ?? null,
     catalogPainPoints,
     // Cast: TS control-flow ignores the closure assignment above and narrows to null.

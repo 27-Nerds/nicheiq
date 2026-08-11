@@ -4,6 +4,7 @@
   import { stripMarkdown } from "$lib/utils/format";
   import { unavailableSectionLabels } from "$lib/utils/unavailableSections";
   import { narrativeVerdictQualifier, verdictBlocker } from "$lib/utils/verdictGate";
+  import { buyerFacingReport } from "$lib/selection/buyerFacingResearchProse";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -17,8 +18,22 @@
     reportTitle?: string;
   }
 
-  let { report, evidenceHref, planHref, decisionSlot, deckText, reportTitle }: Props =
-    $props();
+  let {
+    report: sourceReport,
+    evidenceHref,
+    planHref,
+    decisionSlot,
+    deckText,
+    reportTitle,
+  }: Props = $props();
+
+  // Sanitise HERE as well as at the ReportContent boundary, for the same reason
+  // NicheRealityCheck does it in the component: this view prints
+  // `niche_difficulty_verdict.key_challenges` verbatim under "Decision-changing risks",
+  // and it shipped "The corpus drifts from the stated audience — tighten the wedge…" to
+  // paying buyers because the sanitiser lived one layer down. The rewrite is idempotent,
+  // so a caller that already normalised loses nothing.
+  const report = $derived(buyerFacingReport(sourceReport));
 
   const dashboard = $derived(report.executive_dashboard);
   const solution = $derived(dashboard?.recommended_solution_snapshot);

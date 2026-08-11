@@ -1,0 +1,478 @@
+{
+ "_note": "Captured 2026-08-10 from output/checkpoints. One row per run whose recommendation resolves. Regenerate with tests/unit/utils/test_audience_axes.py::test_the_vendored_corpus_still_matches_the_runs_on_disk.",
+ "runs": [
+  {
+   "run": "checkpoint__ab-angle-seo2_20260630_111945",
+   "requested_audience": "small landlords coordinating rental property maintenance and repairs",
+   "primary_segment": "The Scaling Portfolio Operator (11-50 units)",
+   "recommended_source_segments": [
+    "The Scaling Portfolio Operator (11-50 units)"
+   ],
+   "all_segment_names": [
+    "The Overwhelmed DIY Landlord (1-10 units)",
+    "The Scaling Portfolio Operator (11-50 units)",
+    "The Multi-Generational Asset Manager (50+ units)"
+   ]
+  },
+  {
+   "run": "checkpoint__ab-angle-seo3_20260630_112949",
+   "requested_audience": "small landlords coordinating rental property maintenance and repairs",
+   "primary_segment": "The Scaling Portfolio Operator (11-50 units)",
+   "recommended_source_segments": [
+    "The Scaling Portfolio Operator (11-50 units)"
+   ],
+   "all_segment_names": [
+    "The Overwhelmed DIY Landlord (1-10 units)",
+    "The Scaling Portfolio Operator (11-50 units)",
+    "The Multi-Generational Asset Manager (50+ units)"
+   ]
+  },
+  {
+   "run": "checkpoint__ab-angle-seo3_20260630_113037",
+   "requested_audience": "small landlords coordinating rental property maintenance and repairs",
+   "primary_segment": "The Scaling Portfolio Operator (11-50 units)",
+   "recommended_source_segments": [
+    "The Scaling Portfolio Operator (11-50 units)"
+   ],
+   "all_segment_names": [
+    "The Overwhelmed DIY Landlord (1-10 units)",
+    "The Scaling Portfolio Operator (11-50 units)",
+    "The Multi-Generational Asset Manager (50+ units)"
+   ]
+  },
+  {
+   "run": "checkpoint__ab-angle-seo_20260630_111227",
+   "requested_audience": "small landlords coordinating rental property maintenance and repairs",
+   "primary_segment": "The Scaling Portfolio Operator (11-50 units)",
+   "recommended_source_segments": [
+    "The Scaling Portfolio Operator (11-50 units)"
+   ],
+   "all_segment_names": [
+    "The Overwhelmed DIY Landlord (1-10 units)",
+    "The Scaling Portfolio Operator (11-50 units)",
+    "The Multi-Generational Asset Manager (50+ units)"
+   ]
+  },
+  {
+   "run": "checkpoint__probe-fidelity_20260807_145431",
+   "requested_audience": null,
+   "primary_segment": "Micro-Roasters Selling Direct-to-Consumer Online",
+   "recommended_source_segments": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Cooperative and Shared-Space Roastery Operators",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+   ],
+   "all_segment_names": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Café-Based Roasters Managing On-Site Production",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+    "Subscription-Based Roastery Operators",
+    "Cooperative and Shared-Space Roastery Operators"
+   ]
+  },
+  {
+   "run": "checkpoint__probe-fidelity_20260807_150117",
+   "requested_audience": null,
+   "primary_segment": "Micro-Roasters Selling Direct-to-Consumer Online",
+   "recommended_source_segments": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Cooperative and Shared-Space Roastery Operators",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+   ],
+   "all_segment_names": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Café-Based Roasters Managing On-Site Production",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+    "Subscription-Based Roastery Operators",
+    "Cooperative and Shared-Space Roastery Operators"
+   ]
+  },
+  {
+   "run": "checkpoint_a_better_way_to_discover_open_source_projects_9d50958d-d36b-4f27-be51-ed12bc9f1da5_20260217_141403",
+   "requested_audience": null,
+   "primary_segment": "Open Source Maintainers Facing Sustainability Challenges",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Open Source Maintainers Facing Sustainability Challenges",
+    "Aspiring Contributors and New Developers Seeking Entry Points",
+    "Technical Solo Founders and Indie Developers",
+    "Machine Learning and AI Open Source Enthusiasts"
+   ]
+  },
+  {
+   "run": "checkpoint_amateur_astrophotographers_choosing_gear_and_proce_80c21f53-451f-4247-bb93-4bbb1aba331e_20260701_190148",
+   "requested_audience": null,
+   "primary_segment": "Intermediate Transitioning Imagers",
+   "recommended_source_segments": [
+    "Intermediate Transitioning Imagers",
+    "Advanced Deep-Sky Technicians",
+    "Entry-Level Smart Telescope Adopters"
+   ],
+   "all_segment_names": [
+    "Entry-Level Smart Telescope Adopters",
+    "Intermediate Transitioning Imagers",
+    "Advanced Deep-Sky Technicians"
+   ]
+  },
+  {
+   "run": "checkpoint_ceramics_studio_managers_coordinating_class_schedu_dcc5f3e2-511e-4e85-b6ad-7577be38f5a4_20260212_165231",
+   "requested_audience": null,
+   "primary_segment": "Community Arts Studio Managers",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Community Arts Studio Managers",
+    "Independent Ceramic Class Instructors",
+    "Aspiring Pottery Studio Owners",
+    "Educational Institution Ceramics Coordinators"
+   ]
+  },
+  {
+   "run": "checkpoint_free_and_open_source_ai_models_9deae351-199e-406d-a2ce-f7ea73302e1e_20260211_182655",
+   "requested_audience": null,
+   "primary_segment": "Technical AI Developers Building Custom Solutions",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Technical AI Developers Building Custom Solutions",
+    "Non-Technical AI Enthusiasts Using AI Tools for Productivity",
+    "Enterprise AI Buyers & Decision Makers",
+    "Open-Source AI Researchers and Contributors"
+   ]
+  },
+  {
+   "run": "checkpoint_freelance_filmmakers_managing_revision_requests_f91b477c-e4fd-4ca1-96b1-a9e6190592ba_20260212_122241",
+   "requested_audience": null,
+   "primary_segment": "Solo Freelance Filmmakers Managing Client Revisions",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Solo Freelance Filmmakers Managing Client Revisions",
+    "Agency-Level Freelance Editors Handling High-Volume Revisions",
+    "New Freelance Video Creators Seeking Client Acquisition and Feedback Management",
+    "Freelance Filmmakers Using Specialized Feedback Tools"
+   ]
+  },
+  {
+   "run": "checkpoint_freelance_video_editors_managing_client_revision_r_c67ed337-bf95-44d7-84c6-635feff5d626_20260728_001252",
+   "requested_audience": "freelance video editors managing client revision rounds",
+   "primary_segment": "Overworked Solo Freelance Editors",
+   "recommended_source_segments": [
+    "Overworked Solo Freelance Editors"
+   ],
+   "all_segment_names": [
+    "Overworked Solo Freelance Editors",
+    "Agency Post-Production Supervisors & Studio Leads",
+    "Independent Creator-Editors (YouTube & Social Media)",
+    "Professional video editors and post-production coordinators"
+   ]
+  },
+  {
+   "run": "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_un_1b6d461f-f4da-40e3-8bac-bc4b35121987_20260702_000045",
+   "requested_audience": "home bakers selling cakes and cookies from home under cottage food laws",
+   "primary_segment": "Market-Scaling Artisanal Entrepreneurs",
+   "recommended_source_segments": [
+    "Market-Scaling Artisanal Entrepreneurs",
+    "Side-Hustle Hobbyist Bakers",
+    "Niche Dietary Specialists"
+   ],
+   "all_segment_names": [
+    "Side-Hustle Hobbyist Bakers",
+    "Market-Scaling Artisanal Entrepreneurs",
+    "Niche Dietary Specialists"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_appliance_repair_companies_coordinatin_58f7f62a-a1ba-4331-bc6e-2bc4be333b82_20260802_012058",
+   "requested_audience": "Independent appliance repair companies with 5-20 technicians",
+   "primary_segment": "Growth-Stage Independent Appliance Repair Operators (5–20 Technicians)",
+   "recommended_source_segments": [
+    "Parts-and-Dispatch Coordinators Inside Independent Appliance Service Companies"
+   ],
+   "all_segment_names": [
+    "Growth-Stage Independent Appliance Repair Operators (5–20 Technicians)",
+    "High-Volume Solo Owners Transitioning Toward a Small Team",
+    "Warranty-Heavy Appliance Service Providers Adding COD Work",
+    "Premium and High-End Appliance Repair Boutiques",
+    "Parts-and-Dispatch Coordinators Inside Independent Appliance Service Companies"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_live_music_venues_coordinating_artist_8ef396eb-c63d-4641-889e-1db6dfc9dfde_20260802_182518",
+   "requested_audience": "independent live music venue operators",
+   "primary_segment": "Independent Multi-Room Venue Operators",
+   "recommended_source_segments": [
+    "Independent Multi-Room Venue Operators"
+   ],
+   "all_segment_names": [
+    "Independent Multi-Room Venue Operators",
+    "Bar and Restaurant Live-Music Operators",
+    "Nonprofit Community Arts Concert-Series Managers",
+    "University Student-Union Venue Coordinators",
+    "Multi-Venue Local Promoters Leasing Independent Rooms",
+    "Independent live music venues"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_private_music_teachers_running_their_o_1bf93407-b3fd-4890-845b-e64619b11271_20260701_110624",
+   "requested_audience": "independent private music teachers running their own studios",
+   "primary_segment": "Independent Studio Entrepreneurs",
+   "recommended_source_segments": [
+    "Aspiring Private Instructors",
+    "Independent Studio Entrepreneurs"
+   ],
+   "all_segment_names": [
+    "Independent Studio Entrepreneurs",
+    "Burned-Out School Educators (Side-Hustlers)",
+    "Aspiring Private Instructors"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_private_music_teachers_running_their_o_5697eb57-692e-4ad1-bf03-24469425a1a3_20260701_141249",
+   "requested_audience": "independent private music teachers running their own studios",
+   "primary_segment": "Independent Studio Owner (The Professional)",
+   "recommended_source_segments": [
+    "Independent Studio Owner (The Professional)",
+    "Adult Hobbyist Learner",
+    "The 'Grade-Factory' Parent"
+   ],
+   "all_segment_names": [
+    "Independent Studio Owner (The Professional)",
+    "The 'Grade-Factory' Parent",
+    "Adult Hobbyist Learner"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_veterinary_clinics_managing_medication_0c9b6f29-cecf-44ad-83a4-452dc68c1618_20260802_111354",
+   "requested_audience": "Independent veterinary clinics managing medication inventory and controlled-substance compliance across multiple locations",
+   "primary_segment": "Independent Single-Location General Practices Automating Manual Medication Reordering",
+   "recommended_source_segments": [
+    "Equine and Large-Animal Practices Managing Bulk Medication and Controlled-Substance Records",
+    "Multi-Site Independent and Newly Consolidating Veterinary Groups Seeking Centralized Medication Oversight"
+   ],
+   "all_segment_names": [
+    "Independent Single-Location General Practices Automating Manual Medication Reordering",
+    "Specialty and Emergency Hospitals with High-Volume Pharmaceutical and Controlled-Substance Workflows",
+    "Multi-Site Independent and Newly Consolidating Veterinary Groups Seeking Centralized Medication Oversight",
+    "Mobile and Ambulatory Veterinary Practices Needing Field-to-Clinic Synchronization",
+    "Equine and Large-Animal Practices Managing Bulk Medication and Controlled-Substance Records"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_veterinary_clinics_managing_medication_51a491dc-c095-4e21-befb-5cadf540629a_20260801_104107",
+   "requested_audience": "independent veterinary clinics managing multi-location inventory and controlled-substance compliance",
+   "primary_segment": "Independent Single-Location General Practices with Manual Drug Logs",
+   "recommended_source_segments": [
+    "Specialty, Emergency, and Referral Hospitals with High-Volume Controlled-Drug Workflows"
+   ],
+   "all_segment_names": [
+    "Independent Single-Location General Practices with Manual Drug Logs",
+    "Specialty, Emergency, and Referral Hospitals with High-Volume Controlled-Drug Workflows",
+    "Mobile and House-Call Veterinary Practices Managing Vehicle-Based Stock",
+    "Corporate-Owned and Multi-Location Veterinary Hospital Groups Seeking Central Oversight",
+    "University-Affiliated Teaching and Research Hospitals with High-Volume Clinical Drug Use"
+   ]
+  },
+  {
+   "run": "checkpoint_independent_veterinary_clinics_managing_medication_86e765e5-7526-40ed-8d61-7da086715214_20260802_150313",
+   "requested_audience": "Independent veterinary clinics managing medication inventory and controlled-substance compliance across multiple locations",
+   "primary_segment": "Independent Multi-Location Practice Managers",
+   "recommended_source_segments": [
+    "High-Volume Independent Specialty and Emergency Hospitals",
+    "Independent Multi-Location Practice Managers",
+    "Lean Single-Site General Practices Scaling Toward Multiple Locations"
+   ],
+   "all_segment_names": [
+    "Independent Multi-Location Practice Managers",
+    "High-Volume Independent Specialty and Emergency Hospitals",
+    "Lean Single-Site General Practices Scaling Toward Multiple Locations",
+    "Mobile, Equine, and Field-Based Veterinary Operators",
+    "Shelter and Audit-Heavy Veterinary Programs"
+   ]
+  },
+  {
+   "run": "checkpoint_micro_saas_entrepreneurs_searching_for_new_micro_s_b149ab23-f9cc-45bc-9b14-5a8fa4ad3109_20260213_113353",
+   "requested_audience": null,
+   "primary_segment": "Technical Solo Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Technical Solo Founders",
+    "Early-Stage Idea Validators",
+    "Growth-Focused Micro-SaaS Operators",
+    "Non-Technical Founders Seeking Partnerships"
+   ]
+  },
+  {
+   "run": "checkpoint_micro_saas_solo_developers_42a0c25b-6292-4d47-86a7-86fe5395acb6_20260211_213359",
+   "requested_audience": null,
+   "primary_segment": "Early-Stage Solo Founders with Limited Budget",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Early-Stage Solo Founders with Limited Budget",
+    "Technical Solo Developers Focused on Niche SaaS",
+    "Solopreneurs Struggling with Marketing and Social Media",
+    "Growth-Focused Solo Developers with Moderate Budgets"
+   ]
+  },
+  {
+   "run": "checkpoint_open_source_ai_models_for_different_tasks_f4e193c5-5f26-49e1-acf8-3186f8b77e0e_20260211_113533",
+   "requested_audience": null,
+   "primary_segment": "Open-Source AI Developers & Enthusiasts",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Open-Source AI Developers & Enthusiasts",
+    "AI Automation & Integration Practitioners",
+    "Technical Solo Founders & Open-Source Advocates",
+    "AI Research & Academic Community"
+   ]
+  },
+  {
+   "run": "checkpoint_open_source_ai_models_user_431a29af-4af8-4ce0-9e2e-b1170cc74748_20260210_225823",
+   "requested_audience": null,
+   "primary_segment": "Advanced Local Model Runners",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Advanced Local Model Runners",
+    "AI Researchers & Experimenters",
+    "Independent AI Developers & Hobbyists",
+    "Enterprise AI Integrators"
+   ]
+  },
+  {
+   "run": "checkpoint_peptides_supplements_16197018-8f01-4f7b-aa5e-7441bd881a24_20260726_114855",
+   "requested_audience": null,
+   "primary_segment": "Metabolic & Weight Management Users",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Performance-Driven Biohackers",
+    "Chronic Injury & Recovery Seekers",
+    "Metabolic & Weight Management Users"
+   ]
+  },
+  {
+   "run": "checkpoint_peptides_supplements_78332077-761b-4c23-ae95-abd37a0a44ef_20260310_154624",
+   "requested_audience": null,
+   "primary_segment": "Biohacker Performance Optimizers",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Biohacker Performance Optimizers",
+    "Skincare Peptide Enthusiasts (30-45 Female)",
+    "Middle-Aged Joint & Recovery Seekers",
+    "Experimental Tirzepatide & Peptide Compound Users",
+    "Natural Bodybuilding Peptide Users"
+   ]
+  },
+  {
+   "run": "checkpoint_peptides_supplements_e56655d8-59c6-4246-abe2-f5692768a2b9_20260611_152548",
+   "requested_audience": null,
+   "primary_segment": "Biohacker Peptide Enthusiasts",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Biohacker Peptide Enthusiasts",
+    "Skincare-Focused Peptide Users",
+    "Chronic Illness & Recovery Peptide Users",
+    "Fitness & Bodybuilding Peptide Users"
+   ]
+  },
+  {
+   "run": "checkpoint_short_term_rental_co_hosts_and_small_airbnb_proper_b8a401c1-cda8-4fe4-bef1-a5b017158cce_20260731_010146",
+   "requested_audience": "short-term rental co-hosts and small Airbnb property management teams",
+   "primary_segment": "Professional Co-Hosts & Small PMS Teams",
+   "recommended_source_segments": [
+    "Professional Co-Hosts & Small PMS Teams"
+   ],
+   "all_segment_names": [
+    "Individual Rental Property Owners",
+    "Real Estate Portfolio Investors",
+    "Professional Co-Hosts & Small PMS Teams",
+    "Short-term rental hosts and property managers"
+   ]
+  },
+  {
+   "run": "checkpoint_small_batch_coffee_roasters_managing_green_coffee_8f35ea6b-0321-41fd-b747-e4d76605f50f_20260803_163640",
+   "requested_audience": null,
+   "primary_segment": "Micro-Roasters Selling Direct-to-Consumer Online",
+   "recommended_source_segments": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Cooperative and Shared-Space Roastery Operators",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+   ],
+   "all_segment_names": [
+    "Micro-Roasters Selling Direct-to-Consumer Online",
+    "Café-Based Roasters Managing On-Site Production",
+    "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+    "Subscription-Based Roastery Operators",
+    "Cooperative and Shared-Space Roastery Operators"
+   ]
+  },
+  {
+   "run": "checkpoint_tech_founders_searching_for_new_micro_saas_ideas_32b02b62-cea7-447e-9c87-46b886b258a2_20260213_234423",
+   "requested_audience": null,
+   "primary_segment": "Technical Solo Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Technical Solo Founders",
+    "Aspiring Developer-Entrepreneurs",
+    "Bootstrapped Solo Founders Seeking Growth",
+    "AI-Enabled Micro-SaaS Builders"
+   ]
+  },
+  {
+   "run": "checkpoint_tech_founders_searching_for_new_micro_saas_ideas_adba3863-3759-4478-a43c-406299dbdb8c_20260213_143258",
+   "requested_audience": null,
+   "primary_segment": "Technical Solo Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Technical Solo Founders",
+    "Early-Stage Bootstrapped Founders",
+    "Growth-Focused SaaS Founders",
+    "Idea-Validation Focused Non-Technical Founders"
+   ]
+  },
+  {
+   "run": "checkpoint_tech_founders_searching_for_new_micro_saas_ideas_b914fb13-1224-49ea-b08a-7ff39c16564f_20260213_194914",
+   "requested_audience": null,
+   "primary_segment": "Bootstrapped Solo Technical Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Bootstrapped Solo Technical Founders",
+    "Early-Stage Student Founders",
+    "Growth-Focused Micro-SaaS Founders",
+    "Idea Validation and Problem Discovery Seekers"
+   ]
+  },
+  {
+   "run": "checkpoint_tech_founders_searching_for_new_micro_saas_ideas_f06ef67f-b77e-43d6-8228-bfde4c3ce5cb_20260213_220034",
+   "requested_audience": null,
+   "primary_segment": "Solo Technical Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Solo Technical Founders",
+    "Early-Stage Idea Seekers",
+    "Growth-Focused Solo Founders",
+    "Micro-SaaS Community Builders"
+   ]
+  },
+  {
+   "run": "checkpoint_tech_founders_searching_for_new_micro_saas_ideas_fbbbc785-b6ac-479d-8f16-3fa3b2dde23c_20260213_223701",
+   "requested_audience": null,
+   "primary_segment": "Bootstrapped Solo Technical Founders",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Bootstrapped Solo Technical Founders",
+    "Early-Stage Founders Prioritizing Sales & Market Fit",
+    "Micro-SaaS Builders Seeking Sustainable Side Income",
+    "Student and First-Time Founders Experimenting with SaaS"
+   ]
+  },
+  {
+   "run": "checkpoint_user_who_want_to_discover_open_source_projects_92a96caf-26e1-462a-b0c8-b22c45e42b12_20260217_155716",
+   "requested_audience": null,
+   "primary_segment": "Aspiring Open Source Contributors and Learners",
+   "recommended_source_segments": [],
+   "all_segment_names": [
+    "Open Source Maintainers Facing Sustainability Challenges",
+    "Aspiring Open Source Contributors and Learners",
+    "Technical Solo Founders Launching Open Source Products",
+    "Enterprise Tech Professionals Evaluating Open Source Solutions"
+   ]
+  }
+ ]
+}

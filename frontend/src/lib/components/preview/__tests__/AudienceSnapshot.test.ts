@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import AudienceSnapshot from "../AudienceSnapshot.svelte";
+import exemplarDrift from "./fixtures/audienceDriftNotice.exemplar.json";
 import type { AudienceMapping } from "$lib/types/report";
 
 const fiveSegments: AudienceMapping = {
@@ -13,6 +14,11 @@ const fiveSegments: AudienceMapping = {
     { segment_name: "Fitness coaches" },
   ],
 };
+
+// The exemplar run's own notice, not a hand-written one: see
+// preview/__tests__/fixtures/audienceDriftNotice.exemplar.json and the Python test that
+// regenerates and re-asserts it.
+const audienceDrift = exemplarDrift;
 
 describe("AudienceSnapshot segment disclosure", () => {
   afterEach(cleanup);
@@ -57,5 +63,20 @@ describe("AudienceSnapshot segment disclosure", () => {
 
     expect(view.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
     expect(view.queryByText(/captured segments/)).not.toBeInTheDocument();
+  });
+
+  it("places the three-way divergence directly beside the audience", () => {
+    const view = render(AudienceSnapshot, {
+      props: { data: { ...fiveSegments, audience_drift_notice: audienceDrift } },
+    });
+
+    const notice = view.getByRole("note", { name: "Audience mismatch" });
+    expect(notice).toHaveTextContent("Audience mismatch");
+    expect(notice).toHaveTextContent(audienceDrift.message);
+  });
+
+  it("renders nothing when the detector did not produce a divergence", () => {
+    const view = render(AudienceSnapshot, { props: { data: fiveSegments } });
+    expect(view.queryByRole("note", { name: "Audience mismatch" })).not.toBeInTheDocument();
   });
 });

@@ -57,7 +57,7 @@ const ACTION_BODIES: Record<SelectionDecisionNextActionKind, string> = {
   select_candidate:
     "Open the top candidate, check its pain evidence against your own read, and shortlist it if it holds up.",
   add_decision_context:
-    "Save your build limits once: time, budget, team, and reach. Comparisons use them without changing the research score.",
+    "Save your build limits once: time, budget, build model, and reach. Comparisons use them without changing the research score.",
   analyze_founder_fit:
     "Check each shortlisted pick against the time, budget, and reach you actually have.",
   stress_test_evidence:
@@ -341,3 +341,95 @@ export function appendixMetaLine(input: {
   }
   return parts.join(" · ");
 }
+
+// ── Degraded run artifacts ──
+//
+// The pool of ideas and the run's written analysis of that pool are bound by a version plus
+// a content fingerprint. When that binding cannot be CHECKED, the pool is still current and
+// votable, but every claim ABOUT the pool is withheld.
+//
+// "Cannot be checked" is not the same as "is stale", and the banner may only make the
+// weakest claim true in every state that raises it. All six `UntrustedRunArtifactReason`
+// values (backend/src/services/currentSelectionContext.ts) raise it, and only TWO are
+// staleness:
+//   - version_mismatch  the analysis was written against a different pool version.
+//   - content_mismatch  the stored fingerprint disagrees with the ideas on screen.
+// The other FOUR are UNVERIFIABILITY, where the analysis may describe these very ideas:
+//   - legacy_missing_version / legacy_missing_fingerprint: every job created before
+//     migration 20260809180000_candidate_pool_version, which leaves the binding NULL
+//     because the historical value "cannot be reconstructed safely", so the check fails
+//     closed. That is every pre-migration job sitting in AWAITING_SELECTION.
+//   - unresolvable_candidate_pool: the pool could not be read, so nothing was compared.
+//   - preview_unavailable: returned purely on `status !== 'AWAITING_SELECTION'`, which
+//     includes REGENERATING. The backend asserts (discoveryShares.portfolioSummary.test.ts)
+//     that the fingerprint STILL MATCHES until the new batch lands, so a flat "out of date"
+//     would be false on every "generate more ideas" click.
+// Hence "we cannot confirm", never "this is out of date".
+//
+// NICHE-scoped framing is NOT withheld ON THE PUBLIC SHARE: `market_reality` and
+// `niche_difficulty_verdict` are classified `niche` in
+// backend/src/routes/schemas/sharedDiscoveryPayload.ts and keep serving, so the Reality
+// Check card can render beside this banner there.
+// It does NOT render beside the banner on either owner surface. The backend already sends
+// `previewReport: null` whenever verification is untrusted (backend/src/routes/jobs.ts,
+// the /solutions response), and both clients drop it again: the job page derives
+// `serverPreviewReport` as null on untrusted, and selection/+layout.server.ts only fills
+// `verifiedPreviewReport` when verification === "verified". So the owner sees this banner
+// with no market framing next to it at all. That asymmetry is exactly why sentence 3 is
+// written as a conditional rather than a statement about what is on screen.
+//
+// Three surfaces report this state (the job page, every /selection/* route, and the public
+// share view), so the sentence lives here once and all three read it from this constant.
+// That means the words must be true on the WEAKEST of the three: a read-only share visitor
+// who changed nothing, on a /selection/* subroute that renders no market framing at all.
+// Constraints the wording is held to, and the reason each exists:
+//   - Name no artifact the viewer cannot see on the page. Two earlier drafts named the
+//     "ranked snapshot" (only ever rendered by the Phase 2/3 full report) while a ranked
+//     list of ideas sat directly under the banner, so the banner contradicted the screen.
+//   - No second-person change attribution ("your latest change"). On the share the viewer
+//     is `interactive={false}` and can only vote or comment.
+//   - No internal vocabulary: "snapshot", "version", "artifact", "evidence framing" have
+//     no referent for a buyer.
+//   - Module noun rules apply. "shortlist" is the user's SAVED collection (see the top of
+//     this file) and "candidates" is a retired synonym, so neither can name the pool here;
+//     "these ideas" is what every one of the three surfaces actually shows.
+//   - Sentence 3 is written as a conditional ("anything still shown") so it stays true on
+//     subroutes that render no market framing.
+//   - Assert no EXISTENCE for the analysis: the sentence must stay true whether or not a
+//     stored analysis is actually sitting there.
+//     NOT because the client is blind to the state. `artifactReason` IS projected to both
+//     owner surfaces (backend/src/routes/jobs.ts -> jobs/[jobId]/+page.server.ts and
+//     jobs/[jobId]/selection/+layout.server.ts) and already reaches the DOM as
+//     `data-artifact-reason`. Three of the six values even imply existence:
+//     content_mismatch and legacy_missing_fingerprint are reachable only after the stored
+//     preview parsed as an object, and version_mismatch implies a versioned
+//     PREVIEW_REPORT row.
+//     The narrower true reason is the other three, plus the share. Nothing distinguishes
+//     "exists but unbindable" from "absent" for preview_unavailable,
+//     legacy_missing_version or unresolvable_candidate_pool; and the public share payload
+//     deliberately carries no reason code at all (discoveryShares.ts, the
+//     `evidenceFramingWithheld` field: "the public payload states the fact, not the
+//     internal artifact state that produced it"). One constant read by all three surfaces
+//     therefore has to be existence-neutral, because in those cases existence is unknown.
+//     Recorded so it is not re-derived: sentence 2's "keeping it off this page" does NOT
+//     remove an existence presupposition, and was never worth a claim that it did. The
+//     presupposition rides on the definite noun phrase "the written analysis", which the
+//     earlier "holding it back" shares, so the net truth gain of that swap is zero. The
+//     wording is harmless and stays; the constraint above is what does the work.
+//
+// Module copy rule applies: no em or en dashes in the string below.
+
+export const EVIDENCE_WITHHELD_TITLE = "We can't confirm the analysis matches these ideas";
+export const EVIDENCE_WITHHELD_DETAIL =
+  "The ideas themselves are current. We cannot confirm the written analysis still "
+  + "describes them, so we are keeping it off this page instead of showing guidance for a "
+  + "different set of ideas. Anything still shown about the market describes the niche as "
+  + "a whole, not these ideas.";
+
+/** The ranked pool itself failed to load. Distinct from the withheld case above: here
+ *  there is nothing to rank, so the page must not present an empty pool as a finished
+ *  result. Module noun rules apply: "candidates" is retired and "shortlist" names the
+ *  user's SAVED collection, so neither can name the pool that failed to arrive. */
+export const CANDIDATES_UNAVAILABLE_TITLE = "Couldn't load the ranked ideas";
+export const CANDIDATES_UNAVAILABLE_DETAIL =
+  "Something went wrong fetching the ideas for this run.";

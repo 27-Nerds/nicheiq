@@ -299,11 +299,91 @@ export const REVIEW_CHAPTER: TourChapter = {
   ],
 };
 
+/**
+ * "Check my idea" report page (entry_mode='validate_idea'). Its own chapter because the
+ * shortlist chapter's seven anchors all live inside SelectionWorkbench, which this layout
+ * deliberately does not mount on first paint — running `job-shortlist` here would dead-poll
+ * every anchor, destroy the tour, and persist `dismissed` against the user's REAL discovery
+ * runs. Anchors here are the always-present report cards plus the collapsed disclosure's
+ * toggle (never workbench internals). Wide single-column cards: early steps sit `bottom`,
+ * later ones `top`, so the popover stays beside its subject as the page scrolls.
+ */
+export const VALIDATE_REPORT_CHAPTER: TourChapter = {
+  id: 'validate-report',
+  invitation: {
+    heading: "A quick tour of your idea's check",
+    body: 'Six short steps, under two minutes, and you can close it at any point.',
+  },
+  steps: [
+    {
+      element: '[data-tour="validate-idea-echo"]',
+      popover: {
+        title: 'How we read your idea',
+        description:
+          'Check this first. The verdict below is about THIS reading of your idea — if the market or buyer is wrong, run it again in your own words before trusting anything else.',
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="validate-verdict"]',
+      popover: {
+        title: 'Three questions, three answers',
+        description:
+          'Problem, competition, demand. Demand stays unmeasured in this check — Deep Research measures real search demand. The evidence line shows how much discussion backs it.',
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="validate-evidence"]',
+      popover: {
+        title: 'The threads behind the verdict',
+        description:
+          'Real quotes from discussions where the problem behind your idea shows up. Thin or missing evidence is stated plainly, never papered over.',
+        side: 'top',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="validate-competitors"]',
+      popover: {
+        title: 'Who already ships this',
+        description:
+          'Named competitors are demand proof and an entry constraint at once. When one caps your idea, an adjusted revision appears here with the reason we drafted it.',
+        side: 'top',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="validate-continue"]',
+      popover: {
+        title: 'The path for your idea',
+        description:
+          'Deep Research continues with YOUR idea — search demand, market size, pricing, and a build plan. Alternatives never replace it unless you choose one yourself.',
+        side: 'top',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="validate-disclosure"]',
+      popover: {
+        title: 'How your idea was graded',
+        description:
+          'To grade your idea we scored every other approach this evidence supports. Open this to compare them — your idea stays pinned first.',
+        side: 'top',
+        align: 'start',
+      },
+    },
+  ],
+};
+
 export const TOUR_CHAPTERS: Record<string, TourChapter> = {
   [JOB_SHORTLIST_CHAPTER.id]: JOB_SHORTLIST_CHAPTER,
   [COMPARE_CHAPTER.id]: COMPARE_CHAPTER,
   [RISKS_CHAPTER.id]: RISKS_CHAPTER,
   [REVIEW_CHAPTER.id]: REVIEW_CHAPTER,
+  [VALIDATE_REPORT_CHAPTER.id]: VALIDATE_REPORT_CHAPTER,
 };
 
 /** Below this the dock becomes a bare bar, the guide card collapses, and a ~300px

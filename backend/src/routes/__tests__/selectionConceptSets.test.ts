@@ -25,7 +25,9 @@ const mocks = vi.hoisted(() => ({
   messageFindMany: vi.fn(),
   messageCreate: vi.fn(),
   getReport: vi.fn(),
+  loadSelectionContext: vi.fn(),
   generate: vi.fn(),
+  parseCurrentFounderFitArtifact: vi.fn(),
   /** Live row the create-path fingerprint cache should find, or null for a miss. */
   setCachedLive: null as unknown,
   /** Backing store for the mocked Redis single-flight lock. */
@@ -50,6 +52,12 @@ vi.mock('../../services/redis.js', () => ({
 }));
 vi.mock('../../services/assetService.js', () => ({
   getPreviewReportForJob: mocks.getReport,
+}));
+vi.mock('../../services/currentSelectionContext.js', () => ({
+  loadCurrentSelectionContext: mocks.loadSelectionContext,
+}));
+vi.mock('../../services/founderFitService.js', () => ({
+  parseCurrentFounderFitArtifact: (...args: unknown[]) => mocks.parseCurrentFounderFitArtifact(...args),
 }));
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -91,6 +99,7 @@ import {
   prepareSelectionConceptSetInput,
 } from '../../services/selectionConceptSetService.js';
 import type { SelectionConceptSetArtifact } from '../../types/selectionConceptSet.js';
+import type { CandidatePoolVersion } from '../../services/currentSelectionContext.js';
 
 const JOB_ID = '550e8400-e29b-41d4-a716-446655440000';
 const SET_ID = '660e8400-e29b-41d4-a716-446655440000';
@@ -117,9 +126,12 @@ function job(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function artifact(): SelectionConceptSetArtifact {
+function artifact(
+  contextOverrides: { founderProfile?: unknown; founderFit?: unknown } = {},
+): SelectionConceptSetArtifact {
   const prepared = prepareSelectionConceptSetInput({
     jobId: JOB_ID,
+    candidatePoolVersion: 7 as CandidatePoolVersion,
     purpose: 'diverge',
     parents: [parent],
     report,
@@ -127,7 +139,8 @@ function artifact(): SelectionConceptSetArtifact {
     founderFit: null,
     challenges: [],
     conclusions: [],
-  });
+    ...contextOverrides,
+  } as any);
   const operations = ['narrow', 'reposition', 'adjacent'] as const;
   return {
     inputFingerprint: prepared.inputFingerprint,
@@ -187,7 +200,23 @@ describe('selection concept sets', () => {
     mocks.redisStore.clear();
     const generated = artifact();
     mocks.jobFindFirst.mockResolvedValue(job());
+    mocks.loadSelectionContext.mockResolvedValue({
+      job: {
+        status: 'AWAITING_SELECTION',
+        niche: 'test niche',
+        gateStage: null,
+        activeDispatchId: null,
+      },
+      canonical: { candidates: [parent], displayedCount: 1, version: 7 },
+      runArtifacts: {
+        verification: 'verified',
+        candidatePoolVersion: 7,
+        previewReport: report,
+      },
+      openingOrigin: 'opening:cv:test',
+    });
     mocks.getReport.mockResolvedValue(report);
+    mocks.parseCurrentFounderFitArtifact.mockReturnValue(null);
     mocks.challengeFindMany.mockResolvedValue([]);
     mocks.evidenceFindMany.mockResolvedValue([]);
     mocks.conclusionFindMany.mockResolvedValue([]);
@@ -199,7 +228,7 @@ describe('selection concept sets', () => {
     mocks.setFindFirst.mockImplementation(async ({ where }: any) =>
       where?.inputFingerprint !== undefined
         ? mocks.setCachedLive
-        : { id: SET_ID, artifact: generated });
+        : { id: SET_ID, artifact: generated, candidatePoolVersion: 7 });
     mocks.setFindMany.mockResolvedValue([]);
     mocks.setCount.mockResolvedValue(0);
     mocks.setCreate.mockImplementation(async ({ data }) => ({
@@ -214,6 +243,7 @@ describe('selection concept sets', () => {
     mocks.messageCreate.mockImplementation(async ({ data }) => ({ id: 'proposal-message-1', patchJson: data.patchJson }));
     mocks.jobUpdate.mockResolvedValue({});
     mocks.generate.mockResolvedValue({
+      candidatePoolVersion: 7,
       artifact: generated,
       costUsd: 0.01,
       usage: { inputTokens: 100, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
@@ -232,9 +262,78 @@ describe('selection concept sets', () => {
     expect(mocks.setCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         jobId: JOB_ID,
+        candidatePoolVersion: 7,
         inputFingerprint: artifact().inputFingerprint,
       }),
     }));
+  });
+
+  it('feeds Concept Forge founder fit through the read-time contract, never the raw artifact', async () => {
+    // `founderFit` lands in the prompt payload, so a raw passthrough makes an unvalidated stored
+    // artifact into grounding the model reasons from — including one written under a delivery
+    // model this profile does not have, or one that predates the current candidate revisions.
+    const storedRaw = {
+      version: 1,
+      inputFingerprint: 'f'.repeat(64),
+      results: [{ summary: 'You will build the first release yourself.' }],
+    };
+    const contracted = {
+      version: 1,
+      inputFingerprint: 'a'.repeat(64),
+      results: [{ summary: 'A contractor will build the software.' }],
+    };
+    const founderProfile = { team: 'solo', buildModel: 'contractor' };
+    mocks.jobFindFirst.mockResolvedValue(job({
+      selectionDecisionProfile: founderProfile,
+      selectionFounderFit: storedRaw,
+    }));
+    mocks.parseCurrentFounderFitArtifact.mockReturnValue(contracted);
+    mocks.generate.mockResolvedValue({
+      candidatePoolVersion: 7,
+      artifact: artifact({ founderProfile, founderFit: contracted }),
+      costUsd: 0.01,
+      usage: { inputTokens: 100, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers)
+      .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+    expect(response.status).toBe(201);
+    expect(mocks.parseCurrentFounderFitArtifact).toHaveBeenCalledWith(
+      storedRaw,
+      founderProfile,
+      [parent],
+    );
+    const sent = mocks.generate.mock.calls[0][0];
+    expect(sent.founderFit).toEqual(contracted);
+    expect(JSON.stringify(sent)).not.toContain('You will build the first release yourself');
+  });
+
+  it('sends no founder fit at all when the stored artifact fails the read-time contract', async () => {
+    const founderProfile = { team: 'solo' };
+    mocks.jobFindFirst.mockResolvedValue(job({
+      selectionDecisionProfile: founderProfile,
+      selectionFounderFit: { version: 1, results: [{ summary: 'Written before the contract existed.' }] },
+    }));
+    mocks.parseCurrentFounderFitArtifact.mockReturnValue(null);
+    mocks.generate.mockResolvedValue({
+      candidatePoolVersion: 7,
+      artifact: artifact({ founderProfile }),
+      costUsd: 0.01,
+      usage: { inputTokens: 100, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers)
+      .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+    expect(response.status).toBe(201);
+    const sent = mocks.generate.mock.calls[0][0];
+    expect(sent.founderFit).toBeNull();
+    expect(JSON.stringify(sent)).not.toContain('Written before the contract existed');
   });
 
   it('rejects a parent revision that is no longer current before generation', async () => {
@@ -248,10 +347,37 @@ describe('selection concept sets', () => {
     expect(mocks.setCreate).not.toHaveBeenCalled();
   });
 
+  it('withholds a mismatched preview from Concept Forge input', async () => {
+    const stalePreview = { buyer_guidance: 'STALE_PREVIEW_BUYER_GUIDANCE' };
+    const verified = await mocks.loadSelectionContext();
+    mocks.getReport.mockResolvedValue(stalePreview);
+    mocks.loadSelectionContext.mockResolvedValue({
+      ...verified,
+      runArtifacts: {
+        verification: 'untrusted',
+        reason: 'version_mismatch',
+        candidatePoolVersion: 7,
+        artifactPoolVersion: 6,
+      },
+    });
+
+    await request(app)
+      .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers)
+      .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+    expect(mocks.generate).toHaveBeenCalledWith(expect.objectContaining({ report: null }));
+    expect(
+      mocks.getReport,
+      'CONCEPT_FORGE_MUST_NOT_BYPASS_CURRENT_SELECTION_CONTEXT_FOR_PREVIEW_DATA',
+    ).not.toHaveBeenCalled();
+  });
+
   it('returns the cached set without a model call when the fingerprint matches', async () => {
     mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     };
 
@@ -286,6 +412,7 @@ describe('selection concept sets', () => {
     mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     };
 
@@ -352,9 +479,17 @@ describe('selection concept sets', () => {
   });
 
   it('rejects persisting when the shortlist changed while options were generated', async () => {
-    mocks.jobFindFirst
-      .mockResolvedValueOnce(job())
-      .mockResolvedValueOnce(job({ solutionIdeas: [{ ...parent, idea_revision: 4 }] }));
+    const currentContext = await mocks.loadSelectionContext();
+    mocks.loadSelectionContext
+      .mockResolvedValueOnce(currentContext)
+      .mockResolvedValueOnce({
+        ...currentContext,
+        canonical: {
+          candidates: [{ ...parent, idea_revision: 4 }],
+          displayedCount: 1,
+          version: 8,
+        },
+      });
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
@@ -369,7 +504,7 @@ describe('selection concept sets', () => {
 
   it('prepares one exact option as an unevaluated synthesis proposal without charging', async () => {
     const current = artifact();
-    mocks.setFindFirst.mockResolvedValue({ id: SET_ID, artifact: current });
+    mocks.setFindFirst.mockResolvedValue({ id: SET_ID, artifact: current, candidatePoolVersion: 7 });
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-concept-sets/${SET_ID}/options/${current.options[0].optionId}/proposal`)
@@ -397,7 +532,10 @@ describe('selection concept sets', () => {
       },
     });
     expect(mocks.messageCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ origin: 'concept_forge' }),
+      data: expect.objectContaining({
+        origin: 'concept_forge',
+        candidatePoolVersion: 7,
+      }),
     }));
     expect(mocks.jobUpdate).not.toHaveBeenCalled();
   });
@@ -405,7 +543,7 @@ describe('selection concept sets', () => {
   it('reports a server error when a stored option cannot produce a valid patch', async () => {
     const current = artifact();
     current.options[0].changeSummary = 'x'.repeat(650);
-    mocks.setFindFirst.mockResolvedValue({ id: SET_ID, artifact: current });
+    mocks.setFindFirst.mockResolvedValue({ id: SET_ID, artifact: current, candidatePoolVersion: 7 });
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const response = await request(app)
@@ -425,6 +563,7 @@ describe('selection concept sets', () => {
     mocks.setFindMany.mockResolvedValue([{
       id: SET_ID,
       artifact: stored,
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     }]);
     mocks.messageFindMany
@@ -454,11 +593,32 @@ describe('selection concept sets', () => {
     expect(response.body.sets[0].evaluatedOptionIds).toEqual([]);
   });
 
+  it('marks a persisted artifact from an old pool version as stale, never current', async () => {
+    const stored = artifact();
+    mocks.setFindMany.mockResolvedValue([{
+      id: SET_ID,
+      artifact: stored,
+      candidatePoolVersion: 6,
+      createdAt: new Date('2026-07-16T12:00:00.000Z'),
+    }]);
+
+    const response = await request(app)
+      .get(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers);
+
+    expect(response.status).toBe(200);
+    expect(
+      response.body.sets[0].stale,
+      'OLD_POOL_ARTIFACT_IS_NOT_SERVED_AS_CURRENT',
+    ).toBe(true);
+  });
+
   it('marks an option submitted only when a durable seed receipt names its proposal', async () => {
     const stored = artifact();
     mocks.setFindMany.mockResolvedValue([{
       id: SET_ID,
       artifact: stored,
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     }]);
     mocks.messageFindMany
@@ -500,6 +660,7 @@ describe('selection concept sets', () => {
     mocks.setFindMany.mockResolvedValue([{
       id: SET_ID,
       artifact: stored,
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     }]);
     mocks.messageFindMany
@@ -540,6 +701,7 @@ describe('selection concept sets', () => {
     mocks.setFindMany.mockResolvedValue([{
       id: SET_ID,
       artifact: stored,
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     }]);
     mocks.messageFindMany
@@ -603,6 +765,7 @@ describe('selection concept sets', () => {
     mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
+      candidatePoolVersion: 7,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     };
 
@@ -709,7 +872,7 @@ describe('selection concept sets', () => {
       // The whole point: the blocked request cost nothing upstream.
       expect(mocks.generate).toHaveBeenCalledTimes(1);
 
-      finishFirst({ artifact: artifact(), costUsd: 0.01, usage: {} });
+      finishFirst({ candidatePoolVersion: 7, artifact: artifact(), costUsd: 0.01, usage: {} });
       await first;
     });
 
@@ -720,6 +883,7 @@ describe('selection concept sets', () => {
       mocks.setCachedLive = {
         id: SET_ID,
         artifact: artifact(),
+        candidatePoolVersion: 7,
         createdAt: new Date('2026-07-16T12:00:00.000Z'),
       };
 

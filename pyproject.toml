@@ -42,6 +42,8 @@ dependencies = [
     "PyStemmer>=2.2.0",
     # Web worker dependency
     "redis>=5.0.0",
+    # Mandatory JobAsset-backed commercial-copy data migration.
+    "psycopg[binary]>=3.2.0,<4.0",
 ]
 
 [project.optional-dependencies]

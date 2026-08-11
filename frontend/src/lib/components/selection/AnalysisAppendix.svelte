@@ -115,15 +115,6 @@
     padding: var(--space-5) var(--space-4) var(--space-4);
     border-top: 1px solid var(--color-border);
   }
-  .appendix-body :global(.context-notes) {
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-border);
-  }
-  .appendix-body :global(.context-disclosures) {
-    width: 100%;
-    margin-left: 0;
-    justify-content: flex-start;
-  }
   @media (prefers-reduced-motion: reduce) {
     .appendix-trigger,
     .analysis-appendix :global(.appendix-chevron) {

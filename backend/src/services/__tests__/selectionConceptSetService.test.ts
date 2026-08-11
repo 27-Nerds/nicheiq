@@ -40,6 +40,7 @@ import {
   prepareSelectionConceptSetInput,
 } from '../selectionConceptSetService.js';
 import { candidateSnapshotSha256 } from '../../utils/ideaIdentity.js';
+import type { CandidatePoolVersion } from '../currentSelectionContext.js';
 
 const parent = {
   idea_id: 'idea-signal',
@@ -93,6 +94,7 @@ function option(operation: 'narrow' | 'reposition' | 'adjacent' | 'combine', ind
 
 const baseInput = {
   jobId: 'job-1',
+  candidatePoolVersion: 1 as CandidatePoolVersion,
   purpose: 'diverge' as const,
   parents: [parent],
   report: { ranked: ['Signal Desk'] },

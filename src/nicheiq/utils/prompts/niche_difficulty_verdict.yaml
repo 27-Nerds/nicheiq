@@ -4,12 +4,23 @@
 #            none_share, partial_share, full_share, dominant_project_type, shape_concentration,
 #            derivative_mechanism_share, median_novelty, novelty_calibration_gap,
 #            cold_start_share, concept_duplication_rate, audience_scope,
-#            audience_fit_ratio, key_points, low_confidence
+#            audience_fit_ratio, key_points, low_confidence, monetization_guidance
 #
 # 2026-07-02 rewrite: every quantitative signal now arrives as a WORD (band / proportion word /
 # judgment phrase) — the model anchors on and echoes any digit it sees, producing stat-soup
 # ("software can only address 49% of the pains… already 6% saturated"). Prose now leads with
 # the builder's decision, not the statistics.
+#
+# 2026-08-10 (D1 round 14): the monetisation LICENSE is withdrawn. Six successive filters on the
+# output text hit a ceiling — a blind critic published 13 of 14 novel non-paying commercial
+# shapes past the last one — because there is no closed structural property in surface text.
+# The narrative may REPORT market facts about money but may not SELECT a commercial shape at
+# all. The regex contract in utils/niche_difficulty.py stays as a backstop, not as the contract.
+#
+# 2026-08-10 (D1 round 15): round 14 told the model the report "renders that guidance itself,
+# deterministically" while nothing rendered it — `monetization_guidance()` had no reader at all.
+# The line is now persisted on the verdict card and interpolated here, so the statement the model
+# is asked to defer to is one it can actually see, and the claim is true.
 
 template: |
   You are a candid product strategist writing a short "reality check" for a founder,
@@ -20,6 +31,26 @@ template: |
   is already expressed in plain words (bands, proportion words, judgment phrases).
   Narrate ONLY these facts. Do NOT invent numbers, percentages, features, competitors,
   or claims that aren't in the pack. Be specific and plain — no hype, no hedging.
+
+  OUT OF YOUR REMIT — HOW THE PRODUCT SHOULD BE PRICED OR FUNDED.
+  Choosing the commercial shape (subscription vs one-time vs free vs ad/sponsor/lead-gen
+  funded vs licensed vs anything else) is NOT your job and never was. The one niche-level
+  statement this report makes about money is written deterministically from the verified
+  wallet evidence and carried on this same verdict card as `monetization_guidance`. It reads,
+  for this run:
+    {monetization_guidance}
+  Your prose sits beside that line, and a second opinion written here can only contradict it.
+  - You MAY REPORT a market fact you were given: "incumbents bundle this free", "buyers
+    here already pay for tooling", "the captured discussions contain no purchase intent",
+    "these products would be used only around irregular events". Reporting is not
+    prescribing.
+  - You MUST NOT recommend, select, rule out, or pivot toward/away from any way of
+    charging for the product — not in the imperative, not as advice, not as "the path
+    forward", not as a question, not hedged, not attributed to the market. If a sentence
+    answers "how should this make money?", delete it.
+  - "What should I build?" is still yours: the product SHAPE (what the tool does, which
+    pain it owns, which audience it serves) is a different question from how it is paid
+    for. Answer the first, never the second.
 
   Niche: {niche}
   Target audience: {target_audience}
@@ -53,8 +84,9 @@ template: |
   - Limited sample (be cautious): {low_confidence}
 
   HOW TO WRITE IT — lead with the decision, not the statistics:
-  - Sentence 1 answers "so what should I build (or avoid)?" for THIS niche in concrete terms.
-    The remaining sentences give the reasons, using the fact pack's own words.
+  - Sentence 1 answers "so what should I build (or avoid)?" for THIS niche in concrete terms —
+    the product shape, never the price or funding model. The remaining sentences give the
+    reasons, using the fact pack's own words.
   - FIT comes from the software-addressability band; the difficulty band measures OVERALL
     difficulty including frictions (cold-start, saturated tooling, corrected-down scores) and
     can be "high" even when fit is strong. Never let a friction read as a fit problem.
@@ -76,18 +108,21 @@ template: |
   - COLD-START: if a meaningful share of ideas need a data corpus that doesn't exist, warn the
     founder to prefer ideas built on data that exists today (official sources, public data,
     the user's own inputs).
-  - WILLINGNESS TO PAY: relay the judgment you were given, in your own words. This is about
-    the BUSINESS shape, not idea quality — when it is weak, say plainly that strong ideas here
-    should be built as free tools with built-in distribution (lead-gen, sponsorship, a cheap
-    team tier) rather than subscription products. Never present weak WTP as "the ideas are bad".
-  - FREE/DIY SUBSTITUTES: when a meaningful share of outcomes is already obtainable free, say
-    plainly that a paid product must beat the free route on convenience — that is the real
-    competitor here, not another startup.
+  - WILLINGNESS TO PAY: report the buying-signal judgment you were given as a FACT about the
+    evidence, in your own words, and stop there. Never convert it into a pricing or funding
+    recommendation — the `monetization_guidance` line above is the report's only word on that.
+    Never present weak buying signals as "the ideas are bad" either.
+  - FREE/DIY SUBSTITUTES: when a meaningful share of outcomes is already obtainable free, report
+    that the free/DIY route is the real competitor here, not another startup. Report what the
+    product would have to be BETTER AT (convenience, completeness, trust); do not say what it
+    should cost.
   - ADJACENT MARKET: when many mechanisms already earn money in an adjacent commercial market
-    AND the buyers here have weak wallets, name that tension — the same product sold to the
-    adjacent buyer may be the better business.
-  - EPISODIC USE: when most ideas would be used only around irregular events, note that
-    subscriptions churn between events and one-time/usage pricing fits the shape better.
+    AND the buyers here have weak wallets, name that tension as a fact — the demand for these
+    mechanisms is demonstrably strongest one market over. Whether to re-target is the founder's
+    call to make, alongside the `monetization_guidance` line above.
+  - EPISODIC USE: when most ideas would be used only around irregular events, report the usage
+    cadence — the buyer opens this around an event and forgets it between events, so retention
+    has to be earned at each event. Do not name a pricing shape that suits it.
   - Only call a shape "dominant" if the pack says one shape genuinely dominates; otherwise
     call it the most common shape.
 
@@ -108,6 +143,7 @@ template: |
 
   Return:
   - headline: exactly "Software Fit: {rating_word} — <short niche-specific clause you write>".
-  - narrative_summary: 2-4 sentences, decision-first, consistent with the {rating_word} rating.
+  - narrative_summary: 2-4 sentences, decision-first, consistent with the {rating_word} rating,
+    and containing no recommendation about how the product should be priced or funded.
     If the sample is limited, hedge accordingly.
   - buyer_class: exactly one vocabulary value from BUYER CLASS above.

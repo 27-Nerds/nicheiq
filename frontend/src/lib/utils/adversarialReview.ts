@@ -131,7 +131,29 @@ export function incumbentParityPhrase(value: string | null | undefined): string 
   const head = vendor && !NOT_A_VENDOR.test(vendor)
     ? PARITY_NAMED[klass].replace("%v", vendor)
     : PARITY_CLASS_ONLY[klass] + CLASS_ONLY_SUFFIX;
-  return evidence ? `${head}: ${evidence}` : head;
+  return evidence ? joinParityEvidence(head, vendor, evidence) : head;
+}
+
+/**
+ * Evidence routinely re-opens with the vendor as its SUBJECT ("X ships Y") — joining
+ * that with a colon produced "…by X: X ships Y", a broken-reading template stitch
+ * (twin of the backend's selectionVocabulary rule and the Python block's
+ * `_display_parity`). A subject echo joins as its own sentence; a duplicated LABEL
+ * echo ("X: Y") is dropped; anything else keeps the colon join.
+ */
+function joinParityEvidence(head: string, vendor: string, evidence: string): string {
+  if (vendor) {
+    const escaped = vendor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = evidence.match(new RegExp(`^${escaped}(?=[\\s:,]|$)([\\s:,\\-\\u2013\\u2014]*)`, "i"));
+    if (m) {
+      const remainder = evidence.slice(m[0].length).trim();
+      if (remainder) {
+        if (/[:\-–—]/.test(m[1])) return `${head}: ${remainder}`;
+        return `${head}. ${evidence}`;
+      }
+    }
+  }
+  return `${head}: ${evidence}`;
 }
 
 export function adversarialReviewFinding(

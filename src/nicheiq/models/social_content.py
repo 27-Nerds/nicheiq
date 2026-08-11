@@ -3,9 +3,46 @@ Pydantic models for social media content (Stages 4-5).
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+SpeakerRole = Literal["buyer", "adjacent_worker", "customer", "unknown"]
+
+
+class SpeakerAttribution(BaseModel):
+    """Durable role judgment for one authored social contribution.
+
+    The role is relative to the run's primary target segment. ``unknown`` is a
+    real outcome: callers must not treat it as buyer-side evidence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: SpeakerRole = Field(..., description="Speaker role relative to the primary target")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Classifier confidence")
+    rationale: str = Field(..., description="Short evidence-based reason for the role")
+    identity_evidence: str | None = Field(
+        default=None, description="Verbatim source phrase supporting target membership"
+    )
+    authority_evidence: str | None = Field(
+        default=None, description="Verbatim source phrase supporting buyer authority"
+    )
+    target_segment: str = Field(..., description="Primary target used for this judgment")
+    contribution_id: str | None = Field(
+        default=None,
+        description="Post, comment, tweet, or response ID when provenance could be resolved",
+    )
+    author: str | None = Field(default=None, description="Raw source author when available")
+    is_submitter: bool | None = Field(
+        default=None,
+        description="Whether a Reddit comment author created the enclosing post",
+    )
+    content_kind: str | None = Field(
+        default=None, description="Source contribution kind used for attribution"
+    )
+    method: Literal["llm"] = Field(default="llm", description="Attribution method")
 
 
 class RedditComment(BaseModel):
@@ -19,6 +56,9 @@ class RedditComment(BaseModel):
     score: int = Field(..., description="Comment score (upvotes - downvotes)")
     created_utc: datetime = Field(..., description="Comment creation timestamp")
     is_submitter: bool = Field(default=False, description="Whether author is post submitter")
+    speaker_attribution: SpeakerAttribution | None = Field(
+        default=None, description="Role attribution relative to the run's primary buyer segment"
+    )
     replies: list["RedditComment"] = Field(
         default_factory=list, description="Nested reply comments"
     )
@@ -66,6 +106,9 @@ class RedditPost(BaseModel):
         description="Subscriber count of the post's subreddit at collection time; posts from "
         "small dedicated communities get a waived engagement gate (None = unknown, full bars)",
     )
+    speaker_attribution: SpeakerAttribution | None = Field(
+        default=None, description="Role attribution for the post author"
+    )
 
 class TwitterTweet(BaseModel):
     """Represents a single tweet."""
@@ -83,6 +126,9 @@ class TwitterTweet(BaseModel):
     is_reply: bool = Field(default=False, description="Whether this is a reply tweet")
     parent_tweet_id: Optional[str] = Field(
         default=None, description="Parent tweet ID if this is a reply"
+    )
+    speaker_attribution: SpeakerAttribution | None = Field(
+        default=None, description="Role attribution for the tweet author"
     )
 
 class TwitterThread(BaseModel):
@@ -115,6 +161,9 @@ class SocialResponse(BaseModel):
     body: str = Field(..., description="Response text")
     score: int = Field(..., description="Response score/upvotes")
     created_utc: datetime = Field(..., description="Response creation timestamp")
+    speaker_attribution: SpeakerAttribution | None = Field(
+        default=None, description="Role attribution for the response author"
+    )
     replies: list["SocialResponse"] = Field(
         default_factory=list, description="Nested replies"
     )
@@ -145,6 +194,9 @@ class SocialPost(BaseModel):
         description="TREC/UMBRELA 0-3 niche-relevance from semantic validation; "
         "None means the generic post was never graded",
     )
+    speaker_attribution: SpeakerAttribution | None = Field(
+        default=None, description="Role attribution for the post author"
+    )
 
 
 class SocialContentCollection(BaseModel):
@@ -166,6 +218,13 @@ class SocialContentCollection(BaseModel):
     total_generic_responses: int = Field(default=0, description="Total generic source responses collected")
     collection_timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="When collection was performed"
+    )
+    speaker_attribution_version: int | None = Field(
+        default=None,
+        description="Attribution contract version; None identifies a legacy unattributed corpus",
+    )
+    speaker_attribution_target: str | None = Field(
+        default=None, description="Primary target segment used for speaker attribution"
     )
 
 # Update forward references

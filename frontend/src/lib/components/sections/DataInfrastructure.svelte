@@ -156,24 +156,88 @@
     return "muted";
   };
 
-  // Quality metric score to percentage
-  const getQualityPercent = (value: string | undefined) => {
-    if (!value) return 0;
-    const lower = value.toLowerCase();
-    if (
-      lower === "high" ||
-      lower === "low" ||
-      lower === "free" ||
-      lower === "daily" ||
-      lower === "real-time"
-    )
-      return 90;
-    if (lower === "medium" || lower === "weekly") return 60;
-    if (lower.includes("%")) {
-      const num = parseInt(value);
-      return isNaN(num) ? 50 : num;
+  /**
+   * How BIG the value is, 0-100, saying nothing about whether big is good.
+   * Separating magnitude from orientation is the whole point: the old single
+   * lookup mapped "high" and "low" to the SAME 90, so on real runs an
+   * integration_complexity of LOW and one of HIGH drew an identical bar, and
+   * MEDIUM drew a fuller "good" bar than LOW.
+   *
+   * Ordered longest-match-first, and matched on a leading word so the
+   * pipeline's qualified forms ("HIGH (scraping with ToS risks)",
+   * "MEDIUM to HIGH") land on a band instead of falling through.
+   */
+  const MAGNITUDE_BANDS: [RegExp, number][] = [
+    // `near-real-time` (151 freshness values) and `hourly` (37) are as fresh as
+    // anything the pipeline writes, but fell through to no bar at all — an
+    // omission on the maximally-good end of the scale.
+    [/^(?:near[-\s]?)?real[-\s]?time\b/, 95],
+    [/^hourly\b/, 92],
+    [/^dail(y|ies)\b|^daily\b/, 90],
+    [/^free\s+to\s+low\b/, 15],
+    [/^low\s+to\s+medium\b/, 35],
+    [/^medium\s+to\s+high\b/, 75],
+    [/^weekly\s+to\s+monthly\b/, 55],
+    [/^free\b/, 0],
+    [/^low\b/, 20],
+    [/^medium\b/, 55],
+    [/^high\b/, 90],
+    [/^weekly\b/, 70],
+    [/^monthly\b/, 45],
+    [/^quarterly\b|^as\s+updated\b|\bad\s+hoc\b/, 25],
+  ];
+
+  /**
+   * A percentage stated in prose, graded at the LOW end when the source stated a
+   * RANGE. Group 1 is the opening number of a range ("~60-70%", "40-50% market
+   * penetration", "70 to 90%") and is undefined for a plain "~85%", which grades
+   * on group 2. Reading the range's upper bound instead — 1 in 3 of the
+   * coverage_score values that reach here state a range — put the meter above
+   * anything the source claimed, which is the same overstatement the flat 50%
+   * fallback was condemned for, only better disguised. The low end is a figure
+   * the source did state, it can only understate, and the full range still
+   * renders verbatim in the value column on the same row as the bar.
+   *
+   * Case-insensitive for the separator only: this runs on the RAW value while the
+   * bands run on a lower-cased copy, so an upper-cased "50 TO 60%" missed group 1
+   * and fell through to the range's UPPER bound — silently restoring the very
+   * overstatement the low-end reading removed.
+   */
+  const STATED_PERCENT = /(?:(\d{1,3})\s*%?\s*(?:[-–—]|\s+to\s+)\s*)?(\d{1,3})\s*%/i;
+
+  /** null = not gradable. The bar is then omitted rather than drawn at a
+   *  made-up midpoint, which is what a prose coverage_score used to render. */
+  const magnitudePercent = (value: string | undefined): number | null => {
+    if (!value) return null;
+    const percentMatch = value.match(STATED_PERCENT);
+    // A range the source committed to outranks the band word in front of it.
+    // "High coverage for US breweries (estimate 70-85%)" tried the bands first and
+    // filled 90 — at or ABOVE the ceiling the same sentence named. Only a RANGE
+    // wins this way: a lone figure in prose is often not a magnitude at all
+    // ("HIGH (cost likely >20% revenue/user)"), and grading on it would draw an
+    // expensive source as a near-full cost-viability bar.
+    if (percentMatch?.[1] !== undefined) {
+      return Math.min(100, Math.max(0, parseInt(percentMatch[1], 10)));
     }
-    return 50;
+    const lower = value.trim().toLowerCase();
+    for (const [pattern, percent] of MAGNITUDE_BANDS) {
+      if (pattern.test(lower)) return percent;
+    }
+    if (percentMatch) {
+      return Math.min(100, Math.max(0, parseInt(percentMatch[2], 10)));
+    }
+    return null;
+  };
+
+  /** Magnitude read as goodness. `lowerIsBetter` covers the two metrics where a
+   *  bigger number is a worse outcome (integration effort, cost). */
+  const getQualityPercent = (
+    value: string | undefined,
+    lowerIsBetter = false,
+  ): number | null => {
+    const magnitude = magnitudePercent(value);
+    if (magnitude === null) return null;
+    return lowerIsBetter ? 100 - magnitude : magnitude;
   };
 </script>
 
@@ -466,65 +530,30 @@
 
               <!-- Quality Metrics as Visual Bars -->
               {#if source.quality_metrics}
+                {@const qualityRows = [
+                  { label: "Freshness", raw: source.quality_metrics.freshness, lowerIsBetter: false },
+                  { label: "Coverage", raw: source.quality_metrics.coverage_score, lowerIsBetter: false },
+                  { label: "Integration", raw: source.quality_metrics.integration_complexity, lowerIsBetter: true },
+                  { label: "Cost", raw: source.quality_metrics.cost_viability, lowerIsBetter: true },
+                ]}
                 <div class="quality-matrix">
-                  <div class="quality-row">
-                    <span class="quality-label">Freshness</span>
-                    <div class="quality-bar-wrap">
-                      <div
-                        class="quality-bar"
-                        style="--bar-fill: {getQualityPercent(
-                          source.quality_metrics.freshness,
-                        )}%"
-                      ></div>
+                  {#each qualityRows as row (row.label)}
+                    {@const fill = getQualityPercent(row.raw, row.lowerIsBetter)}
+                    <div class="quality-row">
+                      <span class="quality-label">{row.label}</span>
+                      <!-- No bar when the value is not gradable (the pipeline writes
+                           prose here as often as a band). A meter parked at a made-up
+                           midpoint reads as a measurement; the text value does not. -->
+                      {#if fill !== null}
+                        <div class="quality-bar-wrap">
+                          <div class="quality-bar" style="--bar-fill: {fill}%"></div>
+                        </div>
+                      {:else}
+                        <div class="quality-bar-wrap quality-bar-wrap--empty"></div>
+                      {/if}
+                      <span class="quality-value">{row.raw ?? "Not stated"}</span>
                     </div>
-                    <span class="quality-value"
-                      >{source.quality_metrics.freshness ?? "N/A"}</span
-                    >
-                  </div>
-                  <div class="quality-row">
-                    <span class="quality-label">Coverage</span>
-                    <div class="quality-bar-wrap">
-                      <div
-                        class="quality-bar"
-                        style="--bar-fill: {getQualityPercent(
-                          source.quality_metrics.coverage_score,
-                        )}%"
-                      ></div>
-                    </div>
-                    <span class="quality-value"
-                      >{source.quality_metrics.coverage_score ?? "N/A"}</span
-                    >
-                  </div>
-                  <div class="quality-row">
-                    <span class="quality-label">Integration</span>
-                    <div class="quality-bar-wrap">
-                      <div
-                        class="quality-bar quality-bar--inverse"
-                        style="--bar-fill: {100 -
-                          getQualityPercent(
-                            source.quality_metrics.integration_complexity,
-                          )}%"
-                      ></div>
-                    </div>
-                    <span class="quality-value"
-                      >{source.quality_metrics.integration_complexity ??
-                        "N/A"}</span
-                    >
-                  </div>
-                  <div class="quality-row">
-                    <span class="quality-label">Cost</span>
-                    <div class="quality-bar-wrap">
-                      <div
-                        class="quality-bar"
-                        style="--bar-fill: {getQualityPercent(
-                          source.quality_metrics.cost_viability,
-                        )}%"
-                      ></div>
-                    </div>
-                    <span class="quality-value"
-                      >{source.quality_metrics.cost_viability ?? "N/A"}</span
-                    >
-                  </div>
+                  {/each}
                 </div>
               {/if}
 
@@ -1297,13 +1326,15 @@
     transition: width 0.5s ease;
   }
 
-  .quality-bar--inverse {
-    background: var(--color-success);
+  /* Keeps the four rows on one grid rail when a value is not gradable: the
+     track stays, the fill does not. */
+  .quality-bar-wrap--empty {
+    background: var(--color-bg-surface);
   }
 
   .quality-value {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     color: var(--color-text-secondary);
     text-align: right;
   }

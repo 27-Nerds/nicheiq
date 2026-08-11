@@ -616,7 +616,7 @@
         id="owner-evidence-content"
         kind="textarea"
         label="What did you learn?"
-        hint="Record an observation, exact quote, behavior, or measured result—not a hunch or conclusion. Save an unresolved belief as a question to resolve instead."
+        hint="Record an observation, exact quote, behavior, or measured result, not a hunch or conclusion. Save an unresolved belief as a question to resolve instead."
         required
         minlength={3}
         maxlength={8000}

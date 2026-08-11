@@ -112,8 +112,8 @@
   const rebuildNote = $derived.by(() => {
     const reason = REBUILD_REASON[solution.rebuild_origin ?? ""];
     return reason
-      ? `Not estimated: ${reason}, and acquisition cost is not carried across that change — `
-        + "the earlier figure priced the product it replaced."
+      ? `Not estimated: ${reason}, and acquisition cost is not carried across that change. `
+        + "The earlier figure priced the product it replaced."
       : null;
   });
 

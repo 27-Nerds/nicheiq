@@ -197,7 +197,11 @@
     return job.hasReport ? `/jobs/${job.id}/report` : `/jobs/${job.id}`;
   }
   // prefill /new with the niche so a re-run starts pre-loaded
-  const rerunHref = (niche: string) => `/new?niche=${encodeURIComponent(niche)}`;
+  const rerunHref = (niche: string, entryMode?: string | null) => {
+    const validModes = ["idea", "audience", "discovery", "validate_idea"];
+    const mode = entryMode && validModes.includes(entryMode) ? `&mode=${encodeURIComponent(entryMode)}` : "";
+    return `/new?niche=${encodeURIComponent(niche)}${mode}`;
+  };
 
   // ══════════════════════════════════════════════════════════════
   // SSE — connect only for jobs actively processing server-side.
@@ -578,7 +582,7 @@
                   {@const atGate = job.status.toUpperCase() === "AWAITING_GATE"}
                   <a class="row row-link" href="/jobs/{job.id}">
                     <span class="row-dot" style:background="var(--color-accent)"></span>
-                    <h3 class="row-title">{job.niche}</h3>
+                    <h3 class="row-title">{job.nicheDisplay ?? job.niche}</h3>
                     <span class="row-meta">
                       {#if atGate}Checkpoint reached{:else if job.solutionIdeasCount}<strong>{job.solutionIdeasCount} ideas</strong> ready{:else}Ideas ready{/if}
                       <span class="row-dim">· {ago(job.createdAt)}</span>
@@ -604,7 +608,7 @@
                   <div class="row">
                     <span class="row-dot" class:row-dot-live={isLive(job.status)} style:--rail={meta.color} style:background={meta.color}></span>
                     <div class="row-main">
-                      <h3 class="row-title">{job.niche}</h3>
+                      <h3 class="row-title">{job.nicheDisplay ?? job.niche}</h3>
                       {#if (
                         job.status === "RUNNING"
                         && job.activeDispatchKind !== "SEED_IDEA"
@@ -617,7 +621,7 @@
                             aria-valuenow={Math.round(job.progressPercent ?? 0)}
                             aria-valuemin="0"
                             aria-valuemax="100"
-                            aria-label="Research progress for {job.niche}"
+                            aria-label="Research progress for {job.nicheDisplay ?? job.niche}"
                           ><span style:width="{job.progressPercent ?? 0}%" style:background={meta.color}></span></div>
                           <span class="row-sub row-dim">{job.currentStageName ?? meta.label}{#if counts.total} · {counts.current}/{counts.total}{/if}</span>
                         </div>
@@ -673,7 +677,7 @@
                   <a class="row row-link" href={reportHref(job)}>
                     <span class="row-dot" style:background="var(--color-success-text)"></span>
                     <div class="row-main">
-                      <h3 class="row-title">{s?.solution_name ?? job.niche}</h3>
+                      <h3 class="row-title">{s?.solution_name ?? job.nicheDisplay ?? job.niche}</h3>
                       {#if s?.solution_tagline && s.solution_tagline !== s.solution_name}
                         <p class="row-sub row-dim">{s.solution_tagline}</p>
                       {/if}
@@ -712,7 +716,7 @@
                 {#each fFailed as job (job.id)}
                   <div class="row">
                     <span class="row-dot" style:background="var(--color-error-text)"></span>
-                    <h3 class="row-title">{job.niche}</h3>
+                    <h3 class="row-title">{job.nicheDisplay ?? job.niche}</h3>
                     <span class="row-meta">
                       <span class="row-fail">Failed</span>{#if job.creditRefunded}<span class="row-dim"> · refunded</span>{/if}
                     </span>
@@ -745,12 +749,12 @@
                     <div class="row">
                       <span class="row-dot" style:background={col}></span>
                       <div class="row-main">
-                        <h3 class="row-title">{job.niche}</h3>
+                        <h3 class="row-title">{job.nicheDisplay ?? job.niche}</h3>
                         <p class="row-sub row-dim">
                           {gated ? "Quality gate" : "Cancelled"}{#if job.creditRefunded} · credit refunded{/if}{#if gated && job.stopReasonDetails?.recommendation} · {job.stopReasonDetails.recommendation}{/if}
                         </p>
                       </div>
-                      <a class="row-cta row-cta-muted" href={rerunHref(job.niche)}>
+                      <a class="row-cta row-cta-muted" href={rerunHref(job.niche, job.entryMode)}>
                         {gated ? "Try broader niche" : "Run again"} <ArrowRight size={13} aria-hidden="true" />
                       </a>
                     </div>

@@ -42,12 +42,32 @@ function loadTemplate(name: string): string {
 }
 
 /**
- * Replace template placeholders with values
+ * Escape a value for interpolation into HTML template markup. Attribute-safe:
+ * several templates place {{NICHE}} inside double quotes, so " and ' are escaped too.
  */
-function renderTemplate(template: string, vars: Record<string, string>): string {
+function escapeHtml(value: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  };
+  return value.replace(/[&<>"']/g, (ch) => map[ch]);
+}
+
+/**
+ * Replace template placeholders with values.
+ *
+ * The replacement uses a function form deliberately: with a string replacement,
+ * `$&`, `$$`, `` $` `` and `$'` inside the VALUE (e.g. a niche like "saves $$$")
+ * are interpreted as replacement patterns and corrupt the output.
+ */
+function renderTemplate(template: string, vars: Record<string, string>, escapeValues = false): string {
   let result = template;
   for (const [key, value] of Object.entries(vars)) {
-    result = result.replace(new RegExp(`{{${key}}}`, 'g'), value);
+    const safe = escapeValues ? escapeHtml(value) : value;
+    result = result.replace(new RegExp(`{{${key}}}`, 'g'), () => safe);
   }
   return result;
 }
@@ -119,7 +139,7 @@ export async function sendJobStartEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('jobStart.html'), vars);
+    const html = renderTemplate(loadTemplate('jobStart.html'), vars, true);
     const text = renderTemplate(loadTemplate('jobStart.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Research Has Started!', text, html);
@@ -146,7 +166,7 @@ export async function sendCompletionEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('jobComplete.html'), vars);
+    const html = renderTemplate(loadTemplate('jobComplete.html'), vars, true);
     const text = renderTemplate(loadTemplate('jobComplete.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Research is Ready!', text, html);
@@ -171,7 +191,7 @@ export async function sendLandingPageReadyEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('landingPageReady.html'), vars);
+    const html = renderTemplate(loadTemplate('landingPageReady.html'), vars, true);
     const text = renderTemplate(loadTemplate('landingPageReady.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Landing Page is Ready!', text, html);
@@ -243,7 +263,7 @@ export async function sendFailureEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('jobError.html'), vars);
+    const html = renderTemplate(loadTemplate('jobError.html'), vars, true);
     const text = renderTemplate(loadTemplate('jobError.txt'), vars);
 
     await sendEmail(to, 'NicheIQ Research Issue', text, html);
@@ -270,7 +290,7 @@ export async function sendSolutionsReadyEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('solutionsReady.html'), vars);
+    const html = renderTemplate(loadTemplate('solutionsReady.html'), vars, true);
     const text = renderTemplate(loadTemplate('solutionsReady.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Solutions Are Ready for Review!', text, html);
@@ -299,7 +319,7 @@ export async function sendGateReachedEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('gateReached.html'), vars);
+    const html = renderTemplate(loadTemplate('gateReached.html'), vars, true);
     const text = renderTemplate(loadTemplate('gateReached.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Research Is Waiting for You', text, html);
@@ -326,7 +346,7 @@ export async function sendPhase2StartEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('phase2Start.html'), vars);
+    const html = renderTemplate(loadTemplate('phase2Start.html'), vars, true);
     const text = renderTemplate(loadTemplate('phase2Start.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ Deep Research Has Begun!', text, html);
@@ -359,7 +379,7 @@ export async function sendRegenerationCompleteEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('regenerationComplete.html'), vars);
+    const html = renderTemplate(loadTemplate('regenerationComplete.html'), vars, true);
     const text = renderTemplate(loadTemplate('regenerationComplete.txt'), vars);
 
     await sendEmail(to, 'Your NicheIQ idea batch is ready', text, html);
@@ -386,7 +406,7 @@ export async function sendSelectionReminderEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('selectionReminder.html'), vars);
+    const html = renderTemplate(loadTemplate('selectionReminder.html'), vars, true);
     const text = renderTemplate(loadTemplate('selectionReminder.txt'), vars);
 
     await sendEmail(to, 'Reminder: Your NicheIQ Solutions Are Waiting', text, html);
@@ -413,7 +433,7 @@ export async function sendCreditBonusEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('creditBonus.html'), vars);
+    const html = renderTemplate(loadTemplate('creditBonus.html'), vars, true);
     const text = renderTemplate(loadTemplate('creditBonus.txt'), vars);
 
     await sendEmail(to, "You've Received NicheIQ Credits!", text, html);
@@ -435,7 +455,7 @@ export async function sendPasswordResetEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('passwordReset.html'), vars);
+    const html = renderTemplate(loadTemplate('passwordReset.html'), vars, true);
     const text = renderTemplate(loadTemplate('passwordReset.txt'), vars);
 
     await sendEmail(to, 'Reset your NicheIQ password', text, html);
@@ -459,7 +479,7 @@ export async function sendSocialLoginReminderEmail(
   };
 
   try {
-    const html = renderTemplate(loadTemplate('socialLoginReminder.html'), vars);
+    const html = renderTemplate(loadTemplate('socialLoginReminder.html'), vars, true);
     const text = renderTemplate(loadTemplate('socialLoginReminder.txt'), vars);
 
     await sendEmail(to, 'Sign in to NicheIQ', text, html);

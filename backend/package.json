@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "check:selection-boundary": "tsx src/architecture/checkSelectionBoundary.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -19,7 +20,7 @@
     "assign:free-preview": "tsx scripts/assignFreePreview.ts",
     "seed:plans": "tsx scripts/seedSubscriptionPlans.ts",
     "prune:slugless": "tsx scripts/pruneSluglessCatalogRows.ts",
-    "lint": "eslint src/",
+    "lint": "npm run check:selection-boundary && eslint src/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -47,7 +48,9 @@
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^6.0.3",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^8.57.1",
     "prisma": "^5.22.0",
     "supertest": "^7.2.2",
     "tsx": "^4.19.2",

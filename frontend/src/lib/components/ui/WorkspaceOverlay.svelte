@@ -33,11 +33,24 @@
 	let frameEl = $state<HTMLElement>();
 	let layerEl = $state<HTMLDivElement>();
 	let mounted = $state(false);
+	let wideDockViewport = $state(true);
+
+	const responsiveSideSheet = $derived(!modal && !wideDockViewport);
+	const effectiveModal = $derived(modal || responsiveSideSheet);
 
 	// The open state may come from browser storage. Rendering the server default
 	// would flash one overlay geometry before hydration applies that preference.
 	onMount(() => {
+		const dockMedia = window.matchMedia?.("(min-width: 1400px)");
+		const syncDockPresentation = () => {
+			wideDockViewport = dockMedia?.matches ?? true;
+		};
+
+		syncDockPresentation();
 		mounted = true;
+		dockMedia?.addEventListener("change", syncDockPresentation);
+
+		return () => dockMedia?.removeEventListener("change", syncDockPresentation);
 	});
 
 	const FOCUSABLE =
@@ -50,7 +63,7 @@
 	}
 
 	$effect(() => {
-		if (!open || !modal || !frameEl || !layerEl) return;
+		if (!open || !effectiveModal || !frameEl || !layerEl) return;
 
 		const previousFocus =
 			document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -109,7 +122,7 @@
 
 		// A running tour portals its popover OUTSIDE this frame; our trap would make
 		// its Next button unreachable and deadlock the tour. driver.js runs its own.
-		if (modal && event.key === "Tab" && !tourState.active) {
+		if (effectiveModal && event.key === "Tab" && !tourState.active) {
 			trapTab(event);
 			return;
 		}
@@ -123,13 +136,15 @@
 		bind:this={layerEl}
 		use:portal
 		class="workspace-overlay"
-		class:workspace-overlay--modal={modal}
-		class:workspace-overlay--docked={!modal}
+		class:workspace-overlay--modal={effectiveModal}
+		class:workspace-overlay--docked={!effectiveModal}
+		class:workspace-overlay--side-sheet={responsiveSideSheet}
 		class:workspace-overlay--standard={size === "standard"}
-		data-workspace-overlay={modal ? "modal" : "docked"}
+		data-workspace-overlay={effectiveModal ? "modal" : "docked"}
+		data-workspace-overlay-presentation={responsiveSideSheet ? "side-sheet" : modal ? "expanded" : "dock"}
 		data-workspace-overlay-size={size}
 	>
-		{#if modal}
+		{#if effectiveModal}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="workspace-overlay__scrim" aria-hidden="true" onclick={onClose}></div>
@@ -138,8 +153,8 @@
 		<section
 			bind:this={frameEl}
 			class="workspace-overlay__frame"
-			role={modal ? "dialog" : undefined}
-			aria-modal={modal ? "true" : undefined}
+			role={effectiveModal ? "dialog" : undefined}
+			aria-modal={effectiveModal ? "true" : undefined}
 			aria-label={label}
 			tabindex="-1"
 			onkeydown={handleKeydown}
@@ -195,18 +210,24 @@
 	}
 
 	.workspace-overlay--docked .workspace-overlay__frame {
-		right: max(var(--space-4), env(safe-area-inset-right));
+		right: max(var(--analyst-dock-inset), env(safe-area-inset-right));
 		/* DecisionRail publishes its measured height on the document root. Because
 		   both surfaces are body-portaled and bottom-anchored, reserve that height
 		   here and in the viewport-bounded height instead of covering the commit CTA. */
 		bottom: max(
-			calc(var(--decision-rail-height, 0px) + var(--space-4)),
+			calc(var(--decision-rail-height, 0px) + var(--analyst-dock-inset)),
 			env(safe-area-inset-bottom)
 		);
-		width: min(26rem, calc(100vw - var(--space-8)));
+		width: min(
+			var(--analyst-dock-width),
+			calc(100vw - var(--analyst-dock-inset) - var(--analyst-dock-inset))
+		);
 		height: min(
 			34rem,
-			calc(100dvh - var(--decision-rail-height, 0px) - var(--space-8))
+			calc(
+				100dvh - var(--decision-rail-height, 0px)
+				- var(--analyst-dock-inset) - var(--analyst-dock-inset)
+			)
 		);
 		animation: workspace-overlay-in var(--duration-fast) var(--ease-out) both;
 	}
@@ -233,6 +254,24 @@
 		max-width: 56rem;
 		top: max(var(--space-8), 5vh);
 		bottom: max(var(--space-8), 5vh);
+	}
+
+	/* A requested dock becomes an honest modal side sheet below 1400px. This
+	   selector overrides the expanded-dialog geometry while retaining the same
+	   scrim, focus trap, background isolation, and scroll lock above. */
+	.workspace-overlay--side-sheet .workspace-overlay__frame {
+		top: max(var(--analyst-dock-inset), env(safe-area-inset-top));
+		right: max(var(--analyst-dock-inset), env(safe-area-inset-right));
+		bottom: max(var(--analyst-dock-inset), env(safe-area-inset-bottom));
+		left: auto;
+		width: min(
+			var(--analyst-dock-width),
+			calc(100vw - var(--analyst-dock-inset) - var(--analyst-dock-inset))
+		);
+		height: auto;
+		max-width: none;
+		margin-inline: 0;
+		animation-name: workspace-overlay-in;
 	}
 
 	.workspace-overlay--modal .workspace-overlay__frame > :global(*) {

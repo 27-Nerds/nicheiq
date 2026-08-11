@@ -12,6 +12,7 @@
  * entry must be dropped rather than crash the ranked list.
  */
 
+import { buyerFacingIdeaProse } from "$lib/selection/buyerFacingResearchProse";
 import type {
 	IdeaThesis,
 	IdeaThesisPartition,
@@ -81,6 +82,16 @@ function readMembers(raw: Record<string, unknown>): ThesisMember[] {
 	return stringList(raw.member_idea_names).map((name) => ({ name }));
 }
 
+/** The assumption is PIPELINE PROSE, and it is the densest pocket of pipeline vocabulary in
+ *  the whole partition: 132 of the corpus's capitalised "Cold start" instances are in this
+ *  one field, e.g. "Cold start: the product has no data until a customer supplies it — …".
+ *  It rendered raw at `SelectionWorkbench.svelte:3685` through round 6 while a unit test
+ *  asserted a rewrite that no render path performed. Sanitising in the READER covers the
+ *  workbench, the shared-discovery view and the job page at once, and keeps the value used
+ *  as the `{#each}` key identical to the value on screen.
+ *
+ *  `idea_name` is deliberately NOT sanitised — it is a proper name (see
+ *  `SelectionWorkbench.svelte:2114`), and `source_field` is a machine token. */
 function readFatalAssumptions(raw: unknown): ThesisFatalAssumption[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.flatMap((entry) => {
@@ -93,7 +104,7 @@ function readFatalAssumptions(raw: unknown): ThesisFatalAssumption[] {
 		return [{
 			idea_name: str(item.idea_name),
 			source_field: str(item.source_field),
-			assumption,
+			assumption: buyerFacingIdeaProse(assumption) || assumption,
 		}];
 	});
 }

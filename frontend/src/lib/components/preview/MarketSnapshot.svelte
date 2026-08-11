@@ -19,6 +19,26 @@
   const totalTrendPosts = $derived(trend.reduce((sum, t) => sum + t.count, 0));
   const showChart = $derived(totalTrendPosts >= 5);
 
+  /**
+   * The smallest baseline window this component will divide by. `growthPct` is
+   * (recent 6 months - previous 6) / previous 6, over RAW captured post counts,
+   * and the pipeline's only guard is that the divisor is non-zero. So a baseline
+   * of 3 posts rising to 7 prints "up 133%" and a baseline of 7 rising to 27
+   * prints "up 286%" - real numbers from captured runs, and both are sampling
+   * noise, not a market moving. At a baseline of 10 one extra post moves the
+   * headline by 10 percentage points, which is the coarsest the figure can be
+   * and still be read as a rate; below that it is a ratio of small integers.
+   * Under the floor the raw counts are shown instead - they are true at any n.
+   */
+  const MIN_BASELINE_DISCUSSIONS = 10;
+
+  // The same split the percentage divides by: the last 6 complete months against
+  // the 6 before them. `slice(-12, -6)` reproduces both pipeline branches exactly
+  // - with fewer than 12 months it collapses to "everything before the recent 6".
+  const recentDiscussions = $derived(trend.slice(-6).reduce((sum, t) => sum + t.count, 0));
+  const baselineDiscussions = $derived(trend.slice(-12, -6).reduce((sum, t) => sum + t.count, 0));
+  const showGrowthPct = $derived(growthPct !== null && baselineDiscussions >= MIN_BASELINE_DISCUSSIONS);
+
   function formatMonth(month: string): string {
     const [year, m] = month.split('-');
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -38,13 +58,27 @@
 
 <div class="ms">
   <div class="ms-header">
-    {#if growthPct !== null}
+    {#if growthPct !== null && showGrowthPct}
       <div class="ms-growth">
         <span class="ms-growth-value" class:is-negative={growthPct < 0}>
           {growthPct >= 0 ? '\u2191' : '\u2193'} {Math.abs(growthPct)}%
         </span>
         <span class="ms-growth-label">discussion volume</span>
-        <span class="ms-growth-period">Recent 6 months vs previous 6</span>
+        <!-- The counts the percentage divides, at the first level of the card:
+             a rate over captured posts cannot be read without its denominator. -->
+        <span class="ms-growth-period">
+          {recentDiscussions} vs {baselineDiscussions} discussions, recent 6 months vs previous 6
+        </span>
+      </div>
+    {:else if growthPct !== null}
+      <div class="ms-growth">
+        <span class="ms-growth-value is-neutral">
+          {recentDiscussions} vs {baselineDiscussions}
+        </span>
+        <span class="ms-growth-label">discussions captured</span>
+        <span class="ms-growth-period">
+          Recent 6 months vs previous 6. Too few captured discussions to state a percentage.
+        </span>
       </div>
     {/if}
 
@@ -142,6 +176,10 @@
   }
   .ms-growth-value.is-negative {
     color: var(--color-warning-dark);
+  }
+  /* Raw counts are a reading, not a verdict, so they carry no sign color. */
+  .ms-growth-value.is-neutral {
+    color: var(--color-text-primary);
   }
 
   .ms-growth-label {

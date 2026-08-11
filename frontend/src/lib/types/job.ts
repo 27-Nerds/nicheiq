@@ -135,6 +135,7 @@ export type DecisionProfilePreset = 'balanced' | 'fast_revenue' | 'solo_bootstra
 export type WeeklyTime = 'under_10' | '10_20' | '20_40' | 'full_time';
 export type ValidationBudget = 'under_1k' | '1k_5k' | '5k_20k' | '20k_plus';
 export type TeamShape = 'solo' | 'small_team' | 'funded_team';
+export type BuildModel = 'self' | 'contractor';
 export type RevenueHorizon = '30_days' | '90_days' | '6_months' | 'patient';
 export type DistributionAdvantage = 'seo' | 'community' | 'existing_audience' | 'outbound' | 'paid' | 'partnerships';
 
@@ -143,6 +144,8 @@ export interface SelectionDecisionProfile {
   weeklyTime: WeeklyTime;
   budget: ValidationBudget;
   team: TeamShape;
+  /** Added after the original profile contract. Missing means genuinely unspecified. */
+  buildModel?: BuildModel;
   revenueHorizon: RevenueHorizon;
   distributionAdvantages: DistributionAdvantage[];
   strengths: string;
@@ -368,6 +371,9 @@ export interface Job {
   id: string;
   email?: string;
   niche: string;
+  /** Display-safe short label (word-boundary truncated backend-side). Render this in
+   *  list rows/headers/titles; `niche` stays verbatim for re-run/prefill round-trips. */
+  nicheDisplay?: string;
   status: JobStatus | string;
   currentStage: number;
   currentStageName: string | null;
@@ -403,7 +409,9 @@ export interface Job {
   jobMode?: 'interactive' | 'auto' | null;
   // Entry mode — how the job was created. 'pain_research' (single/remix, skips
   // discovery stages 1-4) and 'deep_idea' (skips 1-5) drive shortened-flow UI.
-  entryMode?: 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea' | null;
+  // 'validate_idea' ("Check my idea") runs the full pipeline with the user's own
+  // idea seeded in and renders the idea-report layout at AWAITING_SELECTION.
+  entryMode?: 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea' | 'validate_idea' | null;
   selectedSolution?: string | null;
   selectedSolutions?: string[] | null;
   selectedSolutionIds?: string[] | null;

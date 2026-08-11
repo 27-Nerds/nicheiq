@@ -17,7 +17,11 @@ import {
   type UncoveredFamily,
 } from "$lib/types/ideaThesis";
 import pipelineIdeaTheses from "$lib/types/__tests__/fixtures/pipelineIdeaTheses.json";
+import nicheVerdictExemplar from "$lib/selection/__tests__/fixtures/nicheDifficultyVerdict.exemplar.json";
 import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
+import { RANKED_IDEAS_ANCHOR } from "$lib/selection/rankedIdeas";
+import { ideaPortfolioFingerprint } from "$lib/selection/ideaPortfolioFingerprint";
+import { normalizeSolutionPreviews } from "$lib/utils/displayGuards";
 
 // SelectionWorkbench embeds a REAL ChatThread (the seed card lives there), which loads
 // history on mount — stub the network-touching bits of $lib/api so mounting/submitting
@@ -77,7 +81,22 @@ function solution(name: string, overrides: Partial<SolutionPreview> = {}): Solut
   } as unknown as SolutionPreview;
 }
 
-const SOLUTIONS = [solution("Alpha Idea"), solution("Beta Idea")];
+/**
+ * The stored fingerprint the pipeline writes — produced here by the SAME authority the
+ * component consults, so these suites can never pass by two copies agreeing on the same
+ * mistake. (This helper used to be a third re-implementation that, like the component's,
+ * counted demoted candidates.)
+ */
+function portfolioFingerprint(solutions: SolutionPreview[]): string {
+  const fingerprint = ideaPortfolioFingerprint(solutions);
+  if (fingerprint === null) throw new Error("test pool is not fingerprintable");
+  return fingerprint;
+}
+
+const SOLUTIONS = [
+  solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 }),
+  solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 1 }),
+];
 
 const STAGE_COSTS = { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2, seed_idea: 3 };
 
@@ -87,6 +106,7 @@ const baseProps = {
   creditBalance: 100,
   stageCosts: STAGE_COSTS,
   canRegenerate: true,
+  ideaPortfolioSummaryFingerprint: portfolioFingerprint(SOLUTIONS),
   // The prop fails closed in the component; these suites describe a fully granted
   // owner. The ungated behaviour has its own describe block at the bottom of the file.
   decisionTools: true,
@@ -644,6 +664,24 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     await findByText("Automates invoice follow-up");
   });
 
+  it("rewrites internal ruled-out reasons from the real exemplar", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        examinedRuledOut: [{
+          ...RULED_OUT[0],
+          reason: "This batch result duplicated the existing candidate 'NDCShiftVet', so it was not appended.",
+        }],
+      },
+    });
+    await openAppendix(view);
+
+    expect(await view.findByText(
+      "This direction was already represented by 'NDCShiftVet', so it was not added again.",
+    )).toBeInTheDocument();
+    expect(view.container.textContent).not.toMatch(/batch result|not appended/i);
+  });
+
   it("opens summary analysis for a legacy ruled-out finding without an idea payload", async () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, examinedRuledOut: RULED_OUT },
@@ -694,11 +732,15 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
 
   it("opens a ranked idea from its shortened analyst-summary name", async () => {
     chatPanel.close();
-    const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)");
+    const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)", {
+      idea_id: "idea-pro-match-desk",
+      idea_revision: 1,
+    });
     const { findByRole } = render(SelectionWorkbench, {
       props: {
         ...baseProps,
         solutions: [proMatchDesk],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([proMatchDesk]),
         examinedRuledOut: [],
         ideaPortfolioSummary: "ProMatchDesk is the strongest reporting workflow.",
       },
@@ -753,13 +795,19 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
   });
 
   it("renders discovery-take idea links with the display title, not the internal codename", async () => {
+    const codenameIdeas = [
+      solution("AlphaIdeaCodename", {
+        idea_id: "idea-codename-alpha",
+        idea_revision: 1,
+        headline: "Alpha invoice chaser",
+      }),
+      solution("Beta Idea", { idea_id: "idea-codename-beta", idea_revision: 1 }),
+    ];
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
-        solutions: [
-          solution("AlphaIdeaCodename", { headline: "Alpha invoice chaser" }),
-          solution("Beta Idea"),
-        ],
+        solutions: codenameIdeas,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(codenameIdeas),
         ideaPortfolioSummary: "AlphaIdeaCodename most deserves deeper validation.",
       },
     });
@@ -847,6 +895,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       props: {
         ...baseProps,
         solutions: ideas,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(ideas),
         ideaPortfolioSummary: "Appliance Ledger and Model-to-Repair Decision Desk are the only candidates that deserve further validation.",
       },
     });
@@ -887,6 +936,156 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       "button", { name: /^InvoiceChaser ?, open details$/ },
     ));
     await findByRole("dialog", { name: "Ruled-out analysis: InvoiceChaser" });
+  });
+
+  it("shows guidance only when its fingerprint matches the live candidate set", async () => {
+    const reversedFingerprint = portfolioFingerprint([...SOLUTIONS].reverse());
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummaryFingerprint: reversedFingerprint,
+        ideaPortfolioSummary: "Alpha Idea is the strongest candidate to validate first.",
+      },
+    });
+
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      /Alpha Idea.*is the strongest candidate to validate first\./,
+    );
+    expect(view.getByText("Recommended")).toBeInTheDocument();
+  });
+
+  it("degrades when the pool changes without a summary recompute", async () => {
+    const currentPool = Array.from({ length: 12 }, (_, index) => solution(
+      `Idea ${index + 1}`,
+      {
+        idea_id: `idea-${index + 1}`,
+        idea_revision: 1,
+        adjusted_composite_score: (61 - index) / 100,
+      },
+    ));
+    const originalPool = currentPool.slice(0, 6);
+    const staleGuidance = "Idea 1 and Idea 5 deserve deeper validation next.";
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: currentPool,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(originalPool),
+        ideaPortfolioSummary: staleGuidance,
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("Discovery take unavailable");
+    expect(take).toHaveTextContent(
+      "Discovery guidance is unavailable for this candidate set. Review the ranked ideas below using their current scores and evidence.",
+    );
+    expect(view.queryByText(staleGuidance)).toBeNull();
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+    expect(view.getByRole("table", { name: "Ranked ideas" }))
+      .toHaveTextContent("Idea 12");
+  });
+
+  it("keeps the guidance when the pool carries demoted and absorbed candidates", async () => {
+    // The stored fingerprint skips demoted/absorbed (Python's visible_ideas(), mirrored in
+    // backend/src/utils/ideaPortfolioFingerprint.ts). normalizeSolutionPreviews does NOT —
+    // it keeps them — so a component-local fingerprint that counted them would see a
+    // different pool than the pipeline did and kill guidance that is in fact current.
+    const rawPool = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 }),
+      solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 1 }),
+      solution("Merged Idea", {
+        idea_id: "idea-merged", idea_revision: 1, candidate_status: "absorbed",
+      }),
+      solution("Dropped Idea", {
+        idea_id: "idea-dropped", idea_revision: 1, candidate_status: "demoted",
+      }),
+    ];
+    const { solutions: displayed } = normalizeSolutionPreviews(rawPool);
+    expect(displayed).toHaveLength(4);
+
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: displayed,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(rawPool),
+        ideaPortfolioSummary: "Alpha Idea is the strongest candidate to validate first.",
+      },
+    });
+
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      /Alpha Idea.*is the strongest candidate to validate first\./,
+    );
+  });
+
+  it("fails closed when the display layer drops a candidate the summary covered", async () => {
+    // normalizeSolutionPreviews (displayGuards.ts) drops entries with no solution_name, so a
+    // malformed/legacy pool reaches the workbench SHORTER than the pool the pipeline
+    // fingerprinted. There is no signal here that a candidate went missing, and guidance
+    // written about an idea the reader cannot see is exactly finding D2 — withhold.
+    const rawPool = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 }),
+      solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 1 }),
+      solution("", { idea_id: "idea-nameless", idea_revision: 1 }),
+    ];
+    const { solutions: displayed, invalidCount } = normalizeSolutionPreviews(rawPool);
+    expect(invalidCount).toBe(1);
+
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: displayed,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(rawPool),
+        ideaPortfolioSummary: "Alpha Idea is the strongest candidate to validate first.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("Discovery take unavailable");
+    expect(view.queryByText("Alpha Idea is the strongest candidate to validate first.")).toBeNull();
+  });
+
+  it("degrades gracefully for a legacy summary with no fingerprint", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummaryFingerprint: null,
+        ideaPortfolioSummary: "Alpha Idea is the strongest candidate to validate first.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("Discovery take unavailable");
+    expect(take).toHaveTextContent("Review the ranked ideas below");
+    expect(view.queryByText("Alpha Idea is the strongest candidate to validate first.")).toBeNull();
+  });
+
+  /**
+   * THE SECOND, INDEPENDENT ROUTE FOR `idea_portfolio_summary`, PINNED ON A VALUE THAT
+   * DISCRIMINATES. `buyerFacingReport` takes this field through `buyerFacingVerdictNarrative`
+   * at the REPORT boundary; this component reaches the raw prop and forks it again in a
+   * `$derived` of its own. Both were covered against not being sanitised at all and NEITHER
+   * against being on the wrong branch — over the 26 distinct values of this field under
+   * `output/` the two glosses produce zero differences, because every corpus occurrence there
+   * arrives as the `data corpus` compound, which resolves ABOVE the fork. So swapping this
+   * `$derived` to `buyerFacingResearchProse` left the whole suite green.
+   *
+   * A BARE `corpus` separates them: this field is prose about the ideas, so its corpus is the
+   * DATASET a product would have to build ("the recipe dataset"), never the run's own
+   * collected evidence. Asserted through the RENDER, because the fork happens in the
+   * component — a unit test on the function could not have caught a mis-wired `$derived`.
+   */
+  it("reads the portfolio summary's `corpus` as the DATASET, not as collected evidence", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummary:
+          "Alpha Idea already owns its inputs; Beta Idea still lacks the recipe corpus.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("lacks the recipe dataset");
+    expect(take).not.toHaveTextContent("collected evidence");
   });
 });
 
@@ -1110,7 +1309,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
 
   it("opens an exact candidate revision in a shareable detail tab", async () => {
     page.url = new URL(
-      "http://localhost/jobs/job-1?keep=1&detailTab=detail&ideaId=idea-b&ideaRevision=4#opportunities",
+      `http://localhost/jobs/job-1?keep=1&detailTab=detail&ideaId=idea-b&ideaRevision=4#${RANKED_IDEAS_ANCHOR}`,
     ) as typeof page.url;
     const view = render(SelectionWorkbench, {
       props: {
@@ -1235,7 +1434,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
   });
 
   it("preserves unrelated query state while opening and closing exact details", async () => {
-    page.url = new URL("http://localhost/jobs/job-1?keep=1#opportunities") as typeof page.url;
+    page.url = new URL(`http://localhost/jobs/job-1?keep=1#${RANKED_IDEAS_ANCHOR}`) as typeof page.url;
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
     const view = render(SelectionWorkbench, {
       props: {
@@ -1260,7 +1459,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
     expect(openedUrl.searchParams.get("ideaId")).toBe("idea-alpha");
     expect(openedUrl.searchParams.get("ideaRevision")).toBe("3");
     expect(openedUrl.searchParams.get("detailTab")).toBe("overview");
-    expect(openedUrl.hash).toBe("#opportunities");
+    expect(openedUrl.hash).toBe(`#${RANKED_IDEAS_ANCHOR}`);
 
     await fireEvent.click(view.getByRole("tab", { name: "All details" }));
     const tabUrl = new URL(
@@ -1369,6 +1568,99 @@ describe("SelectionWorkbench — stable selection identity", () => {
     expect(cleanedUrl.searchParams.has("detailTab")).toBe(false);
     expect(cleanedUrl.searchParams.has("ideaId")).toBe(false);
     expect(cleanedUrl.searchParams.has("ideaRevision")).toBe(false);
+  });
+
+  it("says so when a deep-linked evaluation is not in this report", async () => {
+    // `selectError` was WRITE-ONLY: declared, assigned by reviewEvaluationResult (and by
+    // the stale-shortlist-proposal path), and rendered nowhere — so an ?evaluationId=
+    // that matched no ruled-out record consumed the query, opened nothing, and said
+    // nothing. A dead deep link has to be visible, not silent.
+    page.url = new URL(
+      "http://localhost/jobs/job-1?evaluationId=cmdispatch-missing",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: [] },
+    });
+
+    await waitFor(() => expect(
+      view.getByText("That evaluated result is no longer available in this report."),
+    ).toBeInTheDocument());
+    expect(view.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("joins the seed deep-link contract: ?evaluationId=<dispatch id> opens a plain-seed finding carrying dispatch_id only", async () => {
+    // The two halves of the flagship seed link were only ever pinned APART: ChatThread
+    // emits `?evaluationId=<JobDispatch.id>` (producer) and the workbench resolves it
+    // against `finding.dispatch_id` (consumer). Nothing joined them, so renaming either
+    // carrier left every test green and the link dead — which is how this broke twice.
+    //
+    // A PLAIN seed is the only shape that exercises the join: `withIdentity` never
+    // stamps `evaluation_id` (only `stampSynthesizedIdeaIdentity` does), so `dispatch_id`
+    // is the sole carrier and the `evaluation_id` disjunct cannot mask a regression.
+    page.url = new URL(
+      "http://localhost/jobs/job-1?evaluationId=cmdispatch77",
+    ) as typeof page.url;
+    const plainSeedFinding: RuledOutFinding = {
+      pain_title: "Chasing late invoices",
+      idea_name: "InvoiceChaser",
+      source_frame: "user_seed",
+      reason: "Thin market signal",
+      market_fit: 0.2,
+      market_fit_band: "low",
+      prior_tier: "winner",
+      source: "demoted_winner",
+      evidence: "Only a handful of mentions",
+      dispatch_id: "cmdispatch77",
+    };
+
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: [plainSeedFinding] },
+    });
+
+    expect(
+      await view.findByRole("button", { name: "Close ruled-out analysis" }),
+    ).toBeInTheDocument();
+    expect(
+      view.queryByText("That evaluated result is no longer available in this report."),
+    ).not.toBeInTheDocument();
+
+    // Negative control: identical shape, a dispatch id from some other evaluation.
+    // Without it the positive half could pass on a match-everything consumer.
+    cleanup();
+    const other = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        examinedRuledOut: [{ ...plainSeedFinding, dispatch_id: "cmOTHER" }],
+      },
+    });
+
+    await waitFor(() => expect(
+      other.getByText("That evaluated result is no longer available in this report."),
+    ).toBeInTheDocument());
+    expect(
+      other.queryByRole("button", { name: "Close ruled-out analysis" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets a dead evaluation deep link be dismissed instead of pinning it for the session", async () => {
+    // `selectError` had no clear at all — unlike `detailUrlError`/`clearDetailUrlError` —
+    // so one dead deep link parked the message above the pool for the component's life.
+    page.url = new URL(
+      "http://localhost/jobs/job-1?evaluationId=cmdispatch-missing",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: [] },
+    });
+
+    await waitFor(() => expect(
+      view.getByText("That evaluated result is no longer available in this report."),
+    ).toBeInTheDocument());
+
+    await fireEvent.click(view.getByRole("button", { name: "Dismiss" }));
+
+    expect(
+      view.queryByText("That evaluated result is no longer available in this report."),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -2248,6 +2540,52 @@ describe("SelectionWorkbench — contextual analyst guidance", () => {
     expect(composer.value).toBe("");
     expect(streamChat).not.toHaveBeenCalled();
   });
+
+  // The backend names the records a next action refers to in `records` — the action
+  // itself carries no id fields. A test step that drops them deep-links to a planner
+  // with no assumption at all. Note what the URL below does NOT carry: `experiment-1`
+  // is named in `records` but there is no `experimentId` deep-link param, so this
+  // prefills the planner with the assumption — it does not reopen that saved draft.
+  it("deep-links the named assumption so Review test draft opens the planner prefilled with it", async () => {
+    const alpha = solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 });
+    vi.mocked(getSelectionDecisionState).mockResolvedValue({
+      schemaVersion: 1,
+      jobId: "job-1",
+      status: "AWAITING_SELECTION",
+      shortlist: { version: 1, items: [{ ideaId: "idea-alpha", ideaRevision: 1 }] },
+      profile: null,
+      founderFit: null,
+      challenges: [],
+      ownerEvidence: [],
+      assumptions: [],
+      experiments: [],
+      conclusions: [],
+      staleCounts: { shortlist: 0, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: 0 },
+      deepResearch: { eligible: true, optionalWorkRequired: false, blockers: [] },
+      nextAction: {
+        kind: "review_test_brief",
+        target: "experiments",
+        reason: "Review and lock the draft before collecting evidence.",
+        required: false,
+        ideas: [{ ideaId: "idea-alpha", ideaRevision: 1, title: "Alpha Idea" }],
+        lens: "demand",
+        records: [
+          { kind: "assumption", id: "assumption-1", version: 2 },
+          { kind: "experiment", id: "experiment-1" },
+        ],
+      },
+    } as never);
+
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [alpha], selectedSolutionIds: ["idea-alpha"] },
+    });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Review test draft" }));
+
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/risks?idea=idea-alpha%3A1&tool=tests&ideaId=idea-alpha&ideaRevision=1&assumptionId=assumption-1",
+    ));
+  });
 });
 
 describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
@@ -2287,6 +2625,60 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     const stats = view.getByLabelText("Idea summary");
     expect(stats.textContent).toMatch(/^2 ideas · Top score \d+$/);
     expect(stats).not.toHaveTextContent("--");
+  });
+
+  it("renders settled batch history after the ranked list in validate mode", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "batch-receipt-settled",
+        gateStage: 5,
+        role: "receipt",
+        content: "Batch settled",
+        patchJson: {
+          kind: "ledger_event",
+          version: 1,
+          event: "regeneration_settled",
+          patch: {},
+          rows: [],
+          operationId: "generation-op-settled",
+          batch: {
+            ordinal: 1,
+            focus: "novelty",
+            outcome: "completed",
+            generatedCount: 2,
+            addedCount: 2,
+            addedIdeaIds: ["idea-alpha", "idea-beta"],
+          },
+        },
+        createdAt: "2026-08-09T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+    await chatLedger.init("job-1");
+
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        groupByThesis: false,
+        headerTitle: "Your idea, ranked with the alternatives",
+      },
+    });
+
+    const heading = view.getByRole("heading", {
+      name: "Your idea, ranked with the alternatives",
+    });
+    const rankedList = view.getByRole("table", { name: "Ranked ideas" });
+    const history = view.getByText("Additional batches").closest("section");
+    if (!history) throw new Error("Expected settled batch history section");
+
+    expect(heading.compareDocumentPosition(rankedList) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .not.toBe(0);
+    expect(rankedList.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .not.toBe(0);
+    expect(view.queryByLabelText("Idea batch in progress")).toBeNull();
+    expect(view.getByText("1 batch run")).toBeInTheDocument();
+    expect(view.getByText("Batch 1 · Differentiation focus")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Review new candidates" })).toBeInTheDocument();
   });
 
   it("separates append-batch generation from branching a specific direction", async () => {
@@ -2336,12 +2728,12 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
   });
 
   it("opens the add-batch dialog from a recoverable history deep link", async () => {
-    page.url = new URL("http://localhost/jobs/job-1?addBatch=1#opportunities") as typeof page.url;
+    page.url = new URL(`http://localhost/jobs/job-1?addBatch=1#${RANKED_IDEAS_ANCHOR}`) as typeof page.url;
     const view = render(SelectionWorkbench, { props: baseProps });
 
     expect(await view.findByRole("dialog", { name: "Add another batch" })).toBeInTheDocument();
     expect(replaceState).toHaveBeenCalledWith(
-      "/jobs/job-1#opportunities",
+      `/jobs/job-1#${RANKED_IDEAS_ANCHOR}`,
       page.state,
     );
   });
@@ -2376,6 +2768,11 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       const view = render(SelectionWorkbench, { props: baseProps });
 
       expect(view.getByText("Adding another batch")).toBeInTheDocument();
+      const liveNotice = view.getByLabelText("Idea batch in progress");
+      const rankedList = view.getByRole("table", { name: "Ranked ideas" });
+      expect(liveNotice.compareDocumentPosition(rankedList) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .not.toBe(0);
+      expect(view.queryByText("Additional batches")).toBeNull();
       await vi.advanceTimersByTimeAsync(200 * 6000);
 
       expect(view.getByText(/Automatic checks paused/)).toBeInTheDocument();
@@ -2461,7 +2858,11 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     );
   });
 
-  it("keeps the opportunity-shape line visible while coverage disclosures file in the appendix", async () => {
+  // Data caveats change how the scores and counts above them read, so they sit at
+  // the FIRST level. They used to be filed inside the collapsed appendix, which put
+  // them behind two disclosures — and `appendixMeta` never counted them, so nothing
+  // on the collapsed appendix hinted they were there.
+  it("keeps the opportunity-shape line and the data caveats both at the first level", async () => {
     const angled = [
       solution("Alpha Idea", { winning_angle: "vertical_workflow" }),
       solution("Beta Idea", { winning_angle: "vertical_workflow" }),
@@ -2474,10 +2875,20 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     expect(view.getByText(
       "Workflow-leaning niche: 3 of 3 viable ideas win by owning a deep workflow for a specific user.",
     )).toBeInTheDocument();
-    expect(view.getByText("Data caveats")).not.toBeVisible();
 
-    await openAppendix(view);
+    const caveats = view.getByText("Data caveats");
+    expect(caveats).toBeVisible();
+    // Its own <details> is the ONLY disclosure between it and the page.
+    expect(caveats.closest(".appendix-body")).toBeNull();
+  });
+
+  it("renders no appendix at all when the data caveats are the only secondary content", () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, coverageNotes: ["Sampling skews to Reddit."] },
+    });
+
     expect(view.getByText("Data caveats")).toBeVisible();
+    expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
   });
 
   it("shows the appendix meta counts for collaborator and ruled-out records", async () => {
@@ -2727,17 +3138,25 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
   });
 
   it("explains why the highest-scoring idea is not the recommended one", () => {
+    const ideas = [
+      solution("FaxCorrectionCache", {
+        idea_id: "idea-fax",
+        idea_revision: 1,
+        adjusted_composite_score: 0.71,
+        red_team_verdict: "killed",
+        red_team_caveats: ["No reachable buyer owns the fax queue."],
+      }),
+      solution("CountPad Vet", {
+        idea_id: "idea-countpad",
+        idea_revision: 1,
+        adjusted_composite_score: 0.6,
+      }),
+    ];
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
-        solutions: [
-          solution("FaxCorrectionCache", {
-            adjusted_composite_score: 0.71,
-            red_team_verdict: "killed",
-            red_team_caveats: ["No reachable buyer owns the fax queue."],
-          }),
-          solution("CountPad Vet", { adjusted_composite_score: 0.6 }),
-        ],
+        solutions: ideas,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(ideas),
         ideaPortfolioSummary: "CountPad Vet is the strongest candidate to validate first.",
       },
     });
@@ -2762,13 +3181,23 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
   });
 
   it("stays silent about the split when the top-scoring idea IS the recommendation", () => {
+    const ideas = [
+      solution("CountPad Vet", {
+        idea_id: "idea-countpad",
+        idea_revision: 1,
+        adjusted_composite_score: 0.71,
+      }),
+      solution("FaxCorrectionCache", {
+        idea_id: "idea-fax",
+        idea_revision: 1,
+        adjusted_composite_score: 0.6,
+      }),
+    ];
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
-        solutions: [
-          solution("CountPad Vet", { adjusted_composite_score: 0.71 }),
-          solution("FaxCorrectionCache", { adjusted_composite_score: 0.6 }),
-        ],
+        solutions: ideas,
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(ideas),
         ideaPortfolioSummary: "CountPad Vet is the strongest candidate to validate first.",
       },
     });
@@ -3034,7 +3463,7 @@ describe("SelectionWorkbench — thesis partition", () => {
     ).toBe(true));
   });
 
-  it("leaves the tutorial exactly one checkbox to point at, whatever the sort", async () => {
+  it("anchors returns and the tutorial to the first visible grouped row", async () => {
     // REGRESSION: the anchor used to ride the row with global rank 0. Beta outscores
     // everything AND is a variant of the first thesis, so it renders only when that card
     // is expanded — the tutorial step had nothing to point at and driver.js pinned it to
@@ -3072,6 +3501,14 @@ describe("SelectionWorkbench — thesis partition", () => {
       "aria-label",
       "Select Order desk lead",
     );
+    const returnAnchor = view.container.querySelector(`#${RANKED_IDEAS_ANCHOR}`);
+    expect(returnAnchor).toHaveClass("opp-row");
+    expect(returnAnchor).toHaveTextContent("Order desk lead");
+    expect(returnAnchor?.querySelector("input")).toHaveAttribute(
+      "aria-label",
+      "Select Order desk lead",
+    );
+    expect(view.queryByLabelText("Select Order desk variant")).toBeNull();
 
     // One card head and one column head, so neither of those steps can pick a row at
     // random either.
@@ -3079,7 +3516,7 @@ describe("SelectionWorkbench — thesis partition", () => {
     expect(view.container.querySelectorAll('[data-tour="ranked-list"]')).toHaveLength(1);
   });
 
-  it("keeps the tutorial anchor unique on a flat, ungrouped list", async () => {
+  it("anchors returns and the tutorial to the first visible flat row", async () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, solutions: THESIS_SOLUTIONS },
     });
@@ -3087,6 +3524,84 @@ describe("SelectionWorkbench — thesis partition", () => {
     await waitFor(() => expect(view.getByText("Order desk lead")).toBeInTheDocument());
     expect(view.container.querySelectorAll('[data-tour="shortlist-checkbox"]')).toHaveLength(1);
     expect(view.container.querySelectorAll('[data-tour="thesis-group"]')).toHaveLength(0);
+    const returnAnchor = view.container.querySelector(`#${RANKED_IDEAS_ANCHOR}`);
+    expect(returnAnchor).toHaveClass("opp-row");
+    expect(returnAnchor).toHaveTextContent("Billing capture");
+    expect(returnAnchor?.querySelector("input")).toHaveAttribute(
+      "aria-label",
+      "Select Billing capture",
+    );
+  });
+
+  // The fixture is the CAPTURED verdict from
+  // output/checkpoints/preview_report_51a491dc-c095-4e21-befb-5cadf540629a.json — never
+  // retyped. An earlier version of this test rewrote every em dash to a colon so the
+  // sanitizer's regex would match, which is exactly how a rule keyed on `yet:` shipped
+  // green against a pipeline that emits `yet —`. If a rule and the fixture disagree, the
+  // RULE is wrong. See buyerFacingResearchProse.test.ts for the byte-equality guard.
+  it("rewrites pipeline-facing prose from the real exemplar before rendering it", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummary: nicheVerdictExemplar.idea_portfolio_summary,
+        nicheDifficultyVerdict: nicheVerdictExemplar.niche_difficulty_verdict,
+      },
+    });
+
+    expect(await view.findByText(/The collected evidence drifts/)).toHaveTextContent(
+      "Tighten the entry point or the product will end up serving the wrong user.",
+    );
+    expect(view.getByText(/Most ideas need a body of data that does not exist yet/)).toHaveTextContent(
+      "Plan how to collect, create, or obtain access to it before the product is useful.",
+    );
+    expect(view.getByText(/10 tools checked on the web/)).toHaveTextContent(
+      "Early evidence is limited. Deep Research can validate it.",
+    );
+    expect(view.getByText(/gap in the collected evidence/)).toHaveTextContent(
+      "published prices checked on the web show buyers already pay for tooling",
+    );
+    expect(view.getByText(/DaySmart Vet/)).toHaveTextContent(
+      "Willingness-to-pay is not the primary risk.",
+    );
+    // The portfolio summary is the same sentence family, sanitised through the same authority.
+    expect(view.getByText(/demonstrably pay for tooling:/)).toHaveTextContent(
+      "Early evidence is limited.",
+    );
+    expect(view.getByText(/Buyers here are small-business operators/)).toHaveTextContent(
+      "They are price-aware but used to paying for tools that save time or win customers.",
+    );
+    expect(view.container.textContent).not.toMatch(
+      /\bcorpus\b|cold-start|web-verified|paid wedge|Thin early signal|seed it|scrape it|\bwedge\b/i,
+    );
+  });
+
+  it("rewrites exemplar data-source and critic prose before opening idea details", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [solution("Alpha Idea", {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          data_acquisition_notes: "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. Evidence text was truncated mid-word.",
+          critic_concern: "The mechanism parity check found overlap and data_access is unverified.",
+        })],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([
+          solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 }),
+        ]),
+      },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: /^Review details for Alpha Idea/ }));
+    await fireEvent.click(await view.findByRole("tab", { name: "All details" }));
+    expect((await view.findAllByText(
+      "Data access has not been verified. Confirm that the required source is available before building.",
+    )).length).toBeGreaterThan(0);
+    expect(view.getByText(/The feature overlap check found overlap/)).toHaveTextContent(
+      "data access is unverified",
+    );
+    expect(view.container.textContent).not.toMatch(
+      /Data route UNVERIFIED|mechanism parity|data_access|truncated mid-word/i,
+    );
   });
 
   it("names the validated jobs that no surviving idea addresses", async () => {
@@ -3350,7 +3865,7 @@ describe("SelectionWorkbench — thesis partition", () => {
 
     await waitFor(() => expect(view.getByText("Records retention desk")).toBeInTheDocument());
     expect(view.getByText(
-      "2 new ideas from your last request — 1 joined existing theses, 1 opened a new thesis.",
+      "2 new ideas from your last request: 1 joined existing theses, 1 opened a new thesis.",
     )).toBeInTheDocument();
     // A batch that only added a variant to a standing thesis is NOT a new bet.
     expect(view.getAllByText("New thesis this batch")).toHaveLength(1);
@@ -3398,7 +3913,7 @@ describe("SelectionWorkbench — thesis partition", () => {
     await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
     // One real arrival, one summary, one chip — the headline and the markers under it
     // read the same set, so they cannot disagree.
-    expect(view.getByText("1 new idea from your last request — 1 joined existing theses."))
+    expect(view.getByText("1 new idea from your last request: 1 joined existing theses."))
       .toBeInTheDocument();
     expect(view.getAllByText("New in this batch")).toHaveLength(1);
     expect(view.getByLabelText("Select Order desk retry")).toBeInTheDocument();
@@ -3706,8 +4221,12 @@ describe("SelectionWorkbench — thesis partition", () => {
     expect(view.getByRole("button", { name: "2 flagged assumptions" })).toBeInTheDocument();
     const compliance = view.getByRole("button", { name: "4 flagged assumptions" });
     await fireEvent.click(compliance);
+    // The assumption is PIPELINE PROSE and is sanitised by `readIdeaTheses` on the way in,
+    // so what renders is the buyer-facing reading — em dash gone. It is joined with a COMMA
+    // rather than split into a new sentence: the tail is a relative clause modifying the
+    // clause before it, and a period leaves "Which means the modal case…", a fragment.
     expect(view.getByText(
-      "novelty: The anomaly detection is now the headline, but the core witness workflow still requires TWO people physically present at the tablet — which means the modal case (busy shift, only one other pe",
+      "novelty: The anomaly detection is now the headline, but the core witness workflow still requires TWO people physically present at the tablet, which means the modal case (busy shift, only one other pe",
     )).toBeVisible();
     expect(view.getByText("Weak point")).toBeVisible();
     expect(view.getAllByText("WitnessWire").length).toBeGreaterThan(0);

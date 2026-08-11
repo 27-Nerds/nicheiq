@@ -14,6 +14,10 @@ export const page = {
       },
     },
     creditBalance: 10,
+    // (app)/+layout.server.ts returns this on every navigation, so any component
+    // rendered under an authenticated route always has it. Mirrored here because
+    // the analyst surface reads the grant before offering a composer.
+    featureAccess: { analyst: true, decisionTools: true },
   },
   form: null,
   state: {},

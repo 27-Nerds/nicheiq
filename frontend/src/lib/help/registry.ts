@@ -41,6 +41,11 @@ export const HELP_TOPICS: HelpTopic[] = [
     subtitle: "What happens after you confirm one to three exact candidates for Deep Research",
   },
   {
+    slug: "idea-check",
+    title: "How the idea check works",
+    subtitle: "What a desk check of your own idea can and can't tell you, and the tests only you can run",
+  },
+  {
     slug: "methodology",
     title: "How scoring works",
     subtitle: "What the severity, commercial-intent, opportunity and idea scores mean, and how far to trust them",

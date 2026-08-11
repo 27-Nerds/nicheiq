@@ -1,0 +1,62 @@
+[
+ {
+  "why": "the full captured community list, alphabetically ordered by the pipeline and containing many subreddits that produced zero posts — the input that proves the rendered order is NOT this order",
+  "file": "output/checkpoints/discovery_data_51a491dc-c095-4e21-befb-5cadf540629a.json",
+  "path": ".subreddit_names",
+  "value": [
+   "r/ADHD",
+   "r/AskVet",
+   "r/Bellingham",
+   "r/BusinessLogBooks",
+   "r/BusinessPH",
+   "r/ChronicPain",
+   "r/ERP",
+   "r/Epilepsy",
+   "r/FamilyMedicine",
+   "r/FieldsOfMistriaGame",
+   "r/FulfillmentByAmazon",
+   "r/IndiaBusiness",
+   "r/IndustrialMaintenance",
+   "r/InventoryManagement",
+   "r/LifeProTips",
+   "r/Netsuite",
+   "r/NoStupidQuestions",
+   "r/Odoo",
+   "r/POS",
+   "r/PainManagement",
+   "r/PetAdvice",
+   "r/Pets",
+   "r/PharmacyTechnician",
+   "r/TalesFromThePharmacy",
+   "r/VetTech",
+   "r/Veterinary",
+   "r/dogs",
+   "r/labrats",
+   "r/logistics",
+   "r/partscounter",
+   "r/pharmacy",
+   "r/physicianassistant",
+   "r/supplychain",
+   "r/u_elogic_commerce",
+   "r/veterinaryprofession",
+   "r/webdevelopment"
+  ]
+ },
+ {
+  "why": "the per-community post counts, keyed WITHOUT the 'r/' prefix that subreddit_names carries. Contains two real ties (veterinaryprofession/ADHD at 3, PharmacyTechnician/BusinessLogBooks at 2) so the rendered order exercises the component's tie-break, not just a plain numeric sort.",
+  "file": "output/checkpoints/discovery_data_51a491dc-c095-4e21-befb-5cadf540629a.json",
+  "path": ".subreddit_post_counts",
+  "value": {
+   "InventoryManagement": 24,
+   "VetTech": 10,
+   "Veterinary": 9,
+   "pharmacy": 8,
+   "Pets": 5,
+   "veterinaryprofession": 3,
+   "ADHD": 3,
+   "PharmacyTechnician": 2,
+   "BusinessLogBooks": 2,
+   "NoStupidQuestions": 1
+  }
+ }
+]

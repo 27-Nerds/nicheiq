@@ -3,7 +3,8 @@ import { JobStatus, Prisma, SelectionExperimentStatus } from '@prisma/client';
 import { z } from 'zod';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
-import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
+import { getDiscoveryDataForJob } from '../services/assetService.js';
+import { getPreviewReportForJob } from '../services/selectionBoundary/rawPreviewReport.js';
 import { prisma } from '../services/db.js';
 import { prepareSelectionChallengeInput } from '../services/selectionChallengeService.js';
 import {

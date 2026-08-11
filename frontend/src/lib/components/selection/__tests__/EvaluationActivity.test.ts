@@ -1,6 +1,7 @@
 import { cleanup, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import EvaluationActivity from "../EvaluationActivity.svelte";
+import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
 const PENDING = {
   sourceMessageId: "message-1",
@@ -20,7 +21,7 @@ describe("EvaluationActivity — live view", () => {
 
     // With no operation on the wire yet, the wait defaults to queued rather than
     // implying a worker is already on it.
-    expect(view.getByText(/Waiting for a free worker — GLP-1 Off-Ramp/)).toBeInTheDocument();
+    expect(view.getByText(/Waiting for a free worker to score GLP-1 Off-Ramp/)).toBeInTheDocument();
     expect(view.getByText(/Your request is in the queue/)).toBeInTheDocument();
     expect(view.queryByText(/Deep Research/i)).not.toBeInTheDocument();
     expect(view.queryByText(/read-only/i)).not.toBeInTheDocument();
@@ -192,7 +193,7 @@ describe("EvaluationActivity — record view", () => {
     expect(view.getByText("It is in the ranked candidates above.")).toBeInTheDocument();
     expect(view.getByRole("link", { name: /View candidate/ })).toHaveAttribute(
       "href",
-      "/jobs/job-1#opportunities",
+      rankedIdeasHref("job-1"),
     );
   });
 

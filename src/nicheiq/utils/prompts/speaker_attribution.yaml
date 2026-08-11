@@ -1,0 +1,86 @@
+# Buyer-speaker attribution prompt
+# Used by: utils.speaker_attribution.attribute_evidence_speakers()
+# Variables: target_segment, target_context, community_hubs, candidates_text, candidate_count
+
+template: |
+  You are attributing WHO is speaking in social evidence, relative to one primary
+  target segment. This is identity classification, not topic relevance.
+
+  PRIMARY TARGET (the potential buyer): {target_segment}
+  TARGET CONTEXT: {target_context}
+  LLM-PRODUCED COMMUNITY HUBS (a weak prior only): {community_hubs}
+
+  Classify every authored contribution as exactly one role:
+  - buyer: the contribution itself gives direct, strong evidence that the speaker
+    is IN the primary target and owns, manages, purchases for, or is directly
+    responsible for the target's operation or workflow. The speaker need not be
+    evaluating a tool in this particular contribution.
+  - adjacent_worker: the speaker works in or sells into the domain but is not
+    confirmed as the primary target buyer (including employees, technicians,
+    suppliers, consultants, and vendors unless the text proves buyer authority).
+  - customer: the speaker is receiving/buying the primary target's SERVICE or is
+    an end customer, prospect, client, or other service recipient. Someone
+    shopping for the target's service is customer, NOT buyer for this classification.
+  - unknown: the contribution does not contain enough evidence to distinguish the
+    above roles. Uncertainty MUST remain unknown; never default to buyer.
+
+  Evidence rules:
+  - Use the quote/body and author provenance together. A first-person sentence is
+    not proof of role.
+  - Community, source volume, submitter status, and pain-to-segment provenance are
+    priors and presentation context, never sole proof of buyer identity.
+  - A community can contain buyers, workers, vendors, and customers. Do not infer
+    role from the community name alone.
+  - "Buyer" never means anyone purchasing anything. It means a confirmed member or
+    decision-maker of PRIMARY TARGET who could buy a tool for that target's operation.
+    Someone shopping for the primary target's professional service is the target's
+    customer, not a buyer-side member of the primary target.
+  - A practitioner or technician without direct evidence of primary-target
+    membership or responsibility for the target's operation is adjacent_worker.
+    "Likely an owner" is not proof.
+  - Primary targets can include narrow qualifiers such as team size, location
+    count, or growth stage that social authors rarely state. Direct evidence that
+    the speaker operates or manages the target-side business/workflow is enough
+    for buyer-side identity when those qualifiers are merely absent. An explicit
+    contradiction of a target qualifier is evidence for adjacent_worker instead.
+  - identity_evidence must itself name or unmistakably establish the target-side
+    occupation, business type, or operational role. Generic phrases such as "my
+    business", "our customers", using software, or performing the pain workflow
+    do not establish membership in the primary target.
+  - When the primary target is a professional or service provider, an operator of
+    some other business who performs that function in-house is a customer or
+    unknown, not the target-side buyer. Do not borrow target identity from the pain
+    title, community, or surrounding topic.
+  - Someone only planning to enter the target role, or explicitly operating below
+    a required current scale, is adjacent_worker rather than buyer.
+  - If the text merely discusses the target, uses the same nouns, or reports a
+    grievance as a customer, it is not buyer evidence.
+  - Use buyer confidence >= 0.70 only when the contribution directly establishes
+    primary-target membership plus operational responsibility. This is a
+    source-grounding floor, not a probability claim. Below it, choose
+    adjacent_worker or unknown.
+  - For every buyer verdict, identity_evidence must be one short VERBATIM excerpt
+    copied from the contribution, speaker_context, or author that directly shows
+    primary-target membership and operational responsibility. One phrase may prove
+    both (for example, a speaker saying they run the target operation). Do not
+    paraphrase or infer. authority_evidence is optional corroboration for explicit
+    ownership, management, budget, or purchasing authority; use null when the
+    grounded identity excerpt is sufficient. The pipeline rejects a buyer verdict
+    whose identity excerpt cannot be found verbatim in the supplied source fields.
+
+  Contributions ({candidate_count} total; JSON lines):
+  {candidates_text}
+
+  Return a JSON object with an "attributions" array containing exactly
+  {candidate_count} objects. Each object must have:
+  - index: the input 1-based index
+  - role: "buyer" | "adjacent_worker" | "customer" | "unknown"
+  - confidence: number from 0 to 1
+  - rationale: one short sentence citing the identity evidence or why it is absent
+  - identity_evidence: exact source excerpt proving primary-target membership, or null
+  - authority_evidence: exact source excerpt proving buyer authority, or null
+
+  <verification>
+  Before returning, verify every index from 1 through {candidate_count} appears
+  exactly once. If uncertain, use unknown rather than buyer.
+  </verification>

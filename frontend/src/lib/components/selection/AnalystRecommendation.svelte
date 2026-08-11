@@ -54,11 +54,10 @@
   }
   .analyst-summary-head { padding-top: 0.08rem; }
   .analyst-summary-head h3 {
-    max-width: 9rem;
     margin: 0;
     color: var(--color-text-secondary);
     font-family: var(--font-display);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     letter-spacing: -0.01em;
     line-height: 1.35;
@@ -72,13 +71,13 @@
     max-width: none;
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.58;
     text-wrap: pretty;
   }
   .analyst-summary-text--verdict {
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 400;
   }
   .analyst-summary :global(button.idea-reference-link) {
@@ -107,7 +106,7 @@
     padding: 0.08rem 0;
     color: var(--color-text-secondary);
     cursor: pointer;
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     list-style: none;
     transition: color var(--duration-fast) var(--ease-default);

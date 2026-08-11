@@ -211,6 +211,15 @@ class DataQualitySummary(BaseModel):
     )
 
 
+class AudienceDriftNotice(BaseModel):
+    """Specific, recommendation-scoped audience divergence for buyer-facing surfaces."""
+
+    requested_audience: str
+    dossier_primary_segment: str
+    recommended_source_segments: list[str]
+    message: str
+
+
 class NicheDifficultyVerdict(BaseModel):
     """Candid 'Research Reality Check' verdict on how well software can solve this niche.
 
@@ -264,6 +273,18 @@ class NicheDifficultyVerdict(BaseModel):
     buyer_class_note: Optional[str] = Field(
         default=None,
         description="User-facing one-liner on what the buyer class means for monetization"
+    )
+    monetization_guidance: Optional[str] = Field(
+        default=None,
+        description="The niche-level monetization line the report stands behind, derived "
+                    "deterministically from the wallet evidence (utils/niche_difficulty."
+                    "monetization_guidance). Reader-facing: it is the ONLY niche-level statement "
+                    "about how the product makes money that the pipeline authors, and the reason "
+                    "every prose layer is told commercial-shape selection is out of its remit."
+    )
+    audience_drift_notice: Optional[AudienceDriftNotice] = Field(
+        default=None,
+        description="Structured requested-to-dossier-to-recommendation audience mismatch"
     )
 
 
@@ -796,9 +817,18 @@ class FinalReport(BaseModel):
         default=None,
         description=(
             "LLM-narrated honest assessment of the visible idea pool, grounded in verified "
-            "Phase-1 signals. Computed once in Stage 5 (see utils/idea_portfolio_summary.py) "
-            "and carried on state; None when the pool was empty or the LLM pass failed its "
+            "Phase-1 signals. Computed in Stage 5 and refreshed after visible candidate-set "
+            "mutations (see utils/idea_portfolio_summary.py); None when the pool was empty "
+            "or the LLM pass failed its "
             "name-coverage guardrail. Mirrors the preview report's top-level field."
+        ),
+    )
+    idea_portfolio_summary_fingerprint: Optional[str] = Field(
+        default=None,
+        description=(
+            "Canonical sorted visible idea ids+revisions targeted by the portfolio-summary "
+            "generation attempt. Consumers must not present the summary as current unless "
+            "this exactly matches the live candidate set. None on legacy reports."
         ),
     )
     refinement_highlights: Optional[RefinementHighlights] = Field(
@@ -1399,6 +1429,10 @@ class AudienceMappingResult(BaseModel):
     )
     primary_target_segment: str = Field(..., description="Recommended primary target segment name")
     segment_prioritization_rationale: str = Field(..., description="Why this segment should be targeted first (2-3 sentences)")
+    audience_drift_notice: Optional[AudienceDriftNotice] = Field(
+        default=None,
+        description="Structured requested-to-dossier-to-recommendation audience mismatch"
+    )
 
     # Influencers & Communities (Python-computed in audience_mapping_crew, not LLM-produced)
     key_influencers: list[InfluencerProfile] = Field(
@@ -1842,6 +1876,37 @@ class ResearchState(BaseModel):
     user_adjusted: bool = Field(
         default=False, description="True once any guided-mode gate patch has been applied")
 
+    # "Check my idea" (entry_mode='validate_idea') — the user's own idea. The raw pitch is
+    # display/echo-only; the compact brief is the seed_text for the Stage-5 seed pipeline
+    # (is_seed_faithful is calibrated for short briefs, not 2000-char pitches). All three
+    # persist via checkpoint metadata (plain-value pattern) and predate no legacy data —
+    # always read with getattr().
+    user_idea_text: Optional[str] = Field(
+        default=None, description="validate_idea: the user's raw idea pitch (display only)")
+    user_idea_brief: Optional[str] = Field(
+        default=None, description="validate_idea: canonical short brief used as seed_text")
+    user_idea_inferred_fields: Optional[list[str]] = Field(
+        default=None,
+        description="validate_idea: which of audience/problem/delivery the Stage-1 parser "
+                    "inferred (empty list = all stated; None = not parsed)")
+    user_idea_pivot: Optional[dict] = Field(
+        default=None,
+        description="validate_idea: record of the wedge-pivot attempt on the user's idea "
+                    "(attempted/outcome/trigger_finding/because/keeps/changes/"
+                    "reason_not_shown/ries_label/name) — written regardless of outcome; "
+                    "the report's pivot-absent state is mandatory copy")
+    user_idea_identity_terms: Optional[dict] = Field(
+        default=None,
+        description="validate_idea: Stage-1 clause keyword lists "
+                    "{mechanism|audience|problem|delivery: list[str]} from the pitch; "
+                    "consumed by the report block's drift detector and the brief-parity "
+                    "probe. Empty list = clause not stated. None = not parsed.")
+    user_idea_brief_parity: Optional[str] = Field(
+        default=None,
+        description="validate_idea: display-only parity note from the brief-derived "
+                    "probe of the PITCHED mechanism (same note format as "
+                    "incumbent_parity). Never feeds outcome/confidence/pivot.")
+
     # Niche-fidelity telemetry (non-scoring; surfaced as report caveats in Stage 10).
     # Keys may include: anchors_active (bool), anchor_entity_count (int),
     # query_anchor_pct (float), dropped_offniche_queries (int),
@@ -1950,8 +2015,16 @@ class ResearchState(BaseModel):
         default=None,
         description=(
             "LLM-narrated honest assessment of the visible idea pool, grounded in verified "
-            "Phase-1 signals (see utils/idea_portfolio_summary.py). None when the pool was "
-            "empty or the grounded LLM pass failed its name-coverage guardrail."
+            "Phase-1 signals (see utils/idea_portfolio_summary.py). Refreshed after visible "
+            "candidate-set mutations; None when the pool was empty or the grounded LLM pass "
+            "failed its name-coverage guardrail."
+        ),
+    )
+    idea_portfolio_summary_fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "Canonical sorted visible idea ids+revisions targeted by the most recent "
+            "portfolio-summary generation attempt. None on legacy checkpoints."
         ),
     )
     # Generic degradation ledger: every FAIL-OPEN gate or silent quality reduction anywhere in the

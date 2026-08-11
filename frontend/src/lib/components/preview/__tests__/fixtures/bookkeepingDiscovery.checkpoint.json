@@ -1,0 +1,1091 @@
+{
+  "methodology": {
+    "urls_searched": 507,
+    "urls_relevant": 244,
+    "filtering_rate": 48.1,
+    "quality_tier": "EXCELLENT",
+    "pain_point_quality_tier": "GOLD",
+    "pain_point_confidence": 0.9788461538461539,
+    "total_engagement": 8175,
+    "avg_engagement": 52.4
+  },
+  "hero_quote": {
+    "text": "All of the bank recs take me around 6 hours total (this includes multiple bank accounts)",
+    "post_id": "n6lb9x",
+    "source_url": "https://reddit.com/comments/n6lb9x",
+    "upvotes": 17,
+    "subreddit": "Accounting",
+    "pain_point_title": "Reconciling large bank statements (5000+ lines) manually despite software automation"
+  },
+  "quotes": {
+    "Forced to repeatedly identify close bottlenecks with no new findings": [
+      {
+        "text": "My company wants me to \"identify bottlenecks\" in our close process so we can close faster...but we already did this 6 months ago...and 6 months before that...and 6 months before that..",
+        "post_id": "1i2zs18",
+        "source_url": "https://reddit.com/comments/1i2zs18",
+        "upvotes": 574,
+        "subreddit": "Accounting"
+      }
+    ],
+    "Management demands close speed that would compromise accuracy": [
+      {
+        "text": "One and a half days to close and the books haven't been accurate in a long, long time.",
+        "post_id": "14u9d7v",
+        "source_url": "https://reddit.com/comments/14u9d7v",
+        "upvotes": 135,
+        "subreddit": "Accounting"
+      }
+    ],
+    "Intercompany transaction reconciliation without native tooling is error-prone": [
+      {
+        "text": "Intercompany transactions are honestly the worst part of all this, tracking what one entity owes another and eliminating it properly in consolidation gets messy really fast with manual tracking.",
+        "post_id": "1r17ulm",
+        "source_url": "https://reddit.com/comments/1r17ulm",
+        "upvotes": 31,
+        "subreddit": "CFO"
+      }
+    ],
+    "Consolidating financials for 50+ entities requires painful manual Excel processes": [
+      {
+        "text": "It takes me one day to do all month end closings and preparing the financial statements for every entity that I am working with.",
+        "post_id": "1f19yib",
+        "source_url": "https://reddit.com/comments/1f19yib",
+        "upvotes": 104,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "I am running a growing business and honestly getting buried in manual accounting work bank recs, month-end close, journals, approvals, tracking leases and assets, all of it.",
+        "post_id": "1pcw6dt",
+        "source_url": "https://reddit.com/comments/1pcw6dt",
+        "upvotes": 93,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "Multi-entity consolidated reporting is where most small business accounting software completely falls apart and becomes useless, they're designed for single entity domestic operations and anything beyond that becomes an absolute nightmare to manage.",
+        "post_id": "1r17ulm",
+        "source_url": "https://reddit.com/comments/1r17ulm",
+        "upvotes": 31,
+        "subreddit": "CFO"
+      }
+    ],
+    "Aligning chart of accounts across entities for consistent consolidation": [
+      {
+        "text": "Multi-entity consolidated reporting is where most small business accounting software completely falls apart and becomes useless, they're designed for single entity domestic operations and anything beyond that becomes an absolute nightmare to manage.",
+        "post_id": "1r17ulm",
+        "source_url": "https://reddit.com/comments/1r17ulm",
+        "upvotes": 31,
+        "subreddit": "CFO"
+      },
+      {
+        "text": "* In hindsight, I should have been running **separate books per location**, then rolling those up into a consolidated set.",
+        "post_id": "1nr9n3o",
+        "source_url": "https://reddit.com/comments/1nr9n3o",
+        "upvotes": 4,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "If the chart of accounts is a mess, I\u2019ll usually clean that first so I\u2019m not categorizing into bad accounts.",
+        "post_id": "1s2jsry",
+        "source_url": "https://reddit.com/comments/1s2jsry",
+        "upvotes": 61,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Reconciling large bank statements (5000+ lines) manually despite software automation": [
+      {
+        "text": "All of the bank recs take me around 6 hours total (this includes multiple bank accounts)",
+        "post_id": "n6lb9x",
+        "source_url": "https://reddit.com/comments/n6lb9x",
+        "upvotes": 17,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "This way I can reconcile a 5,000 line statement in around 3 hours depending on how many discrepancies there are.",
+        "post_id": "1jtuhz6",
+        "source_url": "https://reddit.com/comments/1jtuhz6",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I had a client with 1,200+ in one checking account and got it cleared in about four hours (as I created more rules, the transactions I had to handle became fewer and fewer.",
+        "post_id": "1txcalp",
+        "source_url": "https://reddit.com/comments/1txcalp",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Investigating reconciliation discrepancies eats 3+ hours each close": [
+      {
+        "text": "All of the bank recs take me around 6 hours total (this includes multiple bank accounts)",
+        "post_id": "n6lb9x",
+        "source_url": "https://reddit.com/comments/n6lb9x",
+        "upvotes": 17,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "Hit select all which is correct 95% of the time and if it\u2019s a little off then adjust an expense- why possibly waste 3 hours on a bank rec ?",
+        "post_id": "1jtuhz6",
+        "source_url": "https://reddit.com/comments/1jtuhz6",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I feel like most reconciliations (bank, balancs sheet, sales recs) can be mostly automated but you often lose a lot of time investigating the discrepancies you do find, and those can't be automated away.",
+        "post_id": "1t7yktt",
+        "source_url": "https://reddit.com/comments/1t7yktt",
+        "upvotes": 25,
+        "subreddit": "Netsuite"
+      }
+    ],
+    "Dealing with uncleared transactions dating back months or years": [
+      {
+        "text": "I\u2019ve found when I start there, things like old transfers, opening balance issues, and uncleared items show up pretty quickly.",
+        "post_id": "1s2jsry",
+        "source_url": "https://reddit.com/comments/1s2jsry",
+        "upvotes": 61,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "It\u2019s when they have checks that you have to research or a lot of one off vendors that it takes a really long time.",
+        "post_id": "1txcalp",
+        "source_url": "https://reddit.com/comments/1txcalp",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "If there are old transaction in \"uncleared\" section of the reconciliation they are probably duplicates or errors.",
+        "post_id": "1rc6mr2",
+        "source_url": "https://reddit.com/comments/1rc6mr2",
+        "upvotes": 12,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Running balance check and sorting by dollar amount as reconciliation workaround": [
+      {
+        "text": "what's helped me when i've seen people do this well: export everything to a spreadsheet first, sort by amount and vendor, and batch categorize before you even touch the GL.",
+        "post_id": "1t9rgse",
+        "source_url": "https://reddit.com/comments/1t9rgse",
+        "upvotes": 5,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Then do a running balance check on the individual transactions (which should net-off against each other.",
+        "post_id": "1jtuhz6",
+        "source_url": "https://reddit.com/comments/1jtuhz6",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Having to hunt and peck for 13 transactions in your accounting system that make up the one large transaction in your bank statement is tedious.",
+        "post_id": "1pk2bxy",
+        "source_url": "https://reddit.com/comments/1pk2bxy",
+        "upvotes": 12,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Cleaning up years of unreconciled transactions in messy books": [
+      {
+        "text": "I had a client with 1,200+ in one checking account and got it cleared in about four hours (as I created more rules, the transactions I had to handle became fewer and fewer.",
+        "post_id": "1txcalp",
+        "source_url": "https://reddit.com/comments/1txcalp",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I always see people forget about prepaid expenses or accrued liabilities and then scramble in January when their accountant finds it",
+        "post_id": "1q1t9kw",
+        "source_url": "https://reddit.com/comments/1q1t9kw",
+        "upvotes": 16,
+        "subreddit": "smallbusiness"
+      },
+      {
+        "text": "They literally shove all their receipts, unopened bank statements etc into shoe boxes and then drop it off at my office.",
+        "post_id": "1osz1bq",
+        "source_url": "https://reddit.com/comments/1osz1bq",
+        "upvotes": 203,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Catching up all books from scratch with minimal client records": [
+      {
+        "text": "They literally shove all their receipts, unopened bank statements etc into shoe boxes and then drop it off at my office.",
+        "post_id": "1osz1bq",
+        "source_url": "https://reddit.com/comments/1osz1bq",
+        "upvotes": 203,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I\u2019m a small contractor who, admittedly, keeps really bad records so ends up handing over a year\u2019s worth of receipts to my accountant with my bank/credit card statements.",
+        "post_id": "1nh6aww",
+        "source_url": "https://reddit.com/comments/1nh6aww",
+        "upvotes": 17,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Having the admin team scan everything saves time and money vs having an accountant do that work, but as a preparer I did like to touch/physically see all the client provided docs.",
+        "post_id": "78of0e",
+        "source_url": "https://reddit.com/comments/78of0e",
+        "upvotes": 14,
+        "subreddit": "Accounting"
+      }
+    ],
+    "Clients withhold necessary information during cleanup, delaying progress": [
+      {
+        "text": "They literally shove all their receipts, unopened bank statements etc into shoe boxes and then drop it off at my office.",
+        "post_id": "1osz1bq",
+        "source_url": "https://reddit.com/comments/1osz1bq",
+        "upvotes": 203,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I would say something along the lines of Hi Client, I am still waiting on the bank documents.",
+        "post_id": "1uwipgm",
+        "source_url": "https://reddit.com/comments/1uwipgm",
+        "upvotes": 16,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Make sure to give them as much information as possible, so when they are figuring out pricing, they can be accurate and there's no \"hey I actually have another bank account I forgot to mention\".",
+        "post_id": "1otikuk",
+        "source_url": "https://reddit.com/comments/1otikuk",
+        "upvotes": 52,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Setting up proper chart of accounts for clients with no existing structure": [
+      {
+        "text": "They literally shove all their receipts, unopened bank statements etc into shoe boxes and then drop it off at my office.",
+        "post_id": "1osz1bq",
+        "source_url": "https://reddit.com/comments/1osz1bq",
+        "upvotes": 203,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "I'm most intimidated by walking into a biz with messy books and knowing where to start with cleaning things up.",
+        "post_id": "b2qcrk",
+        "source_url": "https://reddit.com/comments/b2qcrk",
+        "upvotes": 5,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "You can technically reconcile messy books, but you\u2019re just locking in bad data and end up redoing everything.",
+        "post_id": "1s2jsry",
+        "source_url": "https://reddit.com/comments/1s2jsry",
+        "upvotes": 61,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Genuine fractional CFOs struggle to differentiate from bookkeepers using inflated titles": [
+      {
+        "text": "I would not offer fractional CFO services even though I'd be more qualified to do so than many of the bookkeepers I see offering them.",
+        "post_id": "1p6v33m",
+        "source_url": "https://reddit.com/comments/1p6v33m",
+        "upvotes": 148,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "Just be careful some people market themselves as Fractional CFOs but they're really just Bookkeepers.",
+        "post_id": "1k0ucjq",
+        "source_url": "https://reddit.com/comments/1k0ucjq",
+        "upvotes": 71,
+        "subreddit": "FPandA"
+      }
+    ],
+    "Buyers cannot evaluate true experience level of fractional CFO candidates": [
+      {
+        "text": "Hello I have a question about hiring a fractional cfo, l can't tell if it's actually valuable or just another consultant who bills hours and disappears into thin air.",
+        "post_id": "1r0ss7a",
+        "source_url": "https://reddit.com/comments/1r0ss7a",
+        "upvotes": 14,
+        "subreddit": "CFO"
+      },
+      {
+        "text": "All to say, I would not be surprised if the vast majority of people advertising Fractional CFO services couldn't run a budget process or produce financial statements.",
+        "post_id": "1p6v33m",
+        "source_url": "https://reddit.com/comments/1p6v33m",
+        "upvotes": 148,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "I am thinking about hiring a fractional CFO, but I do not know if it is actually worth the cost or just another shiny service people hype up.",
+        "post_id": "1owroww",
+        "source_url": "https://reddit.com/comments/1owroww",
+        "upvotes": 75,
+        "subreddit": "EntrepreneurRideAlong"
+      }
+    ],
+    "Delayed month-end close due to clients not providing bank statements and receipts": [
+      {
+        "text": "When the books pull from a connected bank feed instead of statements the client has to dig up and email, the monthly close stops being a negotiation.",
+        "post_id": "1v4vawv",
+        "source_url": "https://reddit.com/comments/1v4vawv",
+        "upvotes": 47,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "You\u2019re basically Sisyphus constantly pushing that 5 day close up the hill only to get knocked back down by the next close.",
+        "post_id": "1rpvf1b",
+        "source_url": "https://reddit.com/comments/1rpvf1b",
+        "upvotes": 195,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "1,200 transactions isn\u2019t automatically horrible, but with no proper COA, no vendors set up, PDF bank statements, and support needed for each transaction, that\u2019s not just bookkeeping catch-up.",
+        "post_id": "1txcalp",
+        "source_url": "https://reddit.com/comments/1txcalp",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Having to disengage from clients who chronically fail to provide access": [
+      {
+        "text": "I have a client who, for whatever reason, doesn't want me to have access to their bank account.",
+        "post_id": "1v4vawv",
+        "source_url": "https://reddit.com/comments/1v4vawv",
+        "upvotes": 47,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "If you have a solid client base, I would fire this client by suggesting that they start looking elsewhere for someone in their budget.",
+        "post_id": "1usru0g",
+        "source_url": "https://reddit.com/comments/1usru0g",
+        "upvotes": 17,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Last one, I was supposed to do the quarterly reporting for our global consolidation files, but for some reason I no longer had system access, it seemed like it was blocked by IT security.",
+        "post_id": "1v4h3dj",
+        "source_url": "https://reddit.com/comments/1v4h3dj",
+        "upvotes": 23,
+        "subreddit": "Accounting"
+      }
+    ],
+    "AP closes early forcing accrual entries for late-arriving invoices": [
+      {
+        "text": "Close AP early, like day -2, then get accruals in by day 2/3, then revenue/tax/tansfer pricing/whatever dumb thing that comes in late your you forgot gets in, then you're closed.",
+        "post_id": "1j39rbe",
+        "source_url": "https://reddit.com/comments/1j39rbe",
+        "upvotes": 23,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "We went through the same exercise and we ended up shaving quite a few days by just doing accruals and partially reversing them for all that lingering bullshit that always comes in several days late.",
+        "post_id": "1i2zs18",
+        "source_url": "https://reddit.com/comments/1i2zs18",
+        "upvotes": 574,
+        "subreddit": "Accounting"
+      }
+    ],
+    "Bills and credit card charges arriving after month-end disrupt reconciliation": [
+      {
+        "text": "The reason month two is off by the prior ending balance is probably because QBO is carrying forward the prior reconciliation as if each card were its own separate credit card account.",
+        "post_id": "1tvyqhe",
+        "source_url": "https://reddit.com/comments/1tvyqhe",
+        "upvotes": 19,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Some clients' online banking releases statements at different times of the month for some annoying reason.",
+        "post_id": "1v4vawv",
+        "source_url": "https://reddit.com/comments/1v4vawv",
+        "upvotes": 47,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "The bank statement being reconciled won't do much for accurate numbers as to exactly what is in the bank account if there were checks written in one period that didn't clear until the next.",
+        "post_id": "1rc6mr2",
+        "source_url": "https://reddit.com/comments/1rc6mr2",
+        "upvotes": 12,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Setup overhead for automation tools cancels initial time savings": [
+      {
+        "text": "There are tons of options out there, but I keep hearing mixed reviews: some say the setup time cancels out the efficiency gains, others swear it changed their life.",
+        "post_id": "1optybf",
+        "source_url": "https://reddit.com/comments/1optybf",
+        "upvotes": 136,
+        "subreddit": "Accounting"
+      }
+    ],
+    "Automation tools just add another layer to reconcile rather than eliminating work": [
+      {
+        "text": "For example, I *could* automate a bank rec, but I\u2019d never do that outside my accounting software \u2014 it wouldn\u2019t show as reconciled.",
+        "post_id": "1l8ra95",
+        "source_url": "https://reddit.com/comments/1l8ra95",
+        "upvotes": 14,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "I feel like most reconciliations (bank, balancs sheet, sales recs) can be mostly automated but you often lose a lot of time investigating the discrepancies you do find, and those can't be automated away.",
+        "post_id": "1t7yktt",
+        "source_url": "https://reddit.com/comments/1t7yktt",
+        "upvotes": 25,
+        "subreddit": "Netsuite"
+      },
+      {
+        "text": "Honestly, I\u2019ve built a couple hybrid tools that bridge the gap \u2014 auto-flag mismatches, compare ending balances, and keep a log of what got adjusted manually.",
+        "post_id": "1jtuhz6",
+        "source_url": "https://reddit.com/comments/1jtuhz6",
+        "upvotes": 22,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Tracking restricted grant funds separately from unrestricted funds for compliance": [
+      {
+        "text": "Honestly, mixing restricted and unrestricted funds is one of the easiest ways for a nonprofit to accidentally get itself in trouble \u2014 but the good news is you *don\u2019t* need separate bank accounts.",
+        "post_id": "1ozfx24",
+        "source_url": "https://reddit.com/comments/1ozfx24",
+        "upvotes": 32,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "Restricted grants will need their own GL account code to delineate from Unrestricted grants, since you will also have to account for releases from restricted grants from a financial statement POV",
+        "post_id": "1ozfx24",
+        "source_url": "https://reddit.com/comments/1ozfx24",
+        "upvotes": 32,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": "* Spot-check that restricted funds are actually being tracked separately, and that spending against grants doesn't exceed what's allowed.",
+        "post_id": "1v7abyq",
+        "source_url": "https://reddit.com/comments/1v7abyq",
+        "upvotes": 17,
+        "subreddit": "nonprofit"
+      }
+    ],
+    "Allocating expenses to restricted grants requires complex class and fund code tracking": [
+      {
+        "text": "We\u2019ve been receiving more restricted grants lately, and I\u2019m worried about mixing them up with unrestricted funds.",
+        "post_id": "1ozfx24",
+        "source_url": "https://reddit.com/comments/1ozfx24",
+        "upvotes": 32,
+        "subreddit": "Accounting"
+      },
+      {
+        "text": ">You need a way to track it as a separate fund; people using quickbooks often do this by utilizing the class function, so that all transactions are assigned both an accounting code from the chart of accounts, as well as a class, and each grant usually gets its own class (that way, you can track each",
+        "post_id": "1qiox2n",
+        "source_url": "https://reddit.com/comments/1qiox2n",
+        "upvotes": 8,
+        "subreddit": "nonprofit"
+      },
+      {
+        "text": "You need a way to track it as a separate fund; people using quickbooks often do this by utilizing the class function, so that all transactions are assigned both an accounting code from the chart of accounts, as well as a class, and each grant usually gets its own class (that way, you can track each ",
+        "post_id": "1qiox2n",
+        "source_url": "https://reddit.com/comments/1qiox2n",
+        "upvotes": 8,
+        "subreddit": "nonprofit"
+      }
+    ],
+    "Handling reimbursement-only grants and unearned revenue accounting": [
+      {
+        "text": "Most government grants are reimbursement, meaning you spend from your money during the month, and then charge them what you\u2019ve spent after you close out the month.",
+        "post_id": "1qiox2n",
+        "source_url": "https://reddit.com/comments/1qiox2n",
+        "upvotes": 8,
+        "subreddit": "nonprofit"
+      },
+      {
+        "text": "Our small nonprofit struggles with grants that only reimburse expenses after we spend the money.",
+        "post_id": "1gy73l0",
+        "source_url": "https://reddit.com/comments/1gy73l0",
+        "upvotes": 33,
+        "subreddit": "nonprofit"
+      },
+      {
+        "text": "We focused on getting more fungible grants and sponsorships to give us more flexibility and debated not securing smaller reimbursement grants because the work isn\u2019t worth it\ud83e\udd64.",
+        "post_id": "1gy73l0",
+        "source_url": "https://reddit.com/comments/1gy73l0",
+        "upvotes": 33,
+        "subreddit": "nonprofit"
+      }
+    ],
+    "Reconciling POS sales to bank deposits with timing differences from settlement delays": [
+      {
+        "text": "I'd take the single day with the biggest gap and reconcile it ticket by ticket against the tax detail export \u2014 the pattern usually jumps out, and it's often one item category or one discount type.",
+        "post_id": "1v1en8w",
+        "source_url": "https://reddit.com/comments/1v1en8w",
+        "upvotes": 9,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "The statement printout from the bank was usually 40+ pages long and it could take multiple hours if not a day or more to reconcile.",
+        "post_id": "1pk2bxy",
+        "source_url": "https://reddit.com/comments/1pk2bxy",
+        "upvotes": 12,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "it creates these annoying discrepancies in qbo that eat up a ton of time during month-end close.",
+        "post_id": "1ulh594",
+        "source_url": "https://reddit.com/comments/1ulh594",
+        "upvotes": 20,
+        "subreddit": "Bookkeeping"
+      }
+    ],
+    "Refunds processed after month-end require manual reclass entries in current period": [
+      {
+        "text": "it creates these annoying discrepancies in qbo that eat up a ton of time during month-end close.",
+        "post_id": "1ulh594",
+        "source_url": "https://reddit.com/comments/1ulh594",
+        "upvotes": 20,
+        "subreddit": "Bookkeeping"
+      },
+      {
+        "text": "Our previous controller was fine with me posting the stray invoice for October even if the month was closed, but our new controller prefers that invoice to be posted for say Nov 1 with notes that it was received late.",
+        "post_id": "1q4obts",
+        "source_url": "https://reddit.com/comments/1q4obts",
+        "upvotes": 3,
+        "subreddit": "Bookkeeping"
+      }
+    ]
+  },
+  "audience": {
+    "segments": [
+      {
+        "segment_name": "Independent Freelance Bookkeepers & Outsourced Solopreneurs",
+        "size_estimate": "Large",
+        "pain_point_alignment": [
+          "Managing month-end close chaos across multiple independent clients without dedicated staff",
+          "Dealing with messy historical books, missing bank reconciliations, and unresponsive clients",
+          "Wasting hours on manual data entry, CSV formatting, and duplicate bank feed errors"
+        ],
+        "motivation_drivers": [
+          "Streamlining month-end close to finish faster and avoid late-night scrambling",
+          "Standardizing workflows and onboarding clients smoothly in under a week",
+          "Protecting profit margins by charging appropriate flat or hourly rates without scope creep"
+        ],
+        "expertise_level": "Intermediate",
+        "budget_sensitivity": "High",
+        "discovery_channels": [
+          "r/Bookkeeping",
+          "r/Accounting",
+          "Google search for workflow tools and software migrations"
+        ]
+      },
+      {
+        "segment_name": "Multi-Client Practice Owners & Small Accounting Firm Leaders",
+        "size_estimate": "Medium",
+        "pain_point_alignment": [
+          "Scaling practice management and tracking workflows across 100+ clients using rigid or legacy tools",
+          "Managing client document collection, chase cycles, and uncooperative client habits",
+          "Balancing fixed-fee pricing models against scope creep and heavy transaction volumes"
+        ],
+        "motivation_drivers": [
+          "Implementing practice management systems like TaxDome or Karbon to automate operations",
+          "Reducing dependency on manual data organization and standardizing staff workflows",
+          "Retaining clients year-round through efficient advisory and clean bookkeeping handoffs"
+        ],
+        "expertise_level": "Advanced",
+        "budget_sensitivity": "Medium",
+        "discovery_channels": [
+          "r/taxpros",
+          "r/AustralianAccounting",
+          "Professional community networking and peer recommendations"
+        ]
+      },
+      {
+        "segment_name": "Small Business Owner-Operators Managing DIY Books",
+        "size_estimate": "Large",
+        "pain_point_alignment": [
+          "Drowning in monthly bookkeeping, receipt hunting, and manual transaction categorization",
+          "Hitting software roadblocks like QBO export timeouts, row limits, and bank feed mismatches",
+          "Unraveling multi-entity or intercompany transaction tracking errors before tax season"
+        ],
+        "motivation_drivers": [
+          "Finding intuitive accounting software or automated workflows that reduce manual spreadsheet work",
+          "Ensuring clean handoffs to tax preparers and CPAs without massive cleanup fees",
+          "Gaining clear visibility into cash flow, P&L, and balance sheets without becoming a part-time accountant"
+        ],
+        "expertise_level": "Beginner",
+        "budget_sensitivity": "High",
+        "discovery_channels": [
+          "r/smallbusiness",
+          "r/QuickBooks",
+          "r/xero",
+          "YouTube tutorials"
+        ]
+      }
+    ],
+    "primary_target": "Independent Freelance Bookkeepers & Outsourced Solopreneurs",
+    "prioritization_rationale": "Independent freelance bookkeepers managing month-end close across multiple clients experience direct, acute pain points around workflow efficiency, manual data reconciliation, and client document management. They actively seek software solutions to optimize their multi-client operations and represent a highly reachable audience concentrated in dedicated communities like r/Bookkeeping and r/Accounting.",
+    "community_hubs": [
+      "r/Bookkeeping",
+      "r/Accounting",
+      "r/taxpros",
+      "r/smallbusiness",
+      "r/xero",
+      "r/QuickBooks",
+      "r/Netsuite",
+      "r/AustralianAccounting"
+    ],
+    "common_vocabulary": [
+      "month-end close",
+      "bank reconciliation",
+      "chart of accounts",
+      "uncleared transactions",
+      "uncategorized transactions",
+      "opening balance equity",
+      "negative A/R or A/P",
+      "scope creep",
+      "clean-up and catch-up",
+      "bank feed",
+      "trial balance",
+      "journal entries",
+      "engagement letter",
+      "practice management",
+      "intercompany transactions"
+    ],
+    "content_preferences": "Actionable workflow guides, step-by-step tool comparison breakdowns, case studies on onboarding clients fast, and practical teardowns of month-end checklists.",
+    "tools_currently_used": [
+      "QuickBooks Online",
+      "Xero",
+      "QuickBooks Desktop",
+      "TaxDome",
+      "Karbon",
+      "Excel",
+      "Dext",
+      "Hubdoc",
+      "Gusto",
+      "Stripe"
+    ],
+    "frustrations_with_existing": [
+      "Endless popup ads, price hikes, and poor support from legacy software providers like Intuit",
+      "QBO export timeouts, row limits, and calculation rounding errors on large datasets",
+      "Lack of native multi-entity consolidation and intercompany transaction tracking in standard tiers",
+      "Manual data entry overhead caused by broken bank feeds and unorganized client receipt dumps",
+      "Rigid practice management software pricing models that penalize growing firms per user or module"
+    ]
+  },
+  "influencers": [
+    {
+      "name": "u/PrimaryThis9900",
+      "platform": "Reddit",
+      "relevance_score": 1.0,
+      "content_focus": "Discusses corporate accounting workloads, career progression bottlenecks, and departmental restructuring.",
+      "top_subreddits": [
+        "r/Accounting"
+      ],
+      "top_posts": [
+        {
+          "title": "Company has finally agreed to expand accounting department, by moving me down the ladder.",
+          "subreddit": "Accounting",
+          "score": 656,
+          "url": "https://www.reddit.com/r/Accounting/comments/1v3mm88/company_has_finally_agreed_to_expand_accounting/"
+        },
+        {
+          "title": "Thing is, I am the entire department. So if I left bills wouldn't get paid, employees wouldn't ge...",
+          "subreddit": "Accounting",
+          "score": 177,
+          "url": "https://www.reddit.com/r/Accounting/comments/1v3mm88/company_has_finally_agreed_to_expand_accounting/"
+        },
+        {
+          "title": "No joke, first week of the job I bought my own red stapler and have used it everyday since. I wil...",
+          "subreddit": "Accounting",
+          "score": 9,
+          "url": "https://www.reddit.com/r/Accounting/comments/1v3mm88/company_has_finally_agreed_to_expand_accounting/"
+        }
+      ]
+    },
+    {
+      "name": "u/RubyRoyale",
+      "platform": "Reddit",
+      "relevance_score": 0.83,
+      "content_focus": "Shares perspectives on client onboarding challenges, messy book clean-ups, and managing disorganized small business records.",
+      "top_subreddits": [
+        "r/Bookkeeping"
+      ],
+      "top_posts": [
+        {
+          "title": "I am the nightmare client and I need advice.",
+          "subreddit": "Bookkeeping",
+          "score": 52,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1otikuk/i_am_the_nightmare_client_and_i_need_advice/"
+        },
+        {
+          "title": "Gosh this is all such great information. Thank you for taking the time to give me real language t...",
+          "subreddit": "Bookkeeping",
+          "score": 8,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1otikuk/i_am_the_nightmare_client_and_i_need_advice/"
+        },
+        {
+          "title": "Oh, I want to change. I need to, I will fail if I don't. This is a good heads up for how to move ...",
+          "subreddit": "Bookkeeping",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1otikuk/i_am_the_nightmare_client_and_i_need_advice/"
+        }
+      ]
+    },
+    {
+      "name": "u/NexxLevelSeattle",
+      "platform": "Reddit",
+      "relevance_score": 0.82,
+      "content_focus": "Focuses on fundamental accounting cleanup procedures, fixing chart of accounts, and resolving balance sheet errors.",
+      "top_subreddits": [
+        "r/Bookkeeping"
+      ],
+      "top_posts": [
+        {
+          "title": "What is the first thing you fix in messy books?",
+          "subreddit": "Bookkeeping",
+          "score": 61,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1s2jsry/what_is_the_first_thing_you_fix_in_messy_books/"
+        },
+        {
+          "title": "Yeah duplicate vendors and customers can make everything messy fast, especially with A/R and A/P....",
+          "subreddit": "Bookkeeping",
+          "score": 8,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1s2jsry/what_is_the_first_thing_you_fix_in_messy_books/"
+        },
+        {
+          "title": "Same here. I usually run a balance sheet first and scan for things that don\u2019t make sense.\n\nStuff ...",
+          "subreddit": "Bookkeeping",
+          "score": 5,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1s2jsry/what_is_the_first_thing_you_fix_in_messy_books/"
+        }
+      ]
+    },
+    {
+      "name": "u/meowsieunicorn",
+      "platform": "Reddit",
+      "relevance_score": 0.81,
+      "content_focus": "Emphasizes accounting fundamentals, double-entry bookkeeping, and foundational education for new practitioners.",
+      "top_subreddits": [
+        "r/Bookkeeping"
+      ],
+      "top_posts": [
+        {
+          "title": "New Bookkeepers, you need to know accounting.",
+          "subreddit": "Bookkeeping",
+          "score": 369,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1i916o7/new_bookkeepers_you_need_to_know_accounting/"
+        },
+        {
+          "title": "Exactly! It really cheapens our profession that people believe it\u2019s some get rich quick scheme.",
+          "subreddit": "Bookkeeping",
+          "score": 13,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1i916o7/new_bookkeepers_you_need_to_know_accounting/"
+        },
+        {
+          "title": "The work needs to be checked somehow. You need feedback. You need to grasp the bigger picture ins...",
+          "subreddit": "Bookkeeping",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1i916o7/new_bookkeepers_you_need_to_know_accounting/"
+        }
+      ]
+    },
+    {
+      "name": "u/aintseenununuthinyet",
+      "platform": "Reddit",
+      "relevance_score": 0.78,
+      "content_focus": "Explores month-end close process improvements, efficiency gains, and workload reduction strategies.",
+      "top_subreddits": [
+        "r/Accounting"
+      ],
+      "top_posts": [
+        {
+          "title": "Best improvement to End of Month?",
+          "subreddit": "Accounting",
+          "score": 104,
+          "url": "https://www.reddit.com/r/Accounting/comments/1f19yib/best_improvement_to_end_of_month/"
+        },
+        {
+          "title": "Great suggestion. This is something I\u2019ve done and have seen much less stress on my team. \u201cJust an...",
+          "subreddit": "Accounting",
+          "score": 9,
+          "url": "https://www.reddit.com/r/Accounting/comments/1f19yib/best_improvement_to_end_of_month/"
+        },
+        {
+          "title": "That would be awesome! Unfortunately, my F500 company is a little behind on the IT front. One of ...",
+          "subreddit": "Accounting",
+          "score": 8,
+          "url": "https://www.reddit.com/r/Accounting/comments/1f19yib/best_improvement_to_end_of_month/"
+        }
+      ]
+    },
+    {
+      "name": "u/jfranklynw",
+      "platform": "Reddit",
+      "relevance_score": 0.75,
+      "content_focus": "Provides practical bookkeeping methodologies, bank reconciliation tips, and standard spreadsheet practices.",
+      "top_subreddits": [
+        "r/Bookkeeping",
+        "r/smallbusiness",
+        "r/Accounting"
+      ],
+      "top_posts": [
+        {
+          "title": "The fact you're asking this question is actually the skill that matters most. Boring, repeatable ...",
+          "subreddit": "Bookkeeping",
+          "score": 44,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1pqc2zl/recently_started_a_bookkeeping_job_and_i_feel/"
+        },
+        {
+          "title": "Your approach is pretty standard honestly. Separate tabs or sheets per GL account with running sc...",
+          "subreddit": "Accounting",
+          "score": 24,
+          "url": "https://www.reddit.com/r/Accounting/comments/1plarlx/how_does_everyone_reconcile_and_monitor_balance/"
+        },
+        {
+          "title": "What's everyone's BEST methods for performing bank reconciliations?",
+          "subreddit": "Bookkeeping",
+          "score": 22,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1jtuhz6/whats_everyones_best_methods_for_performing_bank/"
+        }
+      ]
+    },
+    {
+      "name": "u/miiyaww",
+      "platform": "Reddit",
+      "relevance_score": 0.75,
+      "content_focus": "Analyzes non-close period responsibilities, variance analysis, financial reporting, and process automation.",
+      "top_subreddits": [
+        "r/Accounting"
+      ],
+      "top_posts": [
+        {
+          "title": "Accountants, what do you do when it\u2019s not month-end close?",
+          "subreddit": "Accounting",
+          "score": 169,
+          "url": "https://www.reddit.com/r/Accounting/comments/1ew1sk3/accountants_what_do_you_do_when_its_not_monthend/"
+        },
+        {
+          "title": "Are those considered process improvement or just part of the job?",
+          "subreddit": "Accounting",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Accounting/comments/1ew1sk3/accountants_what_do_you_do_when_its_not_monthend/"
+        },
+        {
+          "title": "I have been with companies that close only took 3 days and companies that close almost took the w...",
+          "subreddit": "Accounting",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Accounting/comments/1ew1sk3/accountants_what_do_you_do_when_its_not_monthend/"
+        }
+      ]
+    },
+    {
+      "name": "u/LordxHypnos",
+      "platform": "Reddit",
+      "relevance_score": 0.73,
+      "content_focus": "Discusses specialized bookkeeping and accounting services while avoiding federal tax preparation work.",
+      "top_subreddits": [
+        "r/Bookkeeping"
+      ],
+      "top_posts": [
+        {
+          "title": "Is it worth continuing as a bookkeeper if you won't touch Tax returns?",
+          "subreddit": "Bookkeeping",
+          "score": 48,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1ecacua/is_it_worth_continuing_as_a_bookkeeper_if_you/"
+        },
+        {
+          "title": "Oh wow nice! This is the scope of work that sounds like I\u2019ll be doing. I appreciate the piece of ...",
+          "subreddit": "Bookkeeping",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1ecacua/is_it_worth_continuing_as_a_bookkeeper_if_you/"
+        },
+        {
+          "title": "If it wasn\u2019t for my experience I\u2019d still be preparing because it\u2019s all plug and play with an exce...",
+          "subreddit": "Bookkeeping",
+          "score": 5,
+          "url": "https://www.reddit.com/r/Bookkeeping/comments/1ecacua/is_it_worth_continuing_as_a_bookkeeper_if_you/"
+        }
+      ]
+    }
+  ],
+  "social_posts_sample": [
+    {
+      "title": "I Hate MONTH-END",
+      "subreddit": "Accounting",
+      "score": 968,
+      "num_comments": 119,
+      "url": "https://www.reddit.com/r/Accounting/comments/1n8c6c6/i_hate_monthend/",
+      "created_utc": "2025-09-04T14:45:56+00:00"
+    },
+    {
+      "title": "Company has finally agreed to expand accounting department, by moving me down the ladder.",
+      "subreddit": "Accounting",
+      "score": 656,
+      "num_comments": 96,
+      "url": "https://www.reddit.com/r/Accounting/comments/1v3mm88/company_has_finally_agreed_to_expand_accounting/",
+      "created_utc": "2026-07-22T17:18:40+00:00"
+    },
+    {
+      "title": "My company wants me to \"identify bottlenecks\" in our close process so we can close faster...but we already did this 6 months ago...and 6 months before that...and 6 months before that..",
+      "subreddit": "Accounting",
+      "score": 574,
+      "num_comments": 65,
+      "url": "https://www.reddit.com/r/Accounting/comments/1i2zs18/my_company_wants_me_to_identify_bottlenecks_in/",
+      "created_utc": "2025-01-16T21:24:16+00:00"
+    },
+    {
+      "title": "New Bookkeepers, you need to know accounting.",
+      "subreddit": "Bookkeeping",
+      "score": 369,
+      "num_comments": 47,
+      "url": "https://www.reddit.com/r/Bookkeeping/comments/1i916o7/new_bookkeepers_you_need_to_know_accounting/",
+      "created_utc": "2025-01-24T17:43:00+00:00"
+    },
+    {
+      "title": "I automated a bank reconciliation process. Now my company wants it rebuilt in AI. What would you do?",
+      "subreddit": "Accounting",
+      "score": 319,
+      "num_comments": 63,
+      "url": "https://www.reddit.com/r/Accounting/comments/1ue5zr7/i_automated_a_bank_reconciliation_process_now_my/",
+      "created_utc": "2026-06-24T06:47:09+00:00"
+    },
+    {
+      "title": "Non Profit Accounting is much more difficult than Accounting for profit",
+      "subreddit": "Accounting",
+      "score": 294,
+      "num_comments": 38,
+      "url": "https://www.reddit.com/r/Accounting/comments/1oawk9u/non_profit_accounting_is_much_more_difficult_than/",
+      "created_utc": "2025-10-19T18:07:38+00:00"
+    },
+    {
+      "title": "90% of industry work is done during month end at my job",
+      "subreddit": "Accounting",
+      "score": 251,
+      "num_comments": 31,
+      "url": "https://www.reddit.com/r/Accounting/comments/xrjyk3/90_of_industry_work_is_done_during_month_end_at/",
+      "created_utc": "2022-09-29T21:46:28+00:00"
+    },
+    {
+      "title": "How do I politely tell my client their bookkeeper hasn\u2019t kept the accounts up to date in 8 months?",
+      "subreddit": "Bookkeeping",
+      "score": 203,
+      "num_comments": 17,
+      "url": "https://www.reddit.com/r/Bookkeeping/comments/1osz1bq/how_do_i_politely_tell_my_client_their_bookkeeper/",
+      "created_utc": "2025-11-10T00:03:07+00:00"
+    },
+    {
+      "title": "Why do accounting managers get pressed about month end close being extended?",
+      "subreddit": "Accounting",
+      "score": 195,
+      "num_comments": 46,
+      "url": "https://www.reddit.com/r/Accounting/comments/1rpvf1b/why_do_accounting_managers_get_pressed_about/",
+      "created_utc": "2026-03-10T12:21:19+00:00"
+    },
+    {
+      "title": "What is the best way to keep important receipts without cluttering your house?",
+      "subreddit": "minimalism",
+      "score": 176,
+      "num_comments": 23,
+      "url": "https://www.reddit.com/r/minimalism/comments/10ob66z/what_is_the_best_way_to_keep_important_receipts/",
+      "created_utc": "2023-01-29T16:07:50+00:00"
+    }
+  ],
+  "subreddit_names": [
+    "r/Accounting",
+    "r/AustralianAccounting",
+    "r/Bookkeeping",
+    "r/CFILounge",
+    "r/CFO",
+    "r/ERP",
+    "r/Entrepreneur",
+    "r/EntrepreneurRideAlong",
+    "r/FPandA",
+    "r/Netsuite",
+    "r/QuickBooks",
+    "r/Sage",
+    "r/actualbudgeting",
+    "r/excel",
+    "r/finlens",
+    "r/indianstartups",
+    "r/intacct",
+    "r/llc_life",
+    "r/minimalism",
+    "r/msp",
+    "r/nonprofit",
+    "r/plaintextaccounting",
+    "r/quickbooksonline",
+    "r/smallbusiness",
+    "r/smallbusinessuk",
+    "r/taxpros",
+    "r/ukaccounting",
+    "r/woocommerce",
+    "r/xero"
+  ],
+  "subreddit_post_counts": {
+    "Bookkeeping": 55,
+    "Accounting": 39,
+    "smallbusiness": 11,
+    "taxpros": 9,
+    "xero": 6,
+    "nonprofit": 5,
+    "finlens": 3,
+    "QuickBooks": 3,
+    "Netsuite": 2,
+    "FPandA": 2
+  },
+  "data_attribution": "Public community activity from r/Accounting, r/AustralianAccounting, r/Bookkeeping, r/CFILounge, r/CFO, r/ERP, r/Entrepreneur, r/EntrepreneurRideAlong, r/FPandA, r/Netsuite, r/QuickBooks, r/Sage, r/actualbudgeting, r/excel, r/finlens, r/indianstartups, r/intacct, r/llc_life, r/minimalism, r/msp, r/nonprofit, r/plaintextaccounting, r/quickbooksonline, r/smallbusiness, r/smallbusinessuk, r/taxpros, r/ukaccounting, r/woocommerce, r/xero",
+  "sources_searched": {
+    "reddit": {
+      "enabled": true,
+      "posts_found": 156
+    },
+    "twitter": {
+      "enabled": false,
+      "posts_found": 0
+    },
+    "hackernews": {
+      "enabled": true,
+      "posts_found": 0
+    },
+    "youtube": {
+      "enabled": true,
+      "posts_found": 0
+    }
+  },
+  "discussion_trend": [
+    {
+      "month": "2025-07",
+      "count": 0
+    },
+    {
+      "month": "2025-08",
+      "count": 2
+    },
+    {
+      "month": "2025-09",
+      "count": 8
+    },
+    {
+      "month": "2025-10",
+      "count": 5
+    },
+    {
+      "month": "2025-11",
+      "count": 10
+    },
+    {
+      "month": "2025-12",
+      "count": 7
+    },
+    {
+      "month": "2026-01",
+      "count": 3
+    },
+    {
+      "month": "2026-02",
+      "count": 5
+    },
+    {
+      "month": "2026-03",
+      "count": 5
+    },
+    {
+      "month": "2026-04",
+      "count": 1
+    },
+    {
+      "month": "2026-05",
+      "count": 10
+    },
+    {
+      "month": "2026-06",
+      "count": 5
+    }
+  ],
+  "discussion_growth_pct": -9
+}

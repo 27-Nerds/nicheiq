@@ -368,8 +368,35 @@ class CheckpointManager:
             metadata["niche_data_menu_text"] = self.state.niche_data_menu_text
         if getattr(self.state, "niche_dissatisfaction_text", None) is not None:
             metadata["niche_dissatisfaction_text"] = self.state.niche_dissatisfaction_text
-        if getattr(self.state, "idea_portfolio_summary", None):
-            metadata["idea_portfolio_summary"] = self.state.idea_portfolio_summary
+        # "Check my idea" (validate_idea) fields — plain-value pattern like idea_focus.
+        # inferred_fields uses `is not None`: an EMPTY list is a real "all stated" result.
+        if getattr(self.state, "user_idea_text", None) is not None:
+            metadata["user_idea_text"] = self.state.user_idea_text
+        if getattr(self.state, "user_idea_brief", None) is not None:
+            metadata["user_idea_brief"] = self.state.user_idea_brief
+        if getattr(self.state, "user_idea_inferred_fields", None) is not None:
+            metadata["user_idea_inferred_fields"] = self.state.user_idea_inferred_fields
+        if getattr(self.state, "user_idea_pivot", None) is not None:
+            metadata["user_idea_pivot"] = self.state.user_idea_pivot
+        if getattr(self.state, "user_idea_identity_terms", None) is not None:
+            metadata["user_idea_identity_terms"] = self.state.user_idea_identity_terms
+        if getattr(self.state, "user_idea_brief_parity", None) is not None:
+            metadata["user_idea_brief_parity"] = self.state.user_idea_brief_parity
+        # Persist the pair by key presence, including its legacy/stale states. Metadata is
+        # merged with the previous file, so explicit removal is required or a failed refresh
+        # can resurrect an older summary/fingerprint on resume.
+        _portfolio_summary = getattr(self.state, "idea_portfolio_summary", None)
+        _portfolio_fingerprint = getattr(
+            self.state, "idea_portfolio_summary_fingerprint", None
+        )
+        if _portfolio_summary is not None:
+            metadata["idea_portfolio_summary"] = _portfolio_summary
+        else:
+            metadata.pop("idea_portfolio_summary", None)
+        if _portfolio_fingerprint is not None:
+            metadata["idea_portfolio_summary_fingerprint"] = _portfolio_fingerprint
+        else:
+            metadata.pop("idea_portfolio_summary_fingerprint", None)
         if getattr(self.state, "pipeline_degradations", None):
             metadata["pipeline_degradations"] = self.state.pipeline_degradations
         if getattr(self.state, "niche_drift_telemetry", None):
@@ -733,8 +760,26 @@ class CheckpointManager:
             self.state.niche_data_menu_text = metadata["niche_data_menu_text"]
         if "niche_dissatisfaction_text" in metadata:
             self.state.niche_dissatisfaction_text = metadata["niche_dissatisfaction_text"]
-        if metadata.get("idea_portfolio_summary"):
+        # "Check my idea" fields — "in" (not truthy) for inferred_fields so a saved []
+        # ("all stated") round-trips distinct from "never parsed".
+        if metadata.get("user_idea_text"):
+            self.state.user_idea_text = metadata["user_idea_text"]
+        if metadata.get("user_idea_brief"):
+            self.state.user_idea_brief = metadata["user_idea_brief"]
+        if "user_idea_inferred_fields" in metadata:
+            self.state.user_idea_inferred_fields = metadata["user_idea_inferred_fields"]
+        if metadata.get("user_idea_pivot"):
+            self.state.user_idea_pivot = metadata["user_idea_pivot"]
+        if metadata.get("user_idea_identity_terms"):
+            self.state.user_idea_identity_terms = metadata["user_idea_identity_terms"]
+        if metadata.get("user_idea_brief_parity"):
+            self.state.user_idea_brief_parity = metadata["user_idea_brief_parity"]
+        if "idea_portfolio_summary" in metadata:
             self.state.idea_portfolio_summary = metadata["idea_portfolio_summary"]
+        if "idea_portfolio_summary_fingerprint" in metadata:
+            self.state.idea_portfolio_summary_fingerprint = metadata[
+                "idea_portfolio_summary_fingerprint"
+            ]
         if metadata.get("pipeline_degradations"):
             self.state.pipeline_degradations = metadata["pipeline_degradations"]
         if metadata.get("niche_drift_telemetry"):
@@ -743,6 +788,11 @@ class CheckpointManager:
             self.state.skipped_stages = metadata["skipped_stages"]
         if metadata.get("sources_searched"):
             self.state.sources_searched = metadata["sources_searched"]
+
+        # Legacy Stage-5 prose predates the positive paying-wallet publication contract. Apply
+        # it once at hydration so every downstream consumer (resume, preview, and final report)
+        # reads the same reconciled state without duplicating publication checks.
+        self._reconcile_persisted_commercial_prose()
 
         # Compatibility hydration for checkpoints written before candidate/finding identity.
         # This runs after both the Stage-5 model and metadata ledger have been restored, and
@@ -865,6 +915,83 @@ class CheckpointManager:
                         logger.warning(f"Could not rewrite pruned completed_stages on disk: {e}")
                 if getattr(self.state, "completed_stages", None):
                     self.state.completed_stages = [s for s in self.state.completed_stages if s < n]
+
+    def _reconcile_persisted_commercial_prose(self) -> None:
+        """Hydrate only paying-wallet prose that satisfies the shared positive contract."""
+        from ..utils.niche_difficulty import (
+            assess_niche_difficulty,
+            reconcile_persisted_niche_difficulty_verdict,
+            reconcile_persisted_paying_wallet_summary,
+        )
+
+        wallet = dict(getattr(self.state, "niche_wallet_brief", None) or {})
+        wallet_class = wallet.get("wallet_class")
+        wallet_evidence = wallet.get("evidence")
+        verdict = getattr(self.state, "niche_difficulty_verdict", None)
+
+        if verdict is not None:
+            fact_pack = None
+            try:
+                pains = list(
+                    getattr(getattr(self.state, "pain_point_analysis", None), "pain_points", None)
+                    or []
+                )
+                ideas = list(
+                    getattr(getattr(self.state, "idea_generation", None), "solution_ideas", None)
+                    or []
+                )
+                niche_context = getattr(self.state, "niche_context", None)
+                segments = getattr(
+                    getattr(self.state, "audience_mapping", None), "audience_segments", None
+                )
+                distribution_ideas = [
+                    idea
+                    for idea in ideas
+                    if getattr(idea, "winning_angle", None) == "distribution_seo"
+                ]
+                serp_owned_share = (
+                    sum(1 for idea in distribution_ideas if getattr(idea, "_serp_owned", False))
+                    / len(distribution_ideas)
+                    if distribution_ideas
+                    else None
+                )
+                fact_pack = assess_niche_difficulty(
+                    pains,
+                    ideas,
+                    niche_context,
+                    segments=segments,
+                    niche_wallet_brief=wallet or None,
+                    incumbent_map=list(
+                        getattr(self.state, "niche_incumbent_map", None) or []
+                    ) or None,
+                    serp_owned_share=serp_owned_share,
+                )
+            except Exception as e:  # noqa: BLE001 - partial legacy inputs use verdict fallback
+                logger.warning(
+                    f"[Checkpoint] persisted verdict fact-pack reconstruction failed: {e}. "
+                    "Using persisted deterministic fields."
+                )
+
+            niche = (
+                getattr(getattr(self.state, "niche_context", None), "niche_description", None)
+                or self.niche_description
+                or None
+            )
+            self.state.niche_difficulty_verdict = (
+                reconcile_persisted_niche_difficulty_verdict(
+                    verdict,
+                    wallet_class=wallet_class,
+                    wallet_evidence=wallet_evidence,
+                    fact_pack=fact_pack,
+                    niche=niche,
+                )
+            )
+
+        self.state.idea_portfolio_summary = reconcile_persisted_paying_wallet_summary(
+            getattr(self.state, "idea_portfolio_summary", None),
+            wallet_class=wallet_class,
+            wallet_evidence=wallet_evidence,
+        )
 
     def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""

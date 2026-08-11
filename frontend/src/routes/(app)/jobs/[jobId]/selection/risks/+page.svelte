@@ -21,6 +21,7 @@
   } from "$lib/types/selectionCopilot";
   import type { SelectionChallengeLens } from "$lib/types/selectionChallenge";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { rankedIdeasHref as rankedIdeasUrl } from "$lib/selection/rankedIdeas";
   import {
     SELECTION_LIFECYCLE_CONTEXT,
     type SelectionWorkspaceLifecycle,
@@ -32,6 +33,7 @@
   const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
   const currentStatus = $derived(lifecycle?.status || data.job.status);
   const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
+  const rankedIdeasHref = $derived(rankedIdeasUrl(data.job.id));
   const validLenses: SelectionChallengeLens[] = [
     "demand",
     "distribution",
@@ -248,6 +250,7 @@
     <p>{canMutate
       ? "Choose the question most likely to change your shortlist. Each check rereads saved evidence only and never changes a score."
       : "Saved evidence checks, owner evidence, unresolved questions, and test plans from the selection decision. This record cannot be changed."}</p>
+    <a class="ranked-ideas-return" href={rankedIdeasHref}>Back to ranked ideas</a>
   </header>
 
   {#if focusedIdea}
@@ -318,20 +321,22 @@
 
     {#if (data.decisionState?.experiments.length ?? 0) > 0}
       <details class="saved-tests" bind:open={savedTestsOpen} bind:this={savedTestsEl}>
-        <summary>
+        <summary aria-expanded={savedTestsOpen} aria-controls="saved-test-plans-body">
           <span>Saved test plans</span>
           <small>{data.decisionState?.experiments.length} saved</small>
         </summary>
-        {#key experimentStateKey}
-          <ExperimentWorkspace
-            surface="page"
-            jobId={data.job.id}
-            ideas={data.workspace.ideas}
-            onOpenChallenge={revealEvidenceCheck}
-            onChanged={() => { void invalidateAll(); }}
-            disabled={!canMutate}
-          />
-        {/key}
+        <div id="saved-test-plans-body">
+          {#key experimentStateKey}
+            <ExperimentWorkspace
+              surface="page"
+              jobId={data.job.id}
+              ideas={data.workspace.ideas}
+              onOpenChallenge={revealEvidenceCheck}
+              onChanged={() => { void invalidateAll(); }}
+              disabled={!canMutate}
+            />
+          {/key}
+        </div>
       </details>
     {/if}
   {:else}
@@ -342,7 +347,7 @@
           ? "Choose a current idea revision before checking its evidence."
           : "No current idea revision is available in this saved decision record."}
       >
-        <Button href={`/jobs/${data.job.id}`} class="btn-ghost" label="Back to ranked ideas" />
+        <Button href={rankedIdeasHref} class="btn-ghost" label="Back to ranked ideas" />
       </EmptyState>
     </div>
   {/if}
@@ -397,12 +402,28 @@
     text-transform: uppercase;
   }
   .saved-tests[open] > summary { border-bottom: 1px solid var(--color-border); }
-  .page-intro > p:last-child {
+  .page-intro > p:last-of-type {
     max-width: 66ch;
     margin: var(--space-2) 0 0;
     color: var(--color-text-secondary);
     font-size: var(--text-md);
     line-height: var(--leading-normal);
+  }
+  .ranked-ideas-return {
+    display: inline-flex;
+    margin-top: var(--space-3);
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
+  .ranked-ideas-return:hover { color: var(--color-text-primary); }
+  .ranked-ideas-return:focus-visible {
+    border-radius: var(--radius-sm);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .candidate-switcher {

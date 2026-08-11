@@ -28,13 +28,10 @@ from nicheiq.crews.pain_point_crew import PainPointCrew
 
 @pytest.fixture(autouse=True)
 def _no_network_stance_gate():
-    """Patch the stance gate to an identity pass so enrichment unit tests stay
-    offline and assert P0-A behavior (relevance floor, per-post cap, dedup, the
-    12-cap) independently of the LLM stance call. The stance gate has its own
-    dedicated tests."""
+    """Keep enrichment unit tests offline and independent of LLM helpers."""
     with patch.object(
         PainPointCrew, "_stance_filter_quotes", side_effect=lambda self, pp, quotes: quotes, autospec=True
-    ):
+    ), patch.object(PainPointCrew, "_generate_query_variants", return_value={}):
         yield
 
 

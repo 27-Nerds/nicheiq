@@ -13,6 +13,7 @@
     Lightbulb,
     Users,
     TrendingUp,
+    ClipboardCheck,
   } from "lucide-svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -21,15 +22,28 @@
   import ProcessTimeline from "$lib/components/new-research/ProcessTimeline.svelte";
   import StickyCtaBar from "$lib/components/new-research/StickyCtaBar.svelte";
   import InputQualityMeter from "$lib/components/new-research/InputQualityMeter.svelte";
+  import IdeaClarifyCard, {
+    flattenClarifyAnswers,
+    type ClarifyAnswers,
+    type ClarifyCardState,
+    type ClarifyScanResult,
+  } from "$lib/components/new-research/IdeaClarifyCard.svelte";
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { StageCosts } from "$lib/types/job";
   import type { EntryMode } from "$lib/components/new-research/EntryModeCards.svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import { normalizeIdeaText } from "$lib/utils/normalizeIdeaText";
+  import { buildCoverageChecklist, detectIdeaCoverage } from "$lib/utils/ideaCoverage";
 
   let { data } = $props();
 
-  const MAX_NICHE_LENGTH = 500;
+  const STANDARD_NICHE_MAX = 500;
+  const STANDARD_NICHE_MIN = 10;
+  // "Check my idea" pitches: the 2000-char backend cap minus a 300-char reserved
+  // tail so clarify answers appended at submit can never overflow it.
+  const VALIDATE_NICHE_MAX = 1700;
+  const VALIDATE_NICHE_MIN = 40;
 
   // --- State ---
   let userEdited = $state(false);
@@ -37,6 +51,13 @@
   // --- Mode state ---
   let entryMode = $state<EntryMode>("idea");
   let chatMode = $state(false);
+  const isValidateMode = $derived(entryMode === "validate_idea");
+  const maxNicheLength = $derived(isValidateMode ? VALIDATE_NICHE_MAX : STANDARD_NICHE_MAX);
+  const minNicheLength = $derived(isValidateMode ? VALIDATE_NICHE_MIN : STANDARD_NICHE_MIN);
+  // Guided research is not available for idea checks (the backend rejects the combination).
+  $effect(() => {
+    if (isValidateMode && chatMode) chatMode = false;
+  });
 
   // --- Credit data from layout ---
   const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
@@ -106,9 +127,36 @@
 
   // --- Input state ---
   let niche = $state("");
-  const nicheIsValid = $derived(niche.trim().length >= 10);
+  // Mirrors the backend gate: < and > are rejected on every mode (they'd reach
+  // email HTML templates), and the check mode has a higher minimum.
+  const nicheHasAngleBrackets = $derived(/[<>]/.test(niche));
+  const nicheIsValid = $derived(
+    niche.trim().length >= minNicheLength && !nicheHasAngleBrackets,
+  );
   let loading = $state(false);
   let error = $state("");
+
+  // --- Clarify intake (validate mode only; P2) ---
+  // "idle" = card not shown. The card's own ClarifyCardState covers every
+  // other state - see IdeaClarifyCard.svelte for why "questions"/"answered"
+  // collapse into "ready" and "submitting" is just this page's `loading`.
+  let clarifyState = $state<ClarifyCardState | "idle">("idle");
+  let clarifyScan = $state<ClarifyScanResult | null>(null);
+  let clarifyAnswers = $state<ClarifyAnswers>({});
+  // The normalized text the current scan (or the scan in flight) reflects -
+  // used to detect edit-invalidation (stale) drift.
+  let clarifyLastScannedText = $state("");
+  // Plain (non-reactive) cache: scan results keyed by hash(normalizedText),
+  // reused across 402 top-up / 409 price-change retries.
+  const clarifyScanCache = new Map<string, ClarifyScanResult>();
+  let clarifyAbort: AbortController | null = null;
+  const clarifyCardActive = $derived(isValidateMode && clarifyState !== "idle");
+
+  // Layer-1 coverage checklist (zero-LLM), wired into the meter only in
+  // validate mode - other modes keep the tier-sentence rendering.
+  const clarifyChecklist = $derived(
+    isValidateMode ? buildCoverageChecklist(detectIdeaCoverage(niche)) : undefined,
+  );
 
   // --- Retry-from-job (replaces deprecated NewResearchModal flow) ---
   const fromJobId = $derived(page.url.searchParams.get("fromJob") ?? "");
@@ -117,13 +165,27 @@
       page.url.searchParams.get("niche") ??
       "",
   );
-  // Apply prefilled niche + force entryMode=idea on initial mount. Untracked
-  // so subsequent niche edits don't re-trigger.
+  const CARD_MODES = ["idea", "audience", "discovery", "validate_idea"] as const;
+  const prefilledMode = $derived(page.url.searchParams.get("mode") ?? "");
+  // Apply prefilled niche + mode on initial mount. A re-run URL carries ?mode= so a
+  // validate-idea pitch round-trips as a validate run (forcing "idea" here used to
+  // both lose the mode and 400 on >500-char pitches). A bare ?mode= (no prefill —
+  // e.g. a shared/help link straight to "Check my idea") preselects the card too.
+  // Untracked so later edits don't re-trigger.
   $effect(() => {
-    if (prefilledNiche && !userEdited) {
-      niche = prefilledNiche;
-      entryMode = "idea";
+    if (userEdited) return;
+    const validMode = (CARD_MODES as readonly string[]).includes(prefilledMode);
+    if (prefilledNiche) {
+      const mode: EntryMode = validMode ? (prefilledMode as EntryMode) : "idea";
+      entryMode = mode;
+      // Programmatic assignment bypasses the textarea maxlength attribute — clamp.
+      niche = prefilledNiche.slice(
+        0,
+        mode === "validate_idea" ? VALIDATE_NICHE_MAX : STANDARD_NICHE_MAX,
+      );
       userEdited = true;
+    } else if (validMode) {
+      entryMode = prefilledMode as EntryMode;
     }
   });
 
@@ -160,8 +222,10 @@
     return () => observer.disconnect();
   });
 
-  // Show sticky bar only when CTA is scrolled past AND bottom of CTA block isn't visible
-  $effect(() => { ctaBarVisible = ctaAboveViewport && !ctaEndInView; });
+  // Show sticky bar only when CTA is scrolled past AND bottom of CTA block isn't
+  // visible. Suppressed while the clarify card is active: its raw type=submit
+  // button would bypass the gate below (StickyCtaBar.svelte:68).
+  $effect(() => { ctaBarVisible = ctaAboveViewport && !ctaEndInView && !clarifyCardActive; });
 
   // --- Suggest state ---
   let suggestLoading = $state(false);
@@ -246,6 +310,33 @@
           best: { label: "Perfect", example: "AI tools for small business inventory management" },
         },
       },
+      validate_idea: {
+        label: "Describe your idea",
+        icon: ClipboardCheck,
+        colorClass: "text-accent",
+        placeholders: [
+          "e.g., A Chrome extension that drafts Reddit replies for community managers at small SaaS companies",
+          "e.g., A dashboard for wedding photographers to track galleries, contracts, and payment reminders in one place",
+          "e.g., A Slack bot that turns support tickets into a weekly product-gap digest for founders",
+          "e.g., A web app for landlords that converts maintenance texts into tracked work orders",
+          "e.g., An API that turns messy supplier spreadsheets into clean inventory data for small shops",
+        ],
+        helpText:
+          "Say what it does, who it's for, and how they use it.",
+        examples: [
+          "A Chrome extension that drafts Reddit replies for community managers",
+          "A dashboard where wedding photographers track galleries and payments",
+          "A Slack bot that digests support tickets into product gaps",
+          "A web app turning landlord maintenance texts into work orders",
+          "An invoice chaser that follows up unpaid freelance invoices",
+          "A tool that repurposes podcast episodes into short clips",
+        ],
+        qualityTiers: {
+          bad: { label: "Too thin", example: "An AI tool for UX validation" },
+          better: { label: "Getting there", example: "A Chrome extension that flags UX issues on web pages" },
+          best: { label: "Ready to check", example: "A Chrome extension for solo product designers that flags UX issues on client sites before handoff" },
+        },
+      },
     }[entryMode],
   );
 
@@ -284,6 +375,12 @@
     userEdited = true;
   }
 
+  // Programmatic niche assignments bypass the textarea maxlength attribute — clamp
+  // to the current mode's cap at every non-typing write.
+  function setNiche(text: string) {
+    niche = text.slice(0, maxNicheLength);
+  }
+
   // --- Surprise me ---
   async function handleFeelingLucky() {
     suggestLoading = true;
@@ -306,7 +403,7 @@
         return;
       }
       if (data.suggestions?.[0]?.niche) {
-        niche = data.suggestions[0].niche;
+        setNiche(data.suggestions[0].niche);
         userEdited = true;
       }
     } catch {
@@ -343,7 +440,7 @@
         return;
       }
       if (data.suggestions?.[0]?.niche) {
-        niche = data.suggestions[0].niche;
+        setNiche(data.suggestions[0].niche);
       }
     } catch {
       suggestError = "Connection error. Please try again.";
@@ -353,20 +450,135 @@
     }
   }
 
-  // --- Submit ---
-  async function handleSubmit(e: Event) {
-    e.preventDefault();
-    if (!nicheIsValid || loading || entryPriceUnavailable || entryCost === null) return;
+  // --- Clarify intake (validate mode only; P2) ---
 
+  // Cheap synchronous cache key for the client-side scan cache - collisions
+  // are low-stakes (memoization only, not an identity), so a full crypto
+  // hash isn't warranted.
+  function hashText(text: string): string {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = (Math.imul(31, hash) + text.charCodeAt(i)) | 0;
+    }
+    return hash.toString(36);
+  }
+
+  function resetClarify() {
+    clarifyAbort?.abort();
+    clarifyAbort = null;
+    clarifyState = "idle";
+    clarifyScan = null;
+    clarifyAnswers = {};
+  }
+
+  // Card destroyed below the minimum length or on a mode change (P2 spec);
+  // marked stale when the scanned text drifts while a scan is showing; an
+  // in-flight scan is cancelled outright (nothing shown yet to mark stale).
+  $effect(() => {
+    if (clarifyState === "idle") return;
+    if (!isValidateMode || niche.trim().length < VALIDATE_NICHE_MIN) {
+      resetClarify();
+      return;
+    }
+    const normalized = normalizeIdeaText(niche).trim();
+    if (normalized === clarifyLastScannedText) return;
+    if (clarifyState === "scanning") {
+      clarifyAbort?.abort();
+      clarifyState = "idle";
+    } else if (clarifyState === "ready") {
+      clarifyState = "stale";
+    }
+  });
+
+  function applyClarifyScan(scanResult: ClarifyScanResult) {
+    clarifyScan = scanResult;
+    if (scanResult.questions.length === 0) {
+      // Zero questions: the meter already said Ready - submit straight
+      // through, no card flash.
+      clarifyState = "idle";
+      void submitJob();
+      return;
+    }
+    clarifyState = "ready";
+  }
+
+  async function beginClarify() {
+    const normalized = normalizeIdeaText(niche).trim();
+    // Precheck: below the minimum, no LLM call - the existing inline error
+    // already covers this case.
+    if (normalized.length < VALIDATE_NICHE_MIN) return;
+
+    const cacheKey = hashText(normalized);
+    clarifyLastScannedText = normalized;
+
+    const cached = clarifyScanCache.get(cacheKey);
+    if (cached) {
+      applyClarifyScan(cached);
+      return;
+    }
+
+    clarifyState = "scanning";
+    loading = true;
+
+    clarifyAbort?.abort();
+    const controller = new AbortController();
+    clarifyAbort = controller;
+    // 9s, not 5: the live scan p50 is ~5-8s (E2E-measured 2026-08-07) — at 5s users
+    // mostly saw the fail-open card instead of the questions. The scanning skeleton
+    // carries the perceived wait; the timeout only bounds the worst case.
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+    try {
+      const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "clarify_idea", partial_input: normalized }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      loading = false;
+
+      if (!res.ok) {
+        // Includes 429 - fail-open, never a blocking error.
+        clarifyState = "failopen";
+        return;
+      }
+      const data = await res.json();
+      const scanResult: ClarifyScanResult | undefined = data.clarify;
+      if (!scanResult) {
+        clarifyState = "failopen";
+        return;
+      }
+      clarifyScanCache.set(cacheKey, scanResult);
+      applyClarifyScan(scanResult);
+    } catch {
+      clearTimeout(timeoutId);
+      loading = false;
+      if (controller.signal.aborted && !document.hidden) {
+        // Timeout with the tab visible: honor the click that already
+        // happened rather than making the user click again.
+        clarifyState = "idle";
+        await submitJob();
+        return;
+      }
+      // Tab hidden, or a genuine error: hold at failopen rather than
+      // auto-charging while the user isn't looking.
+      clarifyState = "failopen";
+    }
+  }
+
+  // --- Submit ---
+  async function submitJob() {
     loading = true;
     error = "";
 
     try {
+      const pitch = niche.trim() + flattenClarifyAnswers(clarifyAnswers);
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          niche: niche.trim(),
+          niche: pitch,
           ...(selectedProjectTypes.length > 0 && {
             allowedProjectTypes: selectedProjectTypes,
           }),
@@ -408,6 +620,26 @@
       if (!showSuccess) loading = false;
     }
   }
+
+  async function handleSubmit(e: Event) {
+    e.preventDefault();
+    if (!nicheIsValid || loading || entryPriceUnavailable || entryCost === null) return;
+
+    if (isValidateMode) {
+      if (clarifyState === "idle") {
+        await beginClarify();
+        return;
+      }
+      if (clarifyState === "scanning") return; // already in flight
+      if (clarifyState === "stale") {
+        await beginClarify(); // "Re-read and continue"
+        return;
+      }
+      // "ready" or "failopen": submit with whatever answers/guesses we have.
+    }
+
+    await submitJob();
+  }
 </script>
 
 <svelte:head>
@@ -424,7 +656,7 @@
       <h1 class="new-h1">What are you exploring?</h1>
       <p class="new-lede">
         Get 5–10 scored product ideas from real Reddit &amp; Hacker News
-        discussions — first ideas in ~15 minutes. You pick which one is worth
+        discussions — ready in under an hour. You pick which one is worth
         full validation.
       </p>
     </header>
@@ -482,7 +714,7 @@
                 bind:value={niche}
                 bind:this={textareaEl}
                 rows={3}
-                maxlength={MAX_NICHE_LENGTH}
+                maxlength={maxNicheLength}
                 class="w-full resize-none text-lg sm:text-xl bg-transparent
                        px-0 py-4 min-h-[120px] placeholder:text-text-muted/50
                        focus:outline-none focus-visible:outline-none
@@ -504,7 +736,7 @@
                       {#if i > 0}<span class="mx-1 text-text-muted/40">·</span>{/if}
                       <button
                         type="button"
-                        onclick={() => { niche = example; userEdited = true; }}
+                        onclick={() => { setNiche(example); userEdited = true; }}
                         disabled={loading || showSuccess}
                         class="pointer-events-auto hover:text-text-primary underline underline-offset-2 decoration-border/50
                                hover:decoration-text-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -514,8 +746,10 @@
                     {/each}
                   </p>
                 </div>
-              {:else}
-                <!-- Floating text actions inside textarea -->
+              {:else if !isValidateMode}
+                <!-- Floating text actions inside textarea. Hidden in check mode:
+                     both actions REPLACE the text wholesale — one misclick would
+                     destroy the user's pitch. -->
                 <div class="absolute bottom-3 right-0 z-10 flex gap-1.5">
                   <button
                     type="button"
@@ -557,20 +791,31 @@
 
             <!-- Help text / quality hint (single row, swaps content) -->
             <div class="flex items-center justify-between mt-1.5">
-              <InputQualityMeter {niche} qualityTiers={modeConfig.qualityTiers} helpText={modeConfig.helpText} />
+              <InputQualityMeter
+                {niche}
+                qualityTiers={modeConfig.qualityTiers}
+                helpText={modeConfig.helpText}
+                checklist={clarifyChecklist}
+              />
               {#if niche.length > 0}
                 <span
-                  class="text-xs tabular-nums shrink-0 ml-2 {niche.length > MAX_NICHE_LENGTH * 0.9
+                  class="text-xs tabular-nums shrink-0 ml-2 {niche.length > maxNicheLength * 0.9
                     ? 'text-[color:var(--color-warning-text)]'
                     : 'text-text-muted'}"
                 >
-                  {niche.length}/{MAX_NICHE_LENGTH}
+                  {niche.length}/{maxNicheLength}
                 </span>
               {/if}
             </div>
             {#if niche.trim() && !nicheIsValid}
               <p class="text-xs text-[color:var(--color-error-text)] mt-1.5" role="alert">
-                Add a little more detail — at least 10 characters are required.
+                {#if nicheHasAngleBrackets}
+                  The characters &lt; and &gt; aren't supported. Please remove them.
+                {:else if isValidateMode}
+                  Describe your idea in at least {VALIDATE_NICHE_MIN} characters. Say what it does and who it is for.
+                {:else}
+                  Add a little more detail — at least 10 characters are required.
+                {/if}
               </p>
             {/if}
 
@@ -584,6 +829,29 @@
             {/if}
           </div>
         </div>
+
+        <!-- Clarify intake card - inline in the form, not an overlay; the
+             pitch above stays visible/editable while it's active. -->
+        {#if clarifyCardActive}
+          <IdeaClarifyCard
+            scan={clarifyScan}
+            answers={clarifyAnswers}
+            cardState={clarifyState === "idle" ? "scanning" : clarifyState}
+            discoveryPrice={displayEntryCost}
+            {loading}
+            onanswer={(field, answer) => {
+              clarifyAnswers = { ...clarifyAnswers, [field]: answer };
+            }}
+            onclear={(field) => {
+              const next = { ...clarifyAnswers };
+              delete next[field];
+              clarifyAnswers = next;
+            }}
+            onstart={() => { void submitJob(); }}
+            onrescan={() => { void beginClarify(); }}
+            onswitchmode={() => { entryMode = "idea"; }}
+          />
+        {/if}
 
         <!-- Submit section (outside glow card) -->
         <div class="mt-4 px-1">
@@ -694,6 +962,9 @@
                   <p class="text-[11px] text-text-muted mt-1">
                     Research stops after the niche is validated, and again after pain points and audience are mapped &mdash; chat with the analyst or adjust scope before it continues.
                   </p>
+                  {#if isValidateMode}
+                    <p class="text-[11px] text-text-muted mt-1">Not available for idea checks.</p>
+                  {/if}
                 </div>
                 {#if hasAnalystAccess}
                   <button
@@ -702,7 +973,7 @@
                     aria-checked={chatMode}
                     aria-label="Guided research"
                     onclick={() => (chatMode = !chatMode)}
-                    disabled={loading || showSuccess}
+                    disabled={loading || showSuccess || isValidateMode}
                     class="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors
                       {chatMode ? 'bg-[color:var(--color-accent)]' : 'bg-border'}
                       disabled:opacity-50 disabled:cursor-not-allowed"
@@ -770,7 +1041,7 @@
               loadingText="Starting..."
               icon={ArrowRight}
               iconPosition="end"
-              label={chatMode ? "Start guided research" : "Discover ideas"}
+              label={chatMode ? "Start guided research" : isValidateMode ? "Start the check" : "Discover ideas"}
               disabled={!nicheIsValid}
               class="btn-primary w-full justify-center text-base py-3 min-w-[12rem]"
             />
@@ -786,6 +1057,8 @@
           <p class="text-xs text-text-muted text-center mt-2">
             {#if chatMode}
               {entryCreditLabel} to start &middot; you approve each later Discovery segment
+            {:else if isValidateMode}
+              {entryCreditLabel} &middot; a full check of your idea against real market evidence
             {:else}
               {entryCreditLabel} &middot; see every idea before paying for validation
             {/if}
@@ -816,7 +1089,7 @@
             stageCost={displayEntryCost}
             priceAvailable={!entryPriceUnavailable}
             stageName={chatMode ? "guided research" : "discovery"}
-            ctaLabel={chatMode ? "Start guided research" : "Discover ideas"}
+            ctaLabel={chatMode ? "Start guided research" : isValidateMode ? "Start the check" : "Discover ideas"}
           />
         </div>
       </form>

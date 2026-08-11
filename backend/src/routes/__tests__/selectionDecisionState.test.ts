@@ -4,8 +4,8 @@ import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
   jobFindFirst: vi.fn(),
-  getPreview: vi.fn(),
   getDiscovery: vi.fn(),
+  loadCurrentSelectionContext: vi.fn(),
   buildState: vi.fn(),
   hasDecisionToolsAccess: vi.fn().mockResolvedValue(true),
 }));
@@ -26,8 +26,10 @@ vi.mock('../../middleware/auth.js', () => ({
   },
 }));
 vi.mock('../../services/assetService.js', () => ({
-  getPreviewReportForJob: mocks.getPreview,
   getDiscoveryDataForJob: mocks.getDiscovery,
+}));
+vi.mock('../../services/currentSelectionContext.js', () => ({
+  loadCurrentSelectionContext: mocks.loadCurrentSelectionContext,
 }));
 vi.mock('../../services/selectionDecisionStateService.js', () => ({
   buildSelectionDecisionState: mocks.buildState,
@@ -43,7 +45,6 @@ function job() {
   return {
     id: jobId,
     status: 'AWAITING_SELECTION',
-    solutionIdeas: [],
     selectionDraft: null,
     selectionDraftVersion: 0,
     selectionDecisionProfile: null,
@@ -58,8 +59,11 @@ function job() {
 describe('selection decision state owner API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getPreview.mockResolvedValue(null);
     mocks.getDiscovery.mockResolvedValue(null);
+    mocks.loadCurrentSelectionContext.mockResolvedValue({
+      canonical: { candidates: [] },
+      runArtifacts: { verification: 'untrusted', reason: 'preview_unavailable' },
+    });
     mocks.buildState.mockReturnValue({ schemaVersion: 1, jobId });
   });
 
@@ -74,10 +78,30 @@ describe('selection decision state owner API', () => {
     expect(mocks.jobFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: jobId, userId: 'owner-1' },
     }));
+    expect(mocks.jobFindFirst.mock.calls[0][0].select).not.toHaveProperty('solutionIdeas');
     expect(mocks.buildState).toHaveBeenCalledWith(expect.objectContaining({
       jobId,
+      solutionIdeas: [],
       previewReport: null,
       discoveryData: null,
+    }));
+  });
+
+  it('uses only context-verified preview evidence and canonical candidates', async () => {
+    const candidate = { idea_id: 'idea-1', idea_revision: 1, solution_name: 'Current idea' };
+    const previewReport = { idea_portfolio_summary: 'Version-bound evidence' };
+    mocks.jobFindFirst.mockResolvedValue(job());
+    mocks.loadCurrentSelectionContext.mockResolvedValue({
+      canonical: { candidates: [candidate] },
+      runArtifacts: { verification: 'verified', previewReport },
+    });
+
+    const response = await request(app).get(`/api/jobs/${jobId}/selection-decision-state`);
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildState).toHaveBeenCalledWith(expect.objectContaining({
+      solutionIdeas: [candidate],
+      previewReport,
     }));
   });
 
@@ -88,6 +112,6 @@ describe('selection decision state owner API', () => {
 
     expect(response.status).toBe(404);
     expect(mocks.buildState).not.toHaveBeenCalled();
-    expect(mocks.getPreview).not.toHaveBeenCalled();
+    expect(mocks.loadCurrentSelectionContext).not.toHaveBeenCalled();
   });
 });

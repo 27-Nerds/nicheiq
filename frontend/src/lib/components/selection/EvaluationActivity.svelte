@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CheckCircle2, CircleX, Clock, Loader2, RotateCcw } from "lucide-svelte";
   import type { SeedActivity } from "$lib/stores/chatLedger.svelte";
+  import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
   import {
     elapsedClock,
     evaluationProgress,
@@ -70,7 +71,7 @@
   const recovering = $derived(operation?.state === "RECOVERING");
 
   function recoveryHeadline(title: string): string {
-    return `Restoring your previous candidate set — ${title}`;
+    return `Restoring your previous candidate set: ${title}`;
   }
 
   const recoveryNote = "The evaluation stopped before it settled. We are restoring the candidate set from before it started. After restoration, any refundable credits are returned; if no refund applies, the receipt will say so.";
@@ -129,7 +130,7 @@
               {recoveryNote}
             {:else if stalled}
               We stopped checking automatically. The evaluation still settles or refunds
-              on its own — check for the result, or reload later.
+              on its own. Check for the result, or reload later.
             {:else}
               {phaseNote(progress.phase)}
             {/if}
@@ -221,7 +222,7 @@
               {:else}
                 <a href={activity.result?.idea_id
                   ? `/jobs/${jobId}?detailTab=overview&ideaId=${encodeURIComponent(activity.result.idea_id)}&ideaRevision=${activity.result.idea_revision ?? 1}`
-                  : `/jobs/${jobId}#opportunities`}
+                  : rankedIdeasHref(jobId)}
                 >View candidate <span aria-hidden="true">→</span></a>
               {/if}
             {:else if activity.outcome === "demoted"}

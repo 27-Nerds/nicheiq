@@ -1,0 +1,65 @@
+{
+  "_source": [
+    "The real SECOND-LEVEL key universe of the three niche-scoped preview-report containers the boundary reaches into. Same method as previewReportTopLevelKeys.json.",
+    "observedIn: number of the 60 real preview-report assets under output/checkpoints/ (gitignored run artifacts) whose container carried the key.",
+    "containerPresentIn: number of those 60 assets where the container itself was an object.",
+    "writtenBy: the model or dict literal that produces the container — ResearchFlow._materialize_preview_report (research_metadata) or models/research_state.py (the other two). Every key below appears in its writer; no writer field is missing from this fixture.",
+    "strippedAsForbidden: the key is in FORBIDDEN_KEYS and is removed by sanitizePreviewReport before the classification runs, so NESTED_FIELD_SCOPE deliberately does not list it."
+  ],
+  "assetsScanned": 60,
+  "containers": {
+    "research_metadata": {
+      "containerPresentIn": 60,
+      "writtenBy": "ResearchFlow._materialize_preview_report + models/research_state.py:ResearchMetadata",
+      "keys": {
+        "collection_date": { "observedIn": 53, "strippedAsForbidden": true },
+        "completed_stages": { "observedIn": 60, "strippedAsForbidden": true },
+        "data_size_mb": { "observedIn": 0, "strippedAsForbidden": true },
+        "fallback_stages": { "observedIn": 0, "strippedAsForbidden": true },
+        "filtering_stats": { "observedIn": 60, "strippedAsForbidden": true },
+        "funnel_counts": { "observedIn": 20 },
+        "generic_posts_analyzed": { "observedIn": 53 },
+        "reddit_comments_analyzed": { "observedIn": 53 },
+        "reddit_posts_analyzed": { "observedIn": 60 },
+        "started_at": { "observedIn": 60, "strippedAsForbidden": true },
+        "top_subreddits": { "observedIn": 53 },
+        "twitter_threads_analyzed": { "observedIn": 60 }
+      }
+    },
+    "niche_difficulty_verdict": {
+      "containerPresentIn": 25,
+      "writtenBy": "models/research_state.py:NicheDifficultyVerdict",
+      "keys": {
+        "audience_drift_notice": { "observedIn": 1 },
+        "buyer_class": { "observedIn": 20 },
+        "buyer_class_note": { "observedIn": 20 },
+        "difficulty_level": { "observedIn": 25 },
+        "headline": { "observedIn": 25 },
+        "key_challenges": { "observedIn": 25 },
+        "key_strengths": { "observedIn": 15 },
+        "low_confidence": { "observedIn": 25 },
+        "narrative_summary": { "observedIn": 25 },
+        "software_addressability": { "observedIn": 25 }
+      }
+    },
+    "audience_mapping": {
+      "containerPresentIn": 60,
+      "writtenBy": "models/research_state.py:AudienceMapping",
+      "keys": {
+        "audience_drift_notice": { "observedIn": 0 },
+        "audience_segments": { "observedIn": 60 },
+        "common_vocabulary": { "observedIn": 60 },
+        "community_hubs": { "observedIn": 60 },
+        "content_preferences": { "observedIn": 60 },
+        "early_adopter_tactics": { "observedIn": 60 },
+        "frustrations_with_existing": { "observedIn": 60 },
+        "key_influencers": { "observedIn": 60, "strippedAsForbidden": true },
+        "messaging_frameworks": { "observedIn": 60 },
+        "primary_target_segment": { "observedIn": 60 },
+        "recommended_channels": { "observedIn": 60 },
+        "segment_prioritization_rationale": { "observedIn": 60 },
+        "tools_currently_used": { "observedIn": 60 }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+[
+ {
+  "why": "a gate note whose spaced em dash the paid report printed raw",
+  "file": "output/jobs/b8a401c1-cda8-4fe4-bef1-a5b017158cce/report.json",
+  "path": ".user_adjustments[0]",
+  "value": "Gate 2 (audience & pains): excluded 1 pain point(s) from ideation — Local bookings often signal party intent or boundary violations."
+ },
+ {
+  "why": "the second captured gate note, with no dash to normalise",
+  "file": "output/checkpoints/preview_report_55156281-a96b-4228-848b-a02a15c2c042.json",
+  "path": ".user_adjustments[0]",
+  "value": "Gate 1 (niche context): niche details were adjusted before research began."
+ }
+]

@@ -9,10 +9,13 @@ This module publishes progress updates to the backend API, which then:
 
 import os
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 import requests
 from loguru import logger
+
+COMMERCIAL_COPY_CONTRACT_VERSION = "paying-wallet-positive-copy-v1"
 
 
 def _get_backend_url() -> str:
@@ -133,6 +136,7 @@ def publish_progress_via_api(
             payload["error"] = error
         if report_path is not None:
             payload["report_path"] = report_path
+            payload["commercial_copy_contract_version"] = COMMERCIAL_COPY_CONTRACT_VERSION
         if landing_path is not None:
             payload["landing_path"] = landing_path
         if artifact is not None:
@@ -238,6 +242,7 @@ def publish_report_ready(
             "worker_id": _get_worker_id(),
             "job_id": job_id,
             "report_path": report_path,
+            "commercial_copy_contract_version": COMMERCIAL_COPY_CONTRACT_VERSION,
             **_dispatch_payload(job_id),
         }
         if winner_name:
@@ -348,6 +353,7 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
     }
     if preview_report_path:
         payload["preview_report_path"] = preview_report_path
+        payload["commercial_copy_contract_version"] = COMMERCIAL_COPY_CONTRACT_VERSION
     if cost_summary:
         payload["cost_summary"] = cost_summary
 
@@ -424,6 +430,7 @@ def notify_regeneration_complete(
         "worker_id": _get_worker_id(),
         "job_id": job_id,
         "solutions": new_solutions,
+        "commercial_copy_contract_version": COMMERCIAL_COPY_CONTRACT_VERSION,
         **_dispatch_payload(job_id),
     }
     if cost_summary:
@@ -554,6 +561,7 @@ def notify_seed_complete(
         "job_id": job_id,
         "idea": idea,
         "outcome": outcome,
+        "commercial_copy_contract_version": COMMERCIAL_COPY_CONTRACT_VERSION,
         **_dispatch_payload(job_id),
     }
     if cost_summary:
@@ -688,6 +696,7 @@ def notify_catalog_pain_points_ready(
         }
         if preview_report_path:
             payload["preview_report_path"] = preview_report_path
+            payload["commercial_copy_contract_version"] = COMMERCIAL_COPY_CONTRACT_VERSION
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/catalog-pain-points-ready",

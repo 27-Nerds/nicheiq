@@ -39,6 +39,10 @@ export const load: LayoutServerLoad = async (event) => {
   // the session JWT, so a grant or revocation lands without a re-login. Fails CLOSED:
   // the backend re-checks on every gated route, this only drives what we render.
   let featureAccess: FeatureAccess = { analyst: false, decisionTools: false };
+  // Same distinction the billing flags make: a request that never answered is not
+  // a revoked grant. Consumers that would otherwise tell a paying subscriber to
+  // subscribe on a network blip check this before claiming anything.
+  let featureAccessUnavailable = true;
 
   const headers = { 'X-User-ID': session.user.id };
 
@@ -83,6 +87,7 @@ export const load: LayoutServerLoad = async (event) => {
         analyst: data.analyst === true,
         decisionTools: data.decisionTools === true,
       };
+      featureAccessUnavailable = false;
     }
   } catch (error) {
     console.error('Failed to fetch layout data:', error);
@@ -96,6 +101,7 @@ export const load: LayoutServerLoad = async (event) => {
     monthlyAllowancePeriodEnd,
     subscription,
     featureAccess,
+    featureAccessUnavailable,
     stageCosts,
     billingLoadState: {
       balanceUnavailable,

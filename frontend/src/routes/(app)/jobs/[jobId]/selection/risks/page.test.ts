@@ -15,6 +15,7 @@ const apiMocks = vi.hoisted(() => ({
   getSelectionOwnerEvidence: vi.fn(),
   createSelectionOwnerEvidence: vi.fn(),
   retractSelectionOwnerEvidence: vi.fn(),
+  getSelectionExperiments: vi.fn(),
 }));
 
 vi.mock("$app/navigation", () => navMocks);
@@ -68,6 +69,7 @@ describe("risks page", () => {
     apiMocks.getSelectionAssumptions.mockResolvedValue({ assumptions: [] });
     apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [], stale: [] });
     apiMocks.getSelectionOwnerEvidence.mockResolvedValue({ evidence: [], editable: true });
+    apiMocks.getSelectionExperiments.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -120,6 +122,30 @@ describe("risks page", () => {
     expect(view.queryByText("No questions to resolve saved yet")).not.toBeInTheDocument();
     expect(view.queryByRole("button", { name: /Show questions to resolve/ })).not.toBeInTheDocument();
     expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeInTheDocument();
+  });
+
+  it("provides an in-content return to the first ranked idea row", () => {
+    const view = render(RisksPage, { props: { data: data() } });
+
+    expect(view.getByRole("link", { name: "Back to ranked ideas" }))
+      .toHaveAttribute("href", "/jobs/job-1#idea-select-0");
+  });
+
+  it("wires the saved-test summary to its controlled body", async () => {
+    const withTests = data() as any;
+    withTests.decisionState = { experiments: [{}] };
+    const view = render(RisksPage, { props: { data: withTests } });
+    const summary = view.getByText("Saved test plans").closest("summary");
+
+    expect(summary).not.toBeNull();
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+    expect(summary).toHaveAttribute("aria-controls", "saved-test-plans-body");
+    expect(view.container.querySelector("#saved-test-plans-body")).toBeInTheDocument();
+
+    const details = summary!.closest("details")!;
+    details.open = true;
+    await fireEvent(details, new Event("toggle"));
+    expect(summary).toHaveAttribute("aria-expanded", "true");
   });
 
   it("renders the post-selection evidence record while disabling every write entry", async () => {

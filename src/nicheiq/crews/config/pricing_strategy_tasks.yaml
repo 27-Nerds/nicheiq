@@ -101,9 +101,13 @@ pricing_strategy_analysis:
     | **Pure Subscription** | B2B focus, no free tier viable | Enterprise personas, low budget sensitivity, high switching costs |
     | **Usage-Based** | API/tool with variable consumption | Developer audiences, consumption varies widely by user |
     | **One-Time Purchase** | Tools, templates, digital products | Price-sensitive audiences, clear deliverable boundaries |
-    | **Ad-Supported-Free** | High traffic potential, directory/aggregator project type | Consumer audiences, high budget sensitivity, SEO-driven discovery |
-    | **Affiliate-Only** | Purchase-intent traffic, product comparisons | Comparison-tools, high commercial intent keywords |
     | **Hybrid (Freemium + Ads)** | Mixed WTP signals, tool with broad + niche audiences | Free tier monetized by ads, paid tier for power users |
+
+    The two models in which THIS AUDIENCE NEVER PAYS — **Ad-Supported-Free** and
+    **Affiliate-Only** — are deliberately NOT rows in the table above. They are wallet-gated and
+    live under "For directories/aggregators/comparison-tools" below; a row here would have been
+    readable without ever consulting the MARKET REALITY wallet signal, which is exactly how this
+    prompt kept recommending a free product in niches whose own prices it had just quoted.
 
     **WTP → PRICE-RANGE ANCHOR (paid tiers; align with the WTP scores above, not a guess):**
     | Avg WTP | Indicative paid entry (B2C / prosumer) | B2B / professional |
@@ -111,20 +115,42 @@ pricing_strategy_analysis:
     | 0.7-1.0 | $15-40/mo | $50-200+/mo |
     | 0.45-0.7 | $7-15/mo | $20-60/mo |
     | 0.25-0.45 | $3-9/mo or free+ads | freemium, paid $15-40/mo |
-    | < 0.25 | free (ads/affiliate), no paid tier expected | lead-gen / free |
+    | < 0.25 | $1-5/mo, or free+ads ONLY where the wallet gate below is satisfied | lead-gen / entry paid tier |
     Adjust within a band for competitor pricing + project type. A paid tier far above the WTP band fails validation.
 
+    **WALLET GATE on the bottom band — read "MARKET REALITY" above before you use it.** The
+    < 0.25 row describes a market with a POSITIVE, verified finding that nobody pays. If the niche
+    wallet signal above reads `paying`, or reads `mixed` while quoting actual prices (any "$"
+    figure), then this market demonstrably DOES pay and that row does not apply: a low average WTP
+    there means the pains this run captured are the wrong wedge, not that the buyers are
+    unwilling. Price to the segment that holds the budget and say which wedge you would test — do
+    not conclude "no paid tier expected" over the top of the market's own price list.
+    If that signal is UNAVAILABLE or missing, the row does not apply EITHER — the gate fails
+    closed. An absent probe reading is not evidence that this niche does not pay, and a probe
+    failure must never be the reason a paying niche is handed a free product.
+
     **DO NOT default to 3-tier Freemium.** Match model to:
-    1. WTP signals from pain point analysis (low WTP favors ad/affiliate/free models)
+    1. WTP signals from pain point analysis (low WTP favors ad/affiliate/free models —
+       unless the wallet gate above applies, in which case the market's verified prices win)
     2. Project type: {project_type} (SaaS vs directory vs tool vs aggregator vs comparison-tool)
     3. Target audience budget sensitivity and purchasing behavior
     4. Competitive landscape pricing models and intensity
     5. Market size (larger TAM supports lower per-user revenue models)
 
-    **For directories/aggregators/comparison-tools:**
-    - PREFER Ad-Supported-Free, Affiliate-Only, or Hybrid models
-    - These can be 100% FREE to users with SEO-driven traffic monetization
-    - Example: "Free tool monetized by display ads (target: $5-15 CPM) and affiliate links"
+    **For directories/aggregators/comparison-tools — WALLET-GATED:**
+    - Where the MARKET REALITY wallet signal above shows, as a POSITIVE finding, that no verified
+      prices exist (`free-culture`, or a `mixed` reading that quotes no price figure):
+      Ad-Supported-Free, Affiliate-Only and Hybrid are strong candidates, and such a tool can be
+      100% FREE to users with SEO-driven traffic monetization. Example: "Free tool monetized by
+      display ads (target: $5-15 CPM) and affiliate links"
+    - Where that signal reads `paying`, or `mixed` while quoting actual prices: the project type
+      does NOT override the market's own evidence. Directory/aggregator shapes are sold in this
+      market today; treat traffic monetization as one option among the paid ones and choose on
+      the evidence, not on the project type.
+    - Where the signal is UNAVAILABLE or missing: an absent reading is NOT a finding of no prices.
+      This branch fails CLOSED — do not select Ad-Supported-Free or Affiliate-Only on an absent
+      wallet reading. Price the paid shape the rest of this evidence supports and state that the
+      wallet reading was unavailable.
 
     - Evaluate best monetization model based on the table above
     - Consider market standards and customer acquisition strategy
@@ -170,7 +196,7 @@ pricing_strategy_analysis:
     | 0.70 - 1.00 | Premium (+20-40% vs median) | Strong subscription fit; users actively seek solutions and are less price sensitive. But verify audience budget sensitivity — enterprise vs consumer matters. |
     | 0.50 - 0.69 | Market Rate (+-10% of median) | Subscription viable at competitive rates; feature differentiation drives upgrades. Consider freemium to capture broader market. |
     | 0.30 - 0.49 | Discount (-20-40% vs median) | Freemium-lite or aggressive free tier; subscription possible but pricing must be compelling. Hybrid (free + ads) may capture more value. |
-    | 0.00 - 0.29 | Free/Near-Free | Ad-supported, affiliate, or data play most natural. Subscription unlikely unless strong niche lock-in exists. Low WTP is a signal FOR traffic monetization, not against viability. |
+    | 0.00 - 0.29 | Free/Near-Free **only where the wallet gate above does not apply** | Where the MARKET REALITY wallet signal is a POSITIVE finding of no verified prices in this market: ad-supported, affiliate, or data play most natural, and low WTP is a signal FOR traffic monetization rather than against viability. Where that signal reads `paying`, or `mixed` while quoting actual prices, this row does NOT apply: somebody in this market is paying today, so a low average WTP means these captured pains are the wrong wedge — price to the budget-holding segment and name the wedge you would test. Where that signal is UNAVAILABLE or missing, this row also does NOT apply: an absent reading is not a finding, and the free/near-free branch fails closed. |
 
     **VALIDATION RULE:** If recommended_starter_price exceeds the WTP-implied ceiling, REDUCE price or JUSTIFY premium positioning.
 
@@ -180,8 +206,11 @@ pricing_strategy_analysis:
     - Implied range ≈ competitor median ±10%.
     - Set Starter at/below the range (acquisition-friendly); Pro above the range (must justify differentiation).
 
-    **Reasoning shape: Ad-Supported Free Tool (Low WTP)** — derive every number from the ACTUAL inputs:
-    - Low WTP band (Free/Near-Free) → ad/affiliate model.
+    **Reasoning shape: Ad-Supported Free Tool (Low WTP)** — reachable ONLY through the wallet gate
+    above; if the wallet signal reads `paying`/priced-`mixed`, or is UNAVAILABLE, this shape is not
+    on the table. Derive every number from the ACTUAL inputs:
+    - Low WTP band (Free/Near-Free) AND no verified prices in the wallet signal → ad/affiliate
+      model. (With verified prices, use the subscription reasoning shape above instead.)
     - Revenue ≈ estimated monthly pageviews × the niche's real CPM (see the CPM-by-industry table below) / 1000.
     - Affiliate ≈ pageviews × CTR × average commission. Use the niche's real figures, not placeholders.
 
@@ -205,7 +234,8 @@ pricing_strategy_analysis:
     - For large organizations with specific requirements
 
 
-    **AD/AFFILIATE MONETIZATION GUIDELINES (use when traffic-based model is chosen):**
+    **AD/AFFILIATE MONETIZATION GUIDELINES (use when the wallet gate above has already permitted a
+    traffic-based model — these are execution details for a choice, never a reason to make it):**
 
     **CPM Ranges by Niche:**
     - Finance/Insurance: $10-25 CPM
@@ -322,7 +352,8 @@ pricing_strategy_analysis:
     - **wtp_validation:** 1-2 sentences on how WTP scores support this pricing
     - **market_segment_pricing:** Dict of segment-specific pricing or null
 
-    **FOR AD/AFFILIATE MODELS (Ad-Supported-Free, Affiliate-Only):**
+    **FOR AD/AFFILIATE MODELS (Ad-Supported-Free, Affiliate-Only) — output shape only; reaching this
+    section at all requires the wallet gate above to permit a zero-price model:**
 
     - **solution_name:** {solution_name}
     - **recommended_starter_price:** null (Free tool)
@@ -407,7 +438,10 @@ pricing_strategy_analysis:
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
     - For subscription models: All prices must be exact dollar amounts (a single "$<price>/month", NOT a "$<low>-<high>/month" range)
     - For ad/affiliate models: Set tier prices to null, provide ad/affiliate revenue estimates instead
-    - Monetization model must align with WTP signals AND project type (low WTP + directory = ad/affiliate)
+    - Monetization model must align with WTP signals AND project type — but the MARKET REALITY wallet
+      signal outranks both: low WTP + directory points to ad/affiliate ONLY where that signal is a
+      positive finding of no verified prices. On a `paying` / priced-`mixed` / UNAVAILABLE reading it
+      does not, and a priced model is required.
     - DO NOT default to 3-tier Freemium - evaluate all models based on full context
     - Include ALL required fields for the chosen pricing model in PricingStrategyResult
     - The numbers in the EXAMPLE blocks are fictional format illustrations — outputting them (or near-variants) fails validation
@@ -422,7 +456,7 @@ pricing_strategy_analysis:
     - Competitive positioning analysis
     - WTP validation
 
-    **For ad/affiliate models (Ad-Supported-Free, Affiliate-Only):**
+    **For ad/affiliate models (Ad-Supported-Free, Affiliate-Only) — wallet-gated above:**
     - Pricing fields set to null (free tool)
     - Ad revenue estimates (monthly ad revenue, CPM rate, recommended networks)
     - Affiliate revenue estimates (monthly affiliate revenue, CTR)

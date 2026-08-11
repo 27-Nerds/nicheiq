@@ -5,6 +5,7 @@ Combines Flow-based orchestration with specialized Crews for complex analysis.
 
 import json
 import math
+import re
 import threading
 import time
 import uuid
@@ -510,6 +511,17 @@ class ResearchFlow(Flow[ResearchState]):
             self.allowed_project_types = self.state.allowed_project_types
         if getattr(self.state, "idea_focus", None):
             self.idea_focus = self.state.idea_focus
+
+        # "Check my idea" resume: rebind the working niche to the derived market. Worker
+        # retries rebuild the flow with the raw pitch and Phase-2 with "" — and Stage 1
+        # only re-runs when its checkpoint is absent — so without this rebind the raw
+        # pitch (or an empty string) would reach thread validation on any resumed
+        # validate run. Contract: gate on state.user_idea_text, never flow.entry_mode
+        # (several re-entry tasks construct ResearchFlow without entry_mode).
+        if (getattr(self.state, "user_idea_text", None)
+                and getattr(self.state, "niche_context", None) is not None
+                and (getattr(self.state.niche_context, "niche_description", "") or "").strip()):
+            self.niche_description = self.state.niche_context.niche_description
 
         # Cleanup old checkpoints
         self.checkpoint_mgr.cleanup_old_checkpoints()
@@ -1828,6 +1840,7 @@ say so — an honest empty landscape is correct, a foreign one is not.
                     pain_quotes = []
                     raw_quotes = pp.representative_quotes or []
                     raw_ids = pp.source_post_ids or []
+                    raw_attributions = getattr(pp, "speaker_attributions", None) or []
 
                     for i, q_text in enumerate(raw_quotes):
                         post_id = raw_ids[i] if i < len(raw_ids) else ""
@@ -1858,6 +1871,10 @@ say so — an honest empty landscape is correct, a foreign one is not.
                             "upvotes": upvotes,
                             "subreddit": subreddit,
                         }
+                        if i < len(raw_attributions) and raw_attributions[i] is not None:
+                            quote_dict["speaker_attribution"] = raw_attributions[i].model_dump(
+                                mode="json"
+                            )
                         pain_quotes.append((q_score, quote_dict))
                         all_scored_quotes.append((q_score, quote_dict, pp.title))
 
@@ -2043,24 +2060,30 @@ say so — an honest empty landscape is correct, a foreign one is not.
             if state.social_content:
                 all_sample_posts = []
                 for p in state.social_content.reddit_posts:
-                    all_sample_posts.append({
+                    sample = {
                         "title": p.title[:200],
                         "subreddit": p.subreddit,
                         "score": p.score,
                         "num_comments": p.num_comments,
                         "url": p.url,
                         "created_utc": p.created_utc.isoformat() if p.created_utc else "",
-                    })
+                    }
+                    if getattr(p, "speaker_attribution", None) is not None:
+                        sample["speaker_attribution"] = p.speaker_attribution.model_dump(mode="json")
+                    all_sample_posts.append(sample)
                 for p in discovery_generic_posts:
                     container = _platform_labels.get(p.platform, p.platform)
-                    all_sample_posts.append({
+                    sample = {
                         "title": p.title[:200],
                         "subreddit": container,
                         "score": p.score,
                         "num_comments": p.num_responses,
                         "url": p.url,
                         "created_utc": p.created_utc.isoformat() if p.created_utc else "",
-                    })
+                    }
+                    if getattr(p, "speaker_attribution", None) is not None:
+                        sample["speaker_attribution"] = p.speaker_attribution.model_dump(mode="json")
+                    all_sample_posts.append(sample)
                 social_posts_sample = sorted(all_sample_posts, key=lambda x: x["score"], reverse=True)[:10]
 
             sources_searched = None if state.sources_searched is None else {
@@ -2085,6 +2108,12 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 "social_posts_sample": social_posts_sample,
                 "subreddit_names": subreddit_names,
                 "subreddit_post_counts": subreddit_post_counts,
+                "speaker_attribution_version": getattr(
+                    state.social_content, "speaker_attribution_version", None
+                ) if state.social_content else None,
+                "speaker_attribution_target": getattr(
+                    state.social_content, "speaker_attribution_target", None
+                ) if state.social_content else None,
                 "data_attribution": f"Public community activity from {', '.join(sorted(set(subreddit_names))) or 'Reddit'}",
                 "sources_searched": sources_searched,
                 "discussion_trend": discussion_trend,
@@ -2106,12 +2135,285 @@ say so — an honest empty landscape is correct, a foreign one is not.
             logger.warning(f"[Discovery Data] Failed to materialize: {e}")
             return None
 
+    def _refresh_idea_portfolio_summary(
+        self,
+        *,
+        reason: str,
+        force: bool = False,
+        persist: bool = False,
+    ) -> bool:
+        """Refresh portfolio guidance when the visible ids+revisions changed.
+
+        This is intentionally fail-soft. A failed LLM pass leaves any older summary and
+        fingerprint paired, so fingerprint-aware consumers degrade instead of presenting
+        the old recommendation as current. Returns True only when new guidance was stored.
+        """
+        from ..models.solution_idea import visible_ideas
+        from ..utils.idea_portfolio_summary import (
+            generate_idea_portfolio_summary,
+            idea_portfolio_fingerprint,
+        )
+
+        state = self.state
+        ideas = list(
+            getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
+        )
+        current_fingerprint = idea_portfolio_fingerprint(
+            ideas,
+            job_id=getattr(self, "job_id", None) or getattr(state, "job_id", None),
+        )
+        if current_fingerprint is None:
+            logger.warning(
+                f"[Portfolio Summary] {reason}: candidate fingerprint unavailable; "
+                "keeping guidance fail-closed"
+            )
+            return False
+
+        visible_count = len(visible_ideas(ideas))
+        funnel_counts = dict(getattr(state, "idea_funnel_counts", None) or {})
+        metadata_changed = funnel_counts.get("candidates_shown") != visible_count
+        funnel_counts["candidates_shown"] = visible_count
+        state.idea_funnel_counts = funnel_counts
+
+        stored_fingerprint = getattr(state, "idea_portfolio_summary_fingerprint", None)
+        stored_summary = getattr(state, "idea_portfolio_summary", None)
+        checkpoint_mgr = getattr(self, "checkpoint_mgr", None)
+        needs_refresh = force or stored_fingerprint != current_fingerprint
+        # A legacy run with neither field has no stale guidance to suppress and no prior
+        # summary attempt to refresh. New runs always receive a fingerprint in Stage 5.
+        if not force and stored_fingerprint is None and stored_summary is None:
+            needs_refresh = False
+        if not needs_refresh:
+            if metadata_changed and persist and checkpoint_mgr:
+                try:
+                    checkpoint_mgr.flush_metadata()
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"[Portfolio Summary] count persistence failed: {e}")
+            return False
+
+        try:
+            verdict = getattr(state, "niche_difficulty_verdict", None)
+            niche_context = getattr(state, "niche_context", None)
+            summary, usage = generate_idea_portfolio_summary(
+                ideas,
+                ruled_out=getattr(state, "idea_ruled_out", None),
+                funnel_counts=funnel_counts,
+                niche_wallet_brief=getattr(state, "niche_wallet_brief", None),
+                niche_difficulty_headline=getattr(verdict, "headline", None),
+                niche_difficulty_narrative=getattr(verdict, "narrative_summary", None),
+                niche=(
+                    getattr(niche_context, "niche_description", None)
+                    or getattr(self, "niche_description", None)
+                ),
+            )
+            cost_tracker = getattr(self, "cost_tracker", None)
+            if usage is not None and cost_tracker is not None:
+                cost_tracker.record_llm_usage(
+                    "Stage 5 - Idea Portfolio Summary", usage.to_dict()
+                )
+            if summary:
+                state.idea_portfolio_summary = summary
+                state.idea_portfolio_summary_fingerprint = current_fingerprint
+                metadata_changed = True
+                logger.info(
+                    f"[Portfolio Summary] {reason}: generated for {visible_count} candidates "
+                    f"({len(summary)} chars)"
+                )
+            else:
+                # With no older prose there is nothing stale to preserve. Record the pool
+                # attempted so a later mutation will trigger another attempt without making
+                # every ordinary preview materialization retry a paid call.
+                if stored_summary is None:
+                    state.idea_portfolio_summary = None
+                    state.idea_portfolio_summary_fingerprint = current_fingerprint
+                    metadata_changed = True
+                logger.warning(
+                    f"[Portfolio Summary] {reason}: grounded LLM pass produced no usable "
+                    "guidance; keeping guidance fail-closed"
+                )
+        except Exception as e:  # noqa: BLE001
+            if stored_summary is None:
+                state.idea_portfolio_summary = None
+                state.idea_portfolio_summary_fingerprint = current_fingerprint
+                metadata_changed = True
+            logger.warning(
+                f"[Portfolio Summary] {reason}: refresh failed; keeping guidance "
+                f"fail-closed: {e}"
+            )
+
+        if metadata_changed and persist and checkpoint_mgr:
+            try:
+                checkpoint_mgr.flush_metadata()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[Portfolio Summary] metadata persistence failed: {e}")
+        return bool(
+            getattr(state, "idea_portfolio_summary", None)
+            and getattr(state, "idea_portfolio_summary_fingerprint", None)
+            == current_fingerprint
+        )
+
+    def _current_recommended_candidates(self) -> list:
+        """Resolve the recommendation authority the live selection surface uses."""
+        state = self.state
+        ideas = list(getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or [])
+        if not ideas:
+            return []
+
+        # Interactive Phase 1 has no SolutionSelection. Its fingerprint-bound portfolio
+        # summary's final sentence is the page-level recommendation authority.
+        summary = getattr(state, "idea_portfolio_summary", None)
+        stored_fingerprint = getattr(state, "idea_portfolio_summary_fingerprint", None)
+        if summary and stored_fingerprint:
+            from ..utils.idea_portfolio_summary import idea_portfolio_fingerprint
+
+            current_fingerprint = idea_portfolio_fingerprint(
+                ideas,
+                job_id=getattr(self, "job_id", None) or getattr(state, "job_id", None),
+            )
+            if current_fingerprint == stored_fingerprint:
+                paragraphs = [part.strip() for part in re.split(r"\n\s*\n", summary) if part.strip()]
+                last_paragraph = paragraphs[-1] if paragraphs else ""
+                sentences = [
+                    part.strip()
+                    for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", last_paragraph)
+                    if part.strip()
+                ]
+                recommendation = sentences[-1] if sentences else last_paragraph
+                if re.search(
+                    r"\b(?:recommend(?:ed|s|ing)?|most deserves?|deserves? (?:further|deeper) "
+                    r"validation|strongest|best (?:idea|option|candidate|pick)|top "
+                    r"(?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? "
+                    r"first|first choice)\b",
+                    recommendation,
+                    re.IGNORECASE,
+                ):
+                    picks = []
+                    for idea in ideas:
+                        name = (getattr(idea, "solution_name", None) or "").strip()
+                        head = re.split(r"[(:]", name, maxsplit=1)[0].strip()
+                        aliases = [name] + ([head] if len(head) >= 4 and head != name else [])
+                        if any(
+                            re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", recommendation, re.IGNORECASE)
+                            for alias in aliases if alias
+                        ):
+                            picks.append(idea)
+                    if picks:
+                        return picks
+
+        selection = getattr(state, "solution_selection", None)
+        recommendation_names = {
+            name.strip()
+            for name in [
+                getattr(selection, "selected_solution_name", None),
+                *(getattr(selection, "runner_up_solutions", None) or []),
+            ]
+            if isinstance(name, str) and name.strip()
+        }
+        return [
+            idea for idea in ideas
+            if (getattr(idea, "solution_name", None) or "").strip() in recommendation_names
+        ]
+
+    def _refresh_recommendation_audience_drift(self, *, persist: bool) -> object | None:
+        """Bind the structured audience notice to the current persisted recommendation.
+
+        Selection can change after the Stage-5 verdict (fallbacks, keyword pivots, or a resumed
+        run), so preview materialization re-runs the three-way comparison from durable state.
+        Only the selected solution and explicitly recorded runners-up are recommendation-scoped;
+        unrelated pool candidates must never trigger the notice.
+
+        The comparison is `audience_axes.detect_audience_drift`: buyer identity read on typed
+        axes, not wording overlap.
+
+        THREE reader-facing surfaces, one snapshot time. The audience card and the verdict card
+        read `audience_drift_notice`; the Reality Check renders `verdict.key_challenges`, which
+        `assess_niche_difficulty` appends `AUDIENCE_DRIFT_CHALLENGE` to. Rebinding only the two
+        notice fields left the third warning behind: a recommendation that changed after Stage 5
+        cleared both notices and the Reality Check went on warning about a buyer change that the
+        current recommendation no longer shows. So the challenge list is rewritten here too —
+        stripped of the pointer unconditionally, then re-appended only while the notice stands.
+
+        Not covered, and deliberately: `verdict.narrative_summary`. The deterministic fallback
+        narrative can quote `key_points[0]`, so a run whose prose LLM failed can carry the
+        pointer sentence inside prose this function does not rewrite. It names no segment and no
+        pair, so a stale copy misstates nothing pool-scoped — but it is not snapshot-bound.
+        """
+        state = self.state
+        verdict = getattr(state, "niche_difficulty_verdict", None)
+        niche_context = getattr(state, "niche_context", None)
+        audience_mapping = getattr(state, "audience_mapping", None)
+
+        from ..utils.audience_axes import AUDIENCE_DRIFT_CHALLENGE, detect_audience_drift
+
+        notice = detect_audience_drift(
+            getattr(niche_context, "user_target_audience", None),
+            getattr(audience_mapping, "primary_target_segment", None),
+            self._current_recommended_candidates(),
+        )
+        verdict_current = getattr(verdict, "audience_drift_notice", None)
+        mapping_current = getattr(audience_mapping, "audience_drift_notice", None)
+        challenges = list(getattr(verdict, "key_challenges", None) or [])
+        if notice is not None and AUDIENCE_DRIFT_CHALLENGE in challenges:
+            # Already carried: keep the position Stage 5 wrote it at rather than moving it to
+            # the end on every no-op refresh.
+            wanted_challenges = challenges
+        else:
+            wanted_challenges = [c for c in challenges if c != AUDIENCE_DRIFT_CHALLENGE]
+            if notice is not None:
+                wanted_challenges = [*wanted_challenges, AUDIENCE_DRIFT_CHALLENGE]
+        if (verdict_current == notice and mapping_current == notice
+                and wanted_challenges == challenges):
+            return notice
+
+        if verdict is not None:
+            state.niche_difficulty_verdict = verdict.model_copy(
+                update={
+                    "audience_drift_notice": notice,
+                    "key_challenges": wanted_challenges,
+                }
+            )
+        if audience_mapping is not None:
+            state.audience_mapping = audience_mapping.model_copy(
+                update={"audience_drift_notice": notice}
+            )
+        checkpoint_mgr = getattr(self, "checkpoint_mgr", None)
+        if persist and checkpoint_mgr is not None:
+            # save_stage REPORTS failure by returning False as well as by raising, and the two
+            # writes are independent — a warning-free return used to mean nothing about whether
+            # either landed. A drift notice that only exists in memory is a warning that a
+            # resumed run will not repeat, so an unconfirmed write is logged as an error naming
+            # the stage. The preview itself is still published: it carries the notice inline,
+            # so withholding it would remove the very warning this is protecting.
+            #
+            # `save_stage` returns True unconditionally when `settings.checkpoint_enabled` is
+            # false, so this error cannot fire in that configuration. That is correct rather
+            # than a hole: with checkpointing off there is no checkpoint to resume from, so
+            # there is no "will not survive a resume" to warn about.
+            targets = []
+            if verdict is not None:
+                targets.append(("stage_5_niche_difficulty", state.niche_difficulty_verdict))
+            if audience_mapping is not None:
+                targets.append(("stage_4_audience_mapping", state.audience_mapping))
+            for stage_name, payload in targets:
+                try:
+                    saved = checkpoint_mgr.save_stage(stage_name, payload)
+                except Exception as e:  # noqa: BLE001 - preview remains publishable
+                    saved = False
+                    logger.error(f"[Audience Drift] {stage_name} checkpoint write raised: {e}")
+                if saved is False:
+                    logger.error(
+                        f"[Audience Drift] {stage_name} did not confirm the audience notice "
+                        "write; the notice is in this preview but will not survive a resume"
+                    )
+        return notice
+
     def _materialize_preview_report(self, output_dir: str) -> str | None:
         """Assemble and write a preview report JSON that mirrors FinalReport shape.
 
         Called after Phase 1 completion alongside _materialize_discovery_data().
         Produces a Partial<Report>-shaped dict from stages 1-5 data only.
-        No LLM calls — pure Python data reshaping.
+        Pure Python data reshaping unless the visible candidate fingerprint changed. A
+        changed pool triggers the same fail-soft portfolio-summary LLM pass used in Stage 5.
 
         Returns the file path if successful, None on failure.
         """
@@ -2141,6 +2443,11 @@ say so — an honest empty landscape is correct, a foreign one is not.
                     state.idea_ruled_out,
                     operation_key="preview",
                 )
+            self._refresh_idea_portfolio_summary(
+                reason="preview candidate-set check",
+                persist=True,
+            )
+            self._refresh_recommendation_audience_drift(persist=True)
             report: dict = {}
 
             # ── Stage 1: Niche Context ──
@@ -2229,6 +2536,11 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 if pain_analysis and pain_analysis.pain_points:
                     pain_points = pain_analysis.pain_points
                     report["detailed_pain_points"] = [pp.model_dump() for pp in pain_points]
+                    # Idea-check runs: the anchored pains' dossier cards slice the first
+                    # three quotes — put the idea-relevant excerpts first so the card
+                    # under the verdict's own anchor can never show only off-topic ones.
+                    from ..report.idea_validation_block import reorder_anchored_pain_quotes
+                    reorder_anchored_pain_quotes(self.state, report["detailed_pain_points"])
 
                     # Synthesize pain_point_analytics from raw data
                     total = len(pain_points)
@@ -2326,6 +2638,13 @@ say so — an honest empty landscape is correct, a foreign one is not.
             try:
                 am = getattr(state, "audience_mapping", None)
                 report["audience_mapping"] = am.model_dump() if am else None
+                drift = getattr(
+                    getattr(state, "niche_difficulty_verdict", None),
+                    "audience_drift_notice",
+                    None,
+                )
+                if report["audience_mapping"] is not None and drift is not None:
+                    report["audience_mapping"]["audience_drift_notice"] = drift.model_dump()
             except Exception as e:
                 logger.debug(f"[Preview Report] Audience mapping section failed: {e}")
                 report["audience_mapping"] = None
@@ -2668,6 +2987,9 @@ say so — an honest empty landscape is correct, a foreign one is not.
 
             # Idea portfolio summary (computed end of Phase 1 alongside the verdict above).
             report["idea_portfolio_summary"] = getattr(state, "idea_portfolio_summary", None)
+            report["idea_portfolio_summary_fingerprint"] = getattr(
+                state, "idea_portfolio_summary_fingerprint", None
+            )
 
             # Guided-mode (chatMode) honesty block (Phase C): gate patches applied earlier in
             # THIS run (G1/G2 — see flows/gate_patches.py) are already stamped on state by the
@@ -2679,6 +3001,18 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 logger.debug(f"[Preview Report] User adjustments section failed: {e}")
                 report["user_adjusted"] = False
                 report["user_adjustments"] = []
+
+            # ── "Check my idea" (validate_idea): the idea_validation block ──
+            # Pure reshape of state, marker-selected, rebuilt on EVERY materialize call
+            # (regenerate/chat-seed operations rewrite this asset — the block must
+            # reconstruct identically from state alone). None for every other mode.
+            try:
+                from ..report.idea_validation_block import build_idea_validation_block
+                _iv = build_idea_validation_block(state, getattr(self, "entry_mode", None))
+                if _iv is not None:
+                    report["idea_validation"] = _iv
+            except Exception as e:
+                logger.error(f"[Preview Report] idea_validation block failed: {e}")
 
             # ── Write to file ──
             job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
@@ -2833,6 +3167,47 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 f"[Stage 4] Provenance-matched {provenance_count}/{len(self.state.pain_point_analysis.pain_points)} "
                 f"pain points to segments via source-post hub overlap"
             )
+
+    def _attribute_evidence_speakers(self, audience_result) -> None:
+        """Stamp durable quote/post speaker roles after the final audience is known.
+
+        This mutates attribution metadata only. It does not add, remove, or reorder
+        collected content. Both affected checkpoints are re-saved so later report
+        materialization and resume paths never need to re-derive a role from text.
+        """
+        if not self.state.social_content or not self.state.pain_point_analysis:
+            return
+        # A few symbol-level unit fixtures construct a bare flow without runtime
+        # services. Production flows always own a tracker; do not turn those fixtures
+        # into live LLM calls merely because they exercise Stage-4 resume mapping.
+        cost_tracker = getattr(self, "cost_tracker", None)
+        if cost_tracker is None:
+            return
+
+        from ..utils.speaker_attribution import attribute_evidence_speakers
+
+        run = attribute_evidence_speakers(
+            self.state.social_content,
+            self.state.pain_point_analysis.pain_points,
+            audience_result,
+            cost_tracker=cost_tracker,
+        )
+        if not run.changed:
+            return
+
+        self.checkpoint_mgr.save_stage("stage_2_social_content", self.state.social_content)
+        self.checkpoint_mgr.save_stage("stage_3_pain_points", self.state.pain_point_analysis)
+        logger.info(
+            f"[Stage 4] Speaker attribution stamped {run.candidate_count} contributions "
+            f"in {run.llm_calls} batch call(s); {run.unknown_count} unknown"
+        )
+        if run.failed_batches:
+            message = (
+                f"Speaker attribution failed for {run.failed_batches} batch(es); affected "
+                "conversations remain explicitly unattributed and are not shown as buyer voices."
+            )
+            if message not in self.state.pipeline_degradations:
+                self.state.pipeline_degradations.append(message)
 
     def _replay_completed_stages_progress(self, completed_stages: list[str]) -> None:
         """
@@ -3216,6 +3591,17 @@ say so — an honest empty landscape is correct, a foreign one is not.
             logger.error(f"Failed to generate niche context with LLM: {e}")
             raise RuntimeError(f"Stage 1 failed: Could not generate niche context - {e}") from e
 
+        if (self.entry_mode or "").strip().lower() == "validate_idea":
+            # "Check my idea": the input was the user's pitch. Keep the raw pitch for the
+            # display/echo surfaces, then REBIND the working niche to the derived market —
+            # consumers that take self.niche_description raw (thread-relevance validation
+            # in Stage 2) must never grade scraped threads against a product pitch.
+            self.state.user_idea_text = niche
+            self.niche_description = self.state.niche_context.niche_description
+            logger.info(
+                "[Idea Check] working niche rebound to derived market; "
+                f"brief={'set' if getattr(self.state, 'user_idea_brief', None) else 'MISSING'}")
+
         self.state.current_stage = 2
         self._mark_stage_complete(1)
 
@@ -3231,6 +3617,7 @@ say so — an honest empty landscape is correct, a foreign one is not.
         # merits below, so an unknown/new/None mode degrades safely to "no signal". Map each
         # known mode to its prior; the classifier is what actually decides audience_scope.
         _mode = (self.entry_mode or "").strip().lower()
+        is_idea_check = _mode == "validate_idea"
         _niche_prior = ("the input is likely a plain niche — but still detect an audience if the "
                         "input clearly names one")
         entry_hint = {
@@ -3244,14 +3631,61 @@ say so — an honest empty landscape is correct, a foreign one is not.
             "pain_research": f"this is a catalog topic, so {_niche_prior}",
             "deep_idea": f"this is a catalog topic, so {_niche_prior}",
             "pain_remix": f"this is a catalog topic, so {_niche_prior}",
+            "validate_idea": ("the input is the user's OWN PRODUCT IDEA — a pitch, not a niche; "
+                              "follow the IDEA-CHECK PRE-STEP and research the market the idea "
+                              "competes in"),
         }.get(_mode, "there is no entry-mode signal — classify the input purely on its own merits")
+
+        # "Check my idea": an ADDITIVE pre-step over the same A/B-tuned STEP 1-5 prompt —
+        # the steps themselves are never restructured. The extra parse fields ride a
+        # subclass so the base NicheContext model is untouched (checkpoints restore the
+        # stage_1 file as the base model, so the context is rebuilt clean below).
+        idea_pre_step = ""
+        idea_json_fields = ""
+        output_model: type[NicheContext] = NicheContext
+        if is_idea_check:
+            from pydantic import Field as _Field
+
+            class _IdeaCheckNicheContext(NicheContext):
+                idea_name: str = _Field(
+                    default="", description="Short display name for the product (max 40 chars)")
+                idea_brief: str = _Field(
+                    default="",
+                    description="One-sentence canonical brief: what it is, who it's for, "
+                                "what problem it addresses")
+                idea_inferred_fields: list[str] = _Field(default_factory=list)
+                # Four FLAT lists (not dict-of-lists: json_schema shaping has no
+                # additionalProperties handling) — verbatim pitch keywords per clause,
+                # consumed by the seed drift detector + brief-parity probe.
+                idea_mechanism_terms: list[str] = _Field(default_factory=list)
+                idea_audience_terms: list[str] = _Field(default_factory=list)
+                idea_problem_terms: list[str] = _Field(default_factory=list)
+                idea_delivery_terms: list[str] = _Field(default_factory=list)
+
+            output_model = _IdeaCheckNicheContext
+            idea_pre_step = """
+**IDEA-CHECK PRE-STEP — the input is the user's own PRODUCT IDEA (a pitch, not a niche):**
+Before the numbered steps, extract the product itself:
+- idea_name: a short display name for the product (max 40 characters, title-like, no quotes).
+- idea_brief: ONE sentence, at most 300 characters, canonically stating what the product is (its mechanism and form), who it is for, and the problem it addresses. Use only facts from the pitch — never invent features.
+- idea_inferred_fields: which of ["audience", "problem", "delivery"] you had to INFER because the pitch does not state them (empty list when all three are stated).
+- idea_mechanism_terms / idea_audience_terms / idea_problem_terms / idea_delivery_terms: up to 4 short keywords or phrases QUOTED VERBATIM from the pitch naming each clause (mechanism = what the product does; audience = who it is for; problem = the pain it removes; delivery = the product form or channel). Use [] for any clause listed in idea_inferred_fields — these lists must quote the pitch, never your inference.
+Then run STEP 1-5 on the MARKET THE IDEA COMPETES IN: classify the idea's stated buyer in STEP 1, and derive the full product market the idea belongs to in STEPs 2-5. The market — never the product itself — is the research subject.
+"""
+            idea_json_fields = ('  "idea_name": "...",\n'
+                                '  "idea_brief": "...",\n'
+                                '  "idea_inferred_fields": ["audience and/or problem and/or delivery — often empty"],\n'
+                                '  "idea_mechanism_terms": ["verbatim pitch keywords"],\n'
+                                '  "idea_audience_terms": ["verbatim pitch keywords, [] when inferred"],\n'
+                                '  "idea_problem_terms": ["verbatim pitch keywords, [] when inferred"],\n'
+                                '  "idea_delivery_terms": ["verbatim pitch keywords, [] when inferred"],\n')
 
         prompt = f"""You are a market research analyst. First CLASSIFY the input, then map the
 FULL market it belongs to. Work in THIS EXACT ORDER — each step constrains the next.
 
 **Input:** {niche_input}
 Entry-mode hint: {entry_hint}
-
+{idea_pre_step}
 **STEP 1 — Classify the input (fill audience_scope, then user_target_audience):**
 The input may name a product/market, a target audience (who someone builds for), or both.
 - audience_scope — exactly one of:
@@ -3306,7 +3740,7 @@ The input may name a product/market, a target audience (who someone builds for),
 
 Return a valid JSON object with this structure (emit the fields in this order):
 {{
-  "audience_scope": "<niche | segment_of_niche | community | too_broad>",
+{idea_json_fields}  "audience_scope": "<niche | segment_of_niche | community | too_broad>",
   "user_target_audience": "<the audience, or null only when audience_scope is niche>",
   "niche_description": "...",
   "market_segments": ["segment 1", "segment 2", "..."],
@@ -3318,7 +3752,7 @@ Return a valid JSON object with this structure (emit the fields in this order):
         # Moderate temperature (0.5) for balanced understanding + structured strategy.
         context, usage = LLMService.invoke_structured(
             prompt=prompt,
-            output_model=NicheContext,
+            output_model=output_model,
             temperature=0.5,
             timeout=120,
             model_name=settings.niche_context_llm
@@ -3330,6 +3764,27 @@ Return a valid JSON object with this structure (emit the fields in this order):
 
         # Add niche_input to the context
         context.niche_input = niche_input
+
+        if is_idea_check:
+            # Stash the parsed idea on state (checkpoint-metadata-persisted), then rebuild
+            # a CLEAN base NicheContext — the stage_1 checkpoint is restored as the base
+            # model, so the subclass-only fields must never reach it.
+            self.state.user_idea_brief = (getattr(context, "idea_brief", "") or "").strip() or None
+            self.state.user_idea_inferred_fields = [
+                f for f in (getattr(context, "idea_inferred_fields", None) or [])
+                if f in ("audience", "problem", "delivery")
+            ]
+            _identity_terms = {
+                key: [t.strip() for t in (getattr(context, f"idea_{key}_terms", None) or [])
+                      if isinstance(t, str) and t.strip()][:4]
+                for key in ("mechanism", "audience", "problem", "delivery")
+            }
+            self.state.user_idea_identity_terms = (
+                _identity_terms if any(_identity_terms.values()) else None)
+            context = NicheContext(**{
+                k: v for k, v in context.model_dump().items()
+                if k in NicheContext.model_fields
+            })
 
         # Post-parse guards (two directions):
         #  - niche/empty scope → never frame a plain niche: clear any echoed audience.
@@ -4347,6 +4802,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 # Re-save pain points with affected_segments populated
                 self.checkpoint_mgr.save_stage("stage_3_pain_points", self.state.pain_point_analysis)
 
+            # Roles are relative to the FINAL primary segment, so this deliberately
+            # runs only after pain + audience results have converged.
+            self._attribute_evidence_speakers(audience_result)
+
             # Mark Stage 6.5 complete
             self._mark_stage_complete(4)
 
@@ -4397,6 +4856,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     and (needs_lexical_mapping or needs_provenance_mapping)):
                 self._map_pain_points_to_segments(self.state.audience_mapping)
                 self.checkpoint_mgr.save_stage("stage_3_pain_points", self.state.pain_point_analysis)
+            self._attribute_evidence_speakers(self.state.audience_mapping)
             self.state.current_stage = 5
             return
 
@@ -4447,6 +4907,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             self._map_pain_points_to_segments(audience_result)
             # Re-save pain points with affected_segments populated
             self.checkpoint_mgr.save_stage("stage_3_pain_points", self.state.pain_point_analysis)
+
+        self._attribute_evidence_speakers(audience_result)
 
         # Mark stage complete with tracking
         self._mark_stage_complete(4)
@@ -4777,6 +5239,259 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             f"recommendation moved to '{pick.solution_name}' (killed idea kept in the list)"
         )
 
+    def _inject_validate_seed(self, unified_crew, refined_solutions) -> None:
+        """"Check my idea": run the user's idea through the seed pipeline on the WARM crew
+        at the end of Stage 5 (plan P4). The seed rides `execute_seed_pipeline` — the real
+        birth path with the fidelity identity lock — and is APPENDED to the pool with the
+        durable `generation_operation_id='validate'` marker (stamped AFTER the call: the
+        pool contract nulls the field internally).
+
+        Snapshot-and-restore contract: `execute_seed_pipeline` resets the crew's per-op
+        scratch state at entry (ruled-out ledger, funnel counts, Serper budget, seed-context
+        residue) and the Stage-5 telemetry harvest reads those attrs AFTER this method — so
+        the full set is snapshotted before the call and restored after, and only the seed's
+        own ruled-out entries are merged deliberately. Best-effort: only the systemic-LLM
+        breaker propagates; any other failure degrades to a report-visible note.
+        """
+        from ..crews.unified_solution_crew import SeedRequest
+        from ..utils.llm_service import LLMSystemicError
+
+        seed_text = (getattr(self.state, "user_idea_brief", None) or "").strip()
+        if not seed_text:
+            # Brief extraction failed at Stage 1 — fall back to the head of the raw pitch
+            # (the fidelity lock is weaker against long text; better than no evaluation).
+            seed_text = (getattr(self.state, "user_idea_text", None) or "").strip()[:300]
+        if not seed_text:
+            logger.error("[Idea Check] no idea text on state — skipping seed injection")
+            return
+
+        _SNAP_ATTRS = (
+            "_tournament_ctx", "ruled_out_pains", "overlap_groups", "funnel_counts",
+            "_ma_serper_calls", "_ma_search_lock", "_birth_verified_names",
+            "_route_label_counts", "coverage_caveats",
+            "_current_seed_text", "_current_seed_dispatch_id", "_current_seed_evaluation",
+        )
+        snapshot = {a: getattr(unified_crew, a, None) for a in _SNAP_ATTRS}
+        seed = None
+        pivot = None
+        seed_ruled_out: list = []
+        seed_serper_calls = 0
+        seed_brief_probe_calls = 0
+        try:
+            # Stage number 5 EXACTLY — unregistered numbers are silently rejected by the
+            # backend validator. This emit is also the last cancel checkpoint before
+            # minutes of uninterruptible seed-tail work.
+            self._emit_progress(5, "Solution Pipeline", "running")
+            seed = unified_crew.execute_seed_pipeline(
+                SeedRequest(
+                    seed_text=seed_text, dispatch_id="validate",
+                    # Stated-clause preservation: the evaluated project must stay the
+                    # pitched product (delivery form, buyer, core mechanism).
+                    identity_terms=getattr(
+                        self.state, "user_idea_identity_terms", None),
+                    inferred_fields=list(getattr(
+                        self.state, "user_idea_inferred_fields", None) or []),
+                ))
+            seed_ruled_out = list(getattr(unified_crew, "ruled_out_pains", None) or [])
+            seed_serper_calls = getattr(unified_crew, "_ma_serper_calls", 0) or 0
+            if seed is not None:
+                parity = (getattr(seed, "incumbent_parity", None) or "").strip().lower()
+                if parity.startswith(("shipped", "partial")):
+                    pivot = self._attempt_validate_pivot(unified_crew, seed)
+                else:
+                    self.state.user_idea_pivot = {
+                        "attempted": False, "outcome": "not_attempted",
+                        "trigger_finding": None, "because": None, "keeps": None,
+                        "changes": None, "reason_not_shown": None, "ries_label": None,
+                        "name": None,
+                    }
+                if parity.startswith("none"):
+                    # Q1: the in-wave probe searched the EVALUATED mechanism's vocabulary
+                    # and found nothing — probe the PITCHED mechanism too (display-only;
+                    # never feeds outcome/confidence/pivot). Count logged below; the
+                    # queries run inside the snapshot window like the seed's own spend.
+                    _terms = getattr(self.state, "user_idea_identity_terms", None) or {}
+                    note, seed_brief_probe_calls = unified_crew._probe_seed_brief_parity(
+                        seed, _terms.get("mechanism") or [])
+                    if note is not None:
+                        self.state.user_idea_brief_parity = note
+        except LLMSystemicError:
+            raise
+        except Exception as e:  # noqa: BLE001 — degrade, never kill a paid Phase 1
+            logger.error(f"[Idea Check] seed injection failed (non-fatal): {e}")
+        finally:
+            # Restore the pool's scratch state so the harvest below reads pool values.
+            # `_ma_serper_calls` is restored too — the seed gets no fresh Serper budget;
+            # its own spend is logged below. `_tournament_ctx` is then nulled: the seed
+            # path re-sets it to a one-cell context and never clears it.
+            for attr, value in snapshot.items():
+                setattr(unified_crew, attr, value)
+            unified_crew._tournament_ctx = None
+
+        if seed is None:
+            self.state.pipeline_degradations = list(
+                getattr(self.state, "pipeline_degradations", None) or []
+            ) + ["Idea check: your idea could not be evaluated in this market "
+                 "(the seed pipeline returned no result)."]
+            logger.error("[Idea Check] seed pipeline produced no idea — degraded")
+            return
+
+        seed.generation_operation_id = "validate"
+        refined_solutions.solution_ideas.append(seed)
+        self._stamp_validate_duplicate(seed, refined_solutions)
+        if seed_ruled_out:
+            self.state.idea_ruled_out = list(
+                getattr(self.state, "idea_ruled_out", None) or []) + seed_ruled_out
+        if pivot is not None:
+            pivot.generation_operation_id = "validate_pivot"
+            refined_solutions.solution_ideas.append(pivot)
+        logger.info(
+            f"[Idea Check] seed '{getattr(seed, 'solution_name', '?')}' injected "
+            f"(status={getattr(seed, 'candidate_status', '?')}, "
+            f"pivot={'accepted' if pivot is not None else 'no'}, "
+            f"seed_serper_calls={seed_serper_calls}, "
+            f"seed_brief_probe_calls={seed_brief_probe_calls})")
+
+        # Telemetry only (quality pass Q4): the report block recomputes this from
+        # persisted state — a value stashed here would not survive re-materialize.
+        try:
+            from ..utils.seed_fidelity import seed_clause_drift
+            drifted = seed_clause_drift(
+                getattr(self.state, "user_idea_identity_terms", None), seed,
+                getattr(self.state, "user_idea_inferred_fields", None))
+            if drifted:
+                logger.warning(
+                    "[Idea Check] evaluated seed drifted from the pitch on: "
+                    + ", ".join(drifted))
+        except Exception as exc:  # never let telemetry break injection
+            logger.warning(f"[Idea Check] clause-drift telemetry failed: {exc}")
+
+    def _attempt_validate_pivot(self, unified_crew, seed):
+        """Single accept-guarded wedge-pivot revision of the user's idea (plan P4.19).
+        APPEND semantics — the seed is never replaced. The attempt is recorded on
+        `state.user_idea_pivot` REGARDLESS of outcome (the report's pivot-absent state is
+        mandatory copy: rejection is the expected common case — `_pivot_acceptable`
+        requires the revision's own parity to clear to 'none')."""
+        finding = (getattr(seed, "incumbent_parity", "") or "").strip()
+        # Shared stamp parser (2026-08): the old token loop returned the CLASS word
+        # ("substitute") for paren-format stamps — trigger_incumbent then named no product.
+        from ..validators.report_consistency import parse_stamp_vendor
+        parsed = parse_stamp_vendor(finding)
+        inc_name = parsed[1] if parsed else ""
+        gaps_by_name: dict[str, str] = {}
+        for row in (getattr(unified_crew, "_incumbent_rows", None) or []):
+            name = (row.get("name") or "").strip().lower()
+            if name:
+                gaps_by_name[name] = (row.get("gap") or "").strip()
+        gap = gaps_by_name.get(inc_name.lower(), "")
+
+        record = {
+            "attempted": True, "outcome": "rejected",
+            "trigger_finding": finding, "because": gap or None,
+            # The report labels the trigger with this name ("TeamSnap already ships part
+            # of this") instead of echoing the raw parity note a second time.
+            "trigger_incumbent": inc_name or None,
+            "keeps": None, "changes": None, "reason_not_shown": None,
+            "ries_label": None, "name": None,
+        }
+        try:
+            rev = unified_crew._generate_pivot_revision(seed, gaps_by_name)
+            if rev is None:
+                record["rejection_code"] = "no_design"
+                record["reason_not_shown"] = (
+                    "We drafted one revision of your idea against this gap, but it did "
+                    "not produce a usable design, so we're not proposing it.")
+                return None
+            unified_crew._score_wave([rev])
+            if not unified_crew._pivot_acceptable(seed, rev):
+                # Re-derive WHY with the guard's own checks, in its order — the single
+                # "scored no better" sentence lied when the revision scored BETTER but
+                # its parity did not clear to 'none'.
+                from ..utils.score_helpers import _composite_for_angle
+
+                def _comp(i):
+                    return _composite_for_angle(
+                        getattr(i, "market_fit_score", None),
+                        getattr(i, "technical_feasibility_score", None),
+                        getattr(i, "novelty_score", None),
+                        getattr(i, "seo_scalability_score", None),
+                        getattr(i, "winning_angle", None))
+
+                score_dims = [getattr(rev, k, None) for k in
+                              ("market_fit_score", "technical_feasibility_score",
+                               "novelty_score", "seo_scalability_score")]
+                if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                           for v in score_dims):
+                    record["rejection_code"] = "incomplete_scores"
+                    record["reason_not_shown"] = (
+                        "We drafted one revision of your idea against this gap. It "
+                        "scored no better than your original, so we're not proposing it.")
+                    return None
+                rev_comp, orig_comp = _comp(rev), _comp(seed)
+                rev_par = (getattr(rev, "incumbent_parity", None) or "").strip().lower()
+                if rev_comp > orig_comp and not rev_par.startswith("none"):
+                    record["rejection_code"] = "parity_not_cleared"
+                    record["reason_not_shown"] = (
+                        "It scored better, but a named product already ships the "
+                        "revised mechanism too, so we're not proposing it.")
+                else:
+                    record["rejection_code"] = "not_better"
+                    record["reason_not_shown"] = (
+                        "It scored no better than your original, so we're not "
+                        "proposing it.")
+                # The acceptance decision's OWN numbers (the same angle composite
+                # _pivot_acceptable compared) — deliberately NOT the workbench's
+                # displayCompositeScore; do not repoint these at the UI score.
+                record["rejected_name"] = getattr(rev, "solution_name", None)
+                record["rejected_pitch"] = (
+                    (getattr(rev, "value_proposition", None) or "")[:160]) or None
+                record["rejected_composite"] = round(rev_comp * 100)
+                record["original_composite"] = round(orig_comp * 100)
+                return None
+            record["outcome"] = "accepted"
+            record["name"] = getattr(rev, "solution_name", None)
+            seed_personas = list(getattr(seed, "target_personas", None) or [])
+            rev_personas = list(getattr(rev, "target_personas", None) or [])
+            # "; " — the items are whole phrases; comma-joining them produced one
+            # six-comma run-on with no item boundaries.
+            record["keeps"] = "; ".join(
+                seed_personas[:2]
+                + list(getattr(seed, "pain_points_addressed", None) or [])[:1]) or None
+            record["changes"] = ((getattr(rev, "innovation_angle", None)
+                                  or getattr(rev, "value_proposition", "") or "")[:200]) or None
+            if seed_personas and rev_personas and seed_personas[0] != rev_personas[0]:
+                record["ries_label"] = "customer-segment"
+            elif record["changes"]:
+                record["ries_label"] = "zoom-in"
+            return rev
+        finally:
+            self.state.user_idea_pivot = record
+
+    def _stamp_validate_duplicate(self, seed, refined_solutions) -> None:
+        """duplicate_of seed<->pool: a generated idea structurally matching the user's idea
+        is a DEMAND signal ("our own generator independently arrived at your idea"), never a
+        drop — both ideas are kept. Matcher failures are error-logged (this feeds a verdict
+        signal; the regenerate path's silent `except: pass` is deliberately not copied)."""
+        try:
+            from ..utils.validation.crew_guardrails import detect_catalog_duplicate
+            for other in refined_solutions.solution_ideas:
+                if other is seed:
+                    continue
+                existing = {
+                    "name": getattr(other, "solution_name", "") or "",
+                    "description": getattr(other, "description", "") or "",
+                    "value_proposition": getattr(other, "value_proposition", "") or "",
+                    "target_personas": list(getattr(other, "target_personas", None) or []),
+                }
+                if existing["name"] and detect_catalog_duplicate(seed, existing):
+                    seed.duplicate_of = existing["name"]
+                    logger.info(
+                        f"[Idea Check] pool idea '{existing['name']}' independently matches "
+                        "the user's idea — recorded as a demand signal (both kept)")
+                    return
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[Idea Check] duplicate matcher failed (verdict signal lost): {e}")
+
     def stage_5_unified_solution_pipeline(self, skip_selection: bool = False):
         """
         Stage 7: Unified Solution Pipeline (CrewAI Best Practice)
@@ -4883,6 +5598,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.solution_selection = solution_selection
+
+            # "Check my idea": inject the user's idea through the seed pipeline on the
+            # warm crew (plan P4) — before headless selection and the audience re-tag so
+            # the seed participates in both.
+            if (self.entry_mode or "").strip().lower() == "validate_idea" and refined_solutions:
+                self._inject_validate_seed(unified_crew, refined_solutions)
+
             # Headless per-cell-tournament auto-select: the tournament path returns
             # solution_selection=None (no LLM Task-4 selector). For a NON-interactive run,
             # pick the top-ranked calibrated idea so Stage 6+ can proceed. Interactive runs
@@ -4900,6 +5622,17 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # then tag each idea's audience_fit (semantic primary/adjacent signal).
             self._refine_audience_against_ideas()
             self._tag_audience_fit()
+
+            # "Check my idea" durable save (plan P4.17): without it the seeded idea never
+            # reaches the checkpoint Phase 2 resolves selections from — execute_pipeline's
+            # own save precedes the injection, _tag_audience_fit's save is multi-gated, and
+            # the worker-tail identity save is conditional on missing identities.
+            if (self.entry_mode or "").strip().lower() == "validate_idea":
+                try:
+                    self.checkpoint_mgr.save_stage(
+                        "stage_5_3_refinement", self.state.idea_generation)
+                except Exception as _e:  # noqa: BLE001
+                    logger.warning(f"[Idea Check] stage_5_3 durable save failed: {_e}")
 
             # Research Reality Check: candid software-fit verdict, computed once here over
             # all pains + all generated ideas. Read later by both the preview materializer
@@ -4928,15 +5661,38 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                          if getattr(i, "winning_angle", None) == "distribution_seo"]
                 _serp_share = (sum(1 for i in _dist if getattr(i, "_serp_owned", False))
                                / len(_dist) if _dist else None)
+                _recommended = self._current_recommended_candidates()
+                # The verdict card and this stage must not narrate the buyer with two different
+                # comparators, so `assess_niche_difficulty` reads the same typed axes for the
+                # message it appends to key_challenges. The recommendation is handed over
+                # unconditionally: whether there is anything to say is the comparator's call,
+                # not this caller's.
+                from ..utils.audience_axes import detect_audience_drift
+                _typed_drift = detect_audience_drift(
+                    getattr(_nctx, "user_target_audience", None),
+                    getattr(self.state.audience_mapping, "primary_target_segment", None),
+                    _recommended,
+                )
                 _fact_pack = assess_niche_difficulty(
                     _pains, _ideas, _nctx, concept_duplication_rate=_dup_rate,
                     segments=_segments, niche_wallet_brief=_wallet_brief,
-                    incumbent_map=_inc_map, serp_owned_share=_serp_share)
+                    incumbent_map=_inc_map, serp_owned_share=_serp_share,
+                    dossier_primary_segment=getattr(
+                        self.state.audience_mapping, "primary_target_segment", None
+                    ),
+                    recommended_candidates=_recommended)
                 if _fact_pack is not None:
                     _verdict, _usage = generate_niche_difficulty_verdict(
                         _fact_pack, _niche, _nctx
                     )
+                    _verdict = _verdict.model_copy(update={
+                        "audience_drift_notice": _typed_drift,
+                    })
                     self.state.niche_difficulty_verdict = _verdict
+                    # Stamp the same notice onto audience_mapping and persist both, so the
+                    # verdict and the audience card cannot disagree about the buyer even if
+                    # the run never reaches preview materialization.
+                    self._refresh_recommendation_audience_drift(persist=True)
                     # Persist so the verdict survives resume (read by the report + preview);
                     # restored via stage_mapping. save_stage also flushes checkpoint metadata.
                     try:
@@ -5026,36 +5782,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             if getattr(unified_crew, "_dissatisfaction_text", None) is not None:
                 self.state.niche_dissatisfaction_text = unified_crew._dissatisfaction_text
 
-            # Idea portfolio summary: one honest-reviewer LLM narrative over the whole visible
-            # idea pool, computed HERE (not in the crew) because this is the site where state,
-            # the niche-difficulty verdict, the wallet brief, the funnel counts, and the
-            # ruled-out ledger are ALL in scope together. Best-effort — never blocks the pipeline.
-            try:
-                from ..utils.idea_portfolio_summary import generate_idea_portfolio_summary
-
-                _verdict = getattr(self.state, "niche_difficulty_verdict", None)
-                _ps_niche = (
-                    getattr(self.state.niche_context, "niche_description", None)
-                    or self.niche_description
-                )
-                _summary, _ps_usage = generate_idea_portfolio_summary(
-                    refined_solutions.solution_ideas if refined_solutions else [],
-                    ruled_out=self.state.idea_ruled_out,
-                    funnel_counts=self.state.idea_funnel_counts,
-                    niche_wallet_brief=self.state.niche_wallet_brief,
-                    niche_difficulty_headline=getattr(_verdict, "headline", None),
-                    niche_difficulty_narrative=getattr(_verdict, "narrative_summary", None),
-                    niche=_ps_niche,
-                )
-                self.state.idea_portfolio_summary = _summary
-                if _ps_usage is not None:
-                    self.cost_tracker.record_llm_usage(
-                        "Stage 5 - Idea Portfolio Summary", _ps_usage.to_dict()
-                    )
-                if _summary:
-                    logger.info(f"[Portfolio Summary] generated ({len(_summary)} chars)")
-            except Exception as e:  # noqa: BLE001 — non-critical enrichment
-                logger.warning(f"[Portfolio Summary] step failed: {e}")
+            # Initial portfolio summary. The helper derives the exact deterministic Phase-1
+            # identities the worker will stamp before publishing, so preview materialization
+            # sees the same fingerprint and does not pay for a duplicate LLM call.
+            self._refresh_idea_portfolio_summary(reason="initial Stage 5", force=True)
 
             # Flush now: the crew's own stage_5_3 re-save ran BEFORE this merge, and a Phase-1
             # stop has no later save_stage — without this the ruled-out ledger / funnel counts /

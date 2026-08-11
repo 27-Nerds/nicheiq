@@ -235,3 +235,23 @@ describe("incumbentParityPhrase", () => {
     expect(incumbentParityPhrase(null)).toBe("");
   });
 });
+
+describe("incumbentParityPhrase vendor-echo joins", () => {
+	it("joins a subject-echo evidence as its own sentence, never a colon stitch", () => {
+		expect(
+			incumbentParityPhrase("shipped by Rentec Direct: Rentec Direct ships Ratio utility billing"),
+		).toBe("Already shipped by Rentec Direct. Rentec Direct ships Ratio utility billing");
+	});
+
+	it("drops a duplicated label echo and keeps the colon join", () => {
+		expect(incumbentParityPhrase("shipped by PepLab: PepLab: peptide database")).toBe(
+			"Already shipped by PepLab: peptide database",
+		);
+	});
+
+	it("keeps the colon join when a DIFFERENT vendor opens the evidence", () => {
+		expect(incumbentParityPhrase("shipped by MoeGo: Gingr ships this too")).toBe(
+			"Already shipped by MoeGo: Gingr ships this too",
+		);
+	});
+});

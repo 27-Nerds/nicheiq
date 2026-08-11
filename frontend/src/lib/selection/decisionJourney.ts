@@ -1,6 +1,7 @@
 import type {
   SelectionDecisionIdeaRef,
   SelectionDecisionNextAction,
+  SelectionDecisionRecordKind,
   SelectionDecisionState,
 } from "$lib/types/selectionDecisionState";
 import { STEP_LOCK_HINTS, TOOL_NAMES } from "$lib/selection/labels";
@@ -112,6 +113,27 @@ function task(
   };
 }
 
+/**
+ * The single reader of `nextAction.records` — the ONLY place the backend names
+ * the records a suggestion refers to. The action object itself carries no
+ * `assumptionId`/`experimentId` field, so a caller that reaches for one gets
+ * `undefined` and silently deep-links to a surface with no context instead of
+ * one scoped to the record the suggestion is about. Route every id lookup
+ * through here.
+ *
+ * Scope, precisely: only the `assumption` kind has a deep-link param
+ * (`TOOL_QUERY_KEYS` = `tool`, `assumptionId`), so this prefills the test
+ * planner WITH THE NAMED ASSUMPTION. There is no `experimentId` param and so no
+ * mechanism to reopen one specific saved draft — the planner still opens on its
+ * own default experiment for that assumption.
+ */
+export function decisionActionRecordId(
+  action: SelectionDecisionNextAction,
+  kind: SelectionDecisionRecordKind,
+): string | undefined {
+  return action.records.find((record) => record.kind === kind)?.id;
+}
+
 function targetForAction(action: SelectionDecisionNextAction): SelectionJourneyTarget {
   switch (action.kind) {
     case "select_candidate":
@@ -157,7 +179,7 @@ function recommendationForAction(
       return {
         target: "constraints",
         title: "Add your build limits",
-        description: "Save your time, budget, team, and advantages so fit is judged for your situation.",
+        description: "Save your time, budget, build model, and advantages so fit is judged for your situation.",
         actionLabel: "Add build limits",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
@@ -353,7 +375,7 @@ export function buildSelectionJourney(
       "constraints",
       "Your build limits",
       state.profile
-        ? "Time, budget, team, and advantages are saved."
+        ? "Time, budget, build model, and advantages are saved."
         : "Add your situation so fit can be judged for you.",
       constraintsStatus,
       undefined,

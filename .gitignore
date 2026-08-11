@@ -103,5 +103,6 @@ temp/
 /ideas-v2
 graphify-out
 
-scripts/
+scripts/*
+!scripts/backfill_paying_wallet_assets.py
 node_modules

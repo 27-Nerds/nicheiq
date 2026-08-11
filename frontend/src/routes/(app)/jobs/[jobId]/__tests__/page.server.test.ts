@@ -36,6 +36,30 @@ function job(solutionIdeas: unknown[]) {
   };
 }
 
+function selectionContext(
+  solutionIdeas: unknown[],
+  previewReport: unknown = null,
+  artifactVerification: "verified" | "untrusted" = "verified",
+) {
+  return {
+    solutionIdeas,
+    previewReport: artifactVerification === "verified" ? previewReport : null,
+    artifactVerification,
+    artifactReason: artifactVerification === "untrusted" ? "version_mismatch" : null,
+    selectedSolution: null,
+    selectedSolutions: null,
+    selectedSolutionIds: null,
+    selectedSolutionRefs: null,
+    selectionRationale: null,
+    selectionDecisionProfile: null,
+    selectionDraft: { version: 1, items: [] },
+    canRegenerate: true,
+    ideaBatchCompletedCount: 0,
+    maxIdeaBatches: 3,
+    activeOperation: null,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -54,7 +78,7 @@ describe("job selection candidate load state", () => {
     expect(result.solutionsFetchFailed).toBe(true);
   });
 
-  it("keeps valid candidates from the job as the fallback on a solutions failure", async () => {
+  it("does not render raw job candidates when the verified context request fails", async () => {
     mocks.fetchBackend.mockImplementation((path: string) => {
       if (path === "/api/jobs/job-1") {
         return Promise.resolve(response(job([{
@@ -69,16 +93,16 @@ describe("job selection candidate load state", () => {
 
     const result = await load(event()) as Record<string, any>;
 
-    expect(result.solutionsFetchFailed).toBe(false);
-    expect(result.job.solutionIdeas).toHaveLength(1);
-    expect(result.job.solutionIdeas[0].solution_name).toBe("Fallback candidate");
+    expect(result.solutionsFetchFailed).toBe(true);
+    expect(result.solutions).toBeNull();
+    expect(result.job.solutionIdeas).toEqual([]);
   });
 
   it("treats a successful empty response as a legitimate empty candidate set", async () => {
     mocks.fetchBackend.mockImplementation((path: string) => {
       if (path === "/api/jobs/job-1") return Promise.resolve(response(job([])));
       if (path === "/api/jobs/job-1/solutions") {
-        return Promise.resolve(response({ solutionIdeas: [] }));
+        return Promise.resolve(response(selectionContext([], {})));
       }
       return Promise.resolve(response({}, 404));
     });
@@ -99,7 +123,7 @@ describe("job selection candidate load state", () => {
         value_proposition: "Chosen value",
       }])));
       if (path === "/api/jobs/job-1/solutions") {
-        return Promise.resolve(response({ solutionIdeas: [] }));
+        return Promise.resolve(response(selectionContext([], {})));
       }
       if (path === "/api/jobs/job-1/discovery-share") {
         return Promise.resolve(response({
@@ -232,10 +256,7 @@ describe("job selection candidate load state", () => {
       mocks.fetchBackend.mockImplementation((path: string) => {
         if (path === "/api/jobs/job-1") return Promise.resolve(response(selectionMutationJob));
         if (path === "/api/jobs/job-1/solutions") {
-          return Promise.resolve(response({ solutionIdeas: [] }));
-        }
-        if (path === "/api/jobs/job-1/preview-report") {
-          return Promise.resolve(response(previewReport));
+          return Promise.resolve(response(selectionContext([], previewReport)));
         }
         if (path === "/api/jobs/job-1/discovery-data") {
           return Promise.resolve(response(discoveryData));
@@ -252,12 +273,46 @@ describe("job selection candidate load state", () => {
       expect(result.previewReport).toEqual(previewReport);
       expect(result.discoveryData).toEqual(discoveryData);
       expect(result.metricExplanations).toEqual({ metrics: {} });
+      expect(result.selectionArtifactVerification).toBe("verified");
       expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
         "/api/public/catalog/top-pain-points?limit=8&freePreview=true",
         expect.anything(),
       );
+      expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+        "/api/jobs/job-1/preview-report",
+        expect.anything(),
+      );
     },
   );
+
+  it("keeps canonical candidates but withholds preview framing when the context is untrusted", async () => {
+    const candidate = {
+      idea_id: "idea-current",
+      idea_revision: 2,
+      solution_name: "Current candidate",
+      description: "Current pool row",
+      value_proposition: "Current value",
+    };
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job([candidate])));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response(selectionContext([candidate], { stale: true }, "untrusted")));
+      }
+      return Promise.resolve(response({}, 404));
+    });
+
+    const result = await load(event()) as Record<string, any>;
+
+    expect(result.solutions).toEqual([expect.objectContaining({ idea_id: "idea-current" })]);
+    expect(result.job.solutionIdeas).toEqual(result.solutions);
+    expect(result.previewReport).toBeNull();
+    expect(result.selectionArtifactVerification).toBe("untrusted");
+    expect(result.selectionArtifactReason).toBe("version_mismatch");
+    expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+      "/api/jobs/job-1/preview-report",
+      expect.anything(),
+    );
+  });
 
   it("skips the Discovery-dossier fetches at AWAITING_GATE without tripping failure flags", async () => {
     mocks.fetchBackend.mockImplementation((path: string) => {

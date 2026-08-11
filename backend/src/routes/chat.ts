@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type {
   ChatCompletionMessageParam,
@@ -13,7 +14,8 @@ import { validateJobId } from '../middleware/validation.js';
 import { chatComplete, chatCompleteStream, hasApiKeyForModel } from '../services/openai.js';
 import { fenceContent } from '../utils/promptFence.js';
 import { hasAnalystAccess } from '../services/featureAccess.js';
-import { getPreviewReportForJob, getDiscoveryDataForJob } from '../services/assetService.js';
+import { getDiscoveryDataForJob } from '../services/assetService.js';
+import { COMMERCIAL_COPY_CONTRACT_VERSION } from '../services/assetPublicationFence.js';
 import { assessPoolHealth, type PoolHealthResult } from '../utils/poolHealth.js';
 import {
   adversarialReviewLabel,
@@ -40,11 +42,11 @@ import {
 } from '../types/ideaSynthesis.js';
 import {
   candidateSnapshotSha256,
-  ensureIdeaIdentities,
   ideaDisplayTitle,
   ideaName,
   type IdeaRecord,
 } from '../utils/ideaIdentity.js';
+import { isOpeningOrigin } from '../utils/ideaPortfolioFingerprint.js';
 import {
   currentSelectionDraft,
   type SelectionDraftResponse,
@@ -99,7 +101,13 @@ import {
 } from '../services/selectionChatContext.js';
 import type { SelectionConceptSetArtifact } from '../types/selectionConceptSet.js';
 import type { SelectionDecisionHandoffArtifact } from '../services/selectionDecisionHandoffService.js';
-import { loadOwnedSelectionDecisionState } from '../services/selectionDecisionStateLoader.js';
+import { buildSelectionDecisionState } from '../services/selectionDecisionStateService.js';
+import {
+  loadCurrentSelectionContext,
+  type CurrentSelectionContext,
+  type UntrustedRunArtifacts,
+  type VerifiedRunArtifacts,
+} from '../services/currentSelectionContext.js';
 import type { SelectionDecisionState } from '../types/selectionDecisionState.js';
 import {
   buildSelectionCopilotCatalog,
@@ -144,6 +152,238 @@ const HISTORY_TURN_LIMIT = 40;
 // next call is forced to answer (`tool_choice: 'none'`). Bounds latency/cost of a single
 // turn regardless of how many evidence lookups the model wants to chain.
 const HARD_CAP_TOOL_ROUNDS = 3;
+const CHAT_CONTRACT_MODEL_PREFIX = 'ccv1|';
+const BLOCKED_HISTORIC_ASSISTANT_CONTENT =
+  'This earlier analyst message is temporarily unavailable while its publication safety is verified.';
+
+function contractMarkedChatModel(model: string | null | undefined): string {
+  const available = 100 - CHAT_CONTRACT_MODEL_PREFIX.length;
+  return `${CHAT_CONTRACT_MODEL_PREFIX}${(model ?? 'deterministic').slice(0, available)}`;
+}
+
+function isContractMarkedChatModel(model: unknown): boolean {
+  return typeof model === 'string' && model.startsWith(CHAT_CONTRACT_MODEL_PREFIX);
+}
+
+type ChatPublicationRow = {
+  id: string;
+  role: string;
+  content: string;
+  model?: string | null;
+  createdAt: Date;
+  patchJson?: unknown;
+  toolCallsJson?: unknown;
+  suggestionsJson?: unknown;
+};
+
+async function fenceHistoricAssistantMessages<T extends ChatPublicationRow>(
+  jobId: string,
+  rows: T[],
+): Promise<{ rows: T[]; blockedCount: number }> {
+  const assistants = rows.filter((row) => row.role === 'assistant');
+  if (assistants.length === 0) return { rows, blockedCount: 0 };
+
+  let completedRun: { id: string; completedAt: Date | null } | null = null;
+  try {
+    completedRun = await prisma.commercialCopyBackfillRun.findFirst({
+      where: {
+        contractVersion: COMMERCIAL_COPY_CONTRACT_VERSION,
+        status: 'COMPLETED',
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      select: { id: true, completedAt: true },
+    });
+  } catch (error) {
+    console.error(
+      `[chat] Historic publication fence could not read the backfill run; failing closed (jobId=${jobId}):`,
+      error,
+    );
+  }
+
+  const cutoff = completedRun?.completedAt?.getTime();
+  const requiresAudit = assistants.filter((row) => {
+    if (isContractMarkedChatModel(row.model)) return false;
+    const createdAt = row.createdAt instanceof Date ? row.createdAt.getTime() : Number.NaN;
+    return cutoff === undefined || !Number.isFinite(createdAt) || createdAt <= cutoff;
+  });
+
+  const verifiedHashes = new Map<string, string>();
+  if (completedRun && requiresAudit.length > 0) {
+    try {
+      const items = await prisma.commercialCopyBackfillItem.findMany({
+        where: {
+          runId: completedRun.id,
+          jobId,
+          targetKind: 'CHAT_MESSAGE',
+          targetId: { in: requiresAudit.map((row) => row.id) },
+          status: { in: ['changed', 'unchanged'] },
+        },
+        select: { targetId: true, resultSha256: true },
+      });
+      for (const item of items) {
+        if (item.resultSha256) verifiedHashes.set(item.targetId, item.resultSha256);
+      }
+    } catch (error) {
+      console.error(
+        `[chat] Historic publication fence could not read audit items; failing closed (jobId=${jobId}):`,
+        error,
+      );
+    }
+  }
+
+  const blockedIds = new Set(
+    requiresAudit
+      .filter((row) => (
+        verifiedHashes.get(row.id)
+        !== createHash('sha256').update(row.content).digest('hex')
+      ))
+      .map((row) => row.id),
+  );
+  if (blockedIds.size > 0) {
+    console.error(
+      `[chat] Fenced ${blockedIds.size} unreconciled historic assistant message(s) `
+      + `(jobId=${jobId}, messageIds=${[...blockedIds].join(',')})`,
+    );
+  }
+
+  return {
+    rows: rows.map((row) => blockedIds.has(row.id)
+      ? {
+          ...row,
+          content: BLOCKED_HISTORIC_ASSISTANT_CONTENT,
+          patchJson: null,
+          toolCallsJson: null,
+          suggestionsJson: null,
+        }
+      : row),
+    blockedCount: blockedIds.size,
+  };
+}
+
+type OpeningHistoryRow = {
+  origin?: string | null;
+  gateStage?: number | null;
+  role?: string;
+  candidatePoolVersion?: number | null;
+};
+
+type OpeningHistoryValidation<T extends OpeningHistoryRow> = {
+  rows: T[];
+  currentOpenings: T[];
+  staleOpenings: T[];
+  expectedOrigin: string | null;
+  checked: boolean;
+};
+
+/**
+ * The single candidate-set binding check for persisted analyst openings.
+ *
+ * Callers may use staleOpenings to replace an opening, or rows to exclude it. The expected
+ * origin already binds pool version plus artifact verification state, so any prior trust
+ * architecture, changed pool, or changed verification result becomes stale by default.
+ */
+function validateOpeningHistory<T extends OpeningHistoryRow>(
+  rows: T[],
+  expectedOrigin: string,
+  expectedPoolVersion: number | null,
+  routeLabel: string,
+  completeHistory = true,
+): OpeningHistoryValidation<T> {
+  try {
+    const currentOpenings: T[] = [];
+    const staleOpenings: T[] = [];
+    let sawStageFiveUser = false;
+    const safeRows = rows.filter((row) => {
+      const isLegacyOpeningWithoutOrigin = completeHistory
+        && row.origin == null
+        && row.gateStage === G3_GATE_STAGE
+        && row.role === 'assistant'
+        && !sawStageFiveUser;
+      if (row.gateStage === G3_GATE_STAGE && row.role === 'user') {
+        sawStageFiveUser = true;
+      }
+      const isOpening = isOpeningOrigin(row.origin) || isLegacyOpeningWithoutOrigin;
+      const isPoolDerivedAssistant = row.gateStage === G3_GATE_STAGE && row.role === 'assistant';
+      const hasCurrentPoolBinding = expectedPoolVersion !== null
+        && row.candidatePoolVersion === expectedPoolVersion;
+
+      // Every stage-5 assistant turn is grounded in the selection dossier. Legacy null
+      // bindings and old versions remain durable audit rows, but are never replayed to
+      // the analyst or served as current conversation history.
+      if (isPoolDerivedAssistant && !hasCurrentPoolBinding) {
+        if (isOpening) staleOpenings.push(row);
+        return false;
+      }
+      if (!isOpening) return true;
+      if (row.origin === expectedOrigin && hasCurrentPoolBinding) {
+        currentOpenings.push(row);
+        return true;
+      }
+      staleOpenings.push(row);
+      return false;
+    });
+
+    return {
+      rows: safeRows,
+      currentOpenings,
+      staleOpenings,
+      expectedOrigin,
+      checked: true,
+    };
+  } catch (err) {
+    console.error(`Opening context validation failed for ${routeLabel}; failing closed for persisted openings:`, err);
+    const staleOpenings = rows.filter((row) => isOpeningOrigin(row.origin));
+    return {
+      rows: rows.filter((row) => (
+        !isOpeningOrigin(row.origin)
+        && !(row.gateStage === G3_GATE_STAGE && row.role === 'assistant')
+      )),
+      currentOpenings: [],
+      staleOpenings,
+      expectedOrigin: null,
+      checked: false,
+    };
+  }
+}
+
+type LockedChatSnapshot<T extends OpeningHistoryRow> = {
+  selection: CurrentSelectionContext;
+  history: OpeningHistoryValidation<T>;
+};
+
+/**
+ * Loads the typed selection context and stored conversation under the per-job advisory
+ * lock. Candidate-bound consumers cannot obtain a raw Job.solutionIdeas/preview pair.
+ */
+async function loadLockedChatSnapshot<T extends OpeningHistoryRow>(
+  tx: Prisma.TransactionClient,
+  args: {
+    jobId: string;
+    routeLabel: string;
+    loadHistory: (tx: Prisma.TransactionClient) => Promise<T[]>;
+    completeHistory?: boolean | ((rows: T[]) => boolean);
+  },
+): Promise<LockedChatSnapshot<T> | null> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${args.jobId}))`;
+  const selection = await loadCurrentSelectionContext(tx, args.jobId);
+  if (!selection) return null;
+
+  const rows = await args.loadHistory(tx);
+  const completeHistory = typeof args.completeHistory === 'function'
+    ? args.completeHistory(rows)
+    : (args.completeHistory ?? true);
+  return {
+    selection,
+    history: validateOpeningHistory(
+      rows,
+      selection.openingOrigin,
+      selection.canonical.version,
+      args.routeLabel,
+      completeHistory,
+    ),
+  };
+}
 
 const SynthesisIntentSchema = z.object({
   operation: z.enum(['narrow', 'reposition', 'combine', 'adjacent']),
@@ -507,19 +747,23 @@ const TERMINAL_TOOL_NAMES = new Set<string>([
 
 
 // ============================================
-// G3 rich dossier (2026-07-12) — pulls the PREVIEW REPORT (assetService, cached) instead
-// of the thin Job.solutionIdeas dicts, so the analyst can see the SAME evidence the
-// pool-health/no-buyer-demotion machinery sees: full per-idea detail (mechanism, parity,
-// red-team verdict, pricing/tags) plus run-level blocks (portfolio summary, wallet/market
-// reality, niche difficulty, examined-and-ruled-out findings, funnel counts). Falls back
-// to the thin Job.solutionIdeas dicts when no preview report asset exists yet (older/
-// still-running jobs) so the dossier never goes empty.
+// G3 rich dossier (2026-07-12) binds candidate membership and ranking to the canonical
+// Job.solutionIdeas snapshot, then enriches matching revisions from the cached preview
+// report with full per-idea detail (mechanism, parity, red-team verdict, pricing/tags).
+// Run-level blocks still come from the preview report. Without a preview, the canonical
+// thin idea dicts keep the dossier available for older or still-running jobs.
 // ============================================
 
 interface DossierIdeaSummary {
   name: string;
   mf: number | null;
 }
+
+export const PORTFOLIO_GUIDANCE_DEGRADED_COPY =
+  'The saved portfolio guidance does not match the current candidate set, so I am not presenting it as current. I can still help you review the ideas currently shown.';
+
+export const PORTFOLIO_GUIDANCE_UNRESOLVABLE_COPY =
+  'I cannot verify the saved candidate framing against the live candidate pool, so I am leaving that framing out. I can still help with the candidate details currently available.';
 
 /** One buyer segment as the run actually described it. `payability` is often absent —
  *  the pipeline does not always score it — and the dossier must SAY so in plain English
@@ -531,8 +775,16 @@ export interface DossierSegment {
   payability: string | null;
 }
 
-export interface DossierBundle {
-  ideas: Record<string, unknown>[];
+export interface CanonicalDossier {
+  readonly ideas: Record<string, unknown>[];
+  readonly displayedCount: number;
+  readonly maxVisibleMf: number | null;
+  readonly topIdeas: DossierIdeaSummary[];
+}
+
+export interface VerifiedDossierRun {
+  readonly verification: 'verified';
+  readonly candidatePoolVersion: number;
   segments: DossierSegment[];
   portfolioSummary: string | null;
   walletClass: string | null;
@@ -543,42 +795,44 @@ export interface DossierBundle {
   difficultyNarrative: string | null;
   examinedRuledOut: Record<string, unknown>[];
   funnelCounts: Record<string, number>;
-  maxVisibleMf: number | null;
-  topIdeas: DossierIdeaSummary[];
-  /** Thesis partition of the visible pool (`idea_theses.theses`), the same grouping the
-   *  selection screen renders as one card per product thesis with variants nested. Without
-   *  it the analyst sees a flat list of N candidates and cannot say that four of them are
-   *  one business. `[]` when the run has no non-degraded buyer-job partition. */
   ideaTheses: Record<string, unknown>[];
-  /** Validated buyer jobs with NO surviving idea (`idea_theses.uncovered_families`). The
-   *  honesty half of the partition: unexamined, not ruled out. */
   uncoveredFamilies: Record<string, unknown>[];
-  /** Canonical pain-point titles from this run's discovery data (quote keys — the same
-   *  titles `get_pain_evidence` resolves exact-match against). Defaults empty here;
-   *  populated by the G3 chat route handler once it has fetched discovery data anyway
-   *  (see "Canonical pains gap" — cheap because that fetch already happens for
-   *  get_pain_evidence's own availability check). Advisory reference only for
-   *  `propose_new_idea`'s pain_ref — the worker remains the authoritative resolver. */
+  ideaValidation: Record<string, unknown> | null;
+}
+
+export interface UntrustedDossierRun {
+  readonly verification: 'untrusted';
+  readonly reason: UntrustedRunArtifacts['reason'];
+  readonly degradedCopy: string;
+}
+
+export interface DossierBundle {
+  readonly canonical: CanonicalDossier;
+  readonly run: VerifiedDossierRun | UntrustedDossierRun;
+  /** Discovery data is independent of the preview/pool version binding. */
   painTitles: string[];
 }
 
-/** Reshapes the preview report (or, absent one, the thin Job.solutionIdeas dicts) into
- * the flat bundle every dossier/pool-health/opening-message consumer reads from. Pure;
- * defensive against any missing/malformed section (a partial preview report must never
- * throw here — it should just degrade to fewer dossier blocks). */
-export function assembleDossierBundle(previewReport: unknown, fallbackSolutionIdeas: unknown): DossierBundle {
-  const pr = (previewReport ?? {}) as Record<string, unknown>;
-  const rawIdeas = Array.isArray(pr.alternative_solutions)
-    ? (pr.alternative_solutions as Record<string, unknown>[])
-    : Array.isArray(fallbackSolutionIdeas)
-      ? (fallbackSolutionIdeas as Record<string, unknown>[])
-      : [];
+export type VerifiedDossierBundle = DossierBundle & { readonly run: VerifiedDossierRun };
 
-  const marketReality = (pr.market_reality ?? {}) as Record<string, unknown>;
+function hasVerifiedRun(bundle: DossierBundle): bundle is VerifiedDossierBundle {
+  return bundle.run.verification === 'verified';
+}
+
+function assembleVerifiedRunDossier(
+  artifacts: VerifiedRunArtifacts,
+  displayedCount: number,
+): VerifiedDossierRun {
+  const previewSnapshot = artifacts.previewReport;
+  const rawPortfolioSummary =
+    typeof previewSnapshot.idea_portfolio_summary === 'string' && previewSnapshot.idea_portfolio_summary.trim()
+      ? previewSnapshot.idea_portfolio_summary
+      : null;
+  const marketReality = (previewSnapshot.market_reality ?? {}) as Record<string, unknown>;
   const wallet = (marketReality.wallet ?? {}) as Record<string, unknown>;
   const incumbents = Array.isArray(marketReality.incumbents) ? (marketReality.incumbents as Record<string, unknown>[]) : [];
 
-  const audienceMapping = (pr.audience_mapping ?? {}) as Record<string, unknown>;
+  const audienceMapping = (previewSnapshot.audience_mapping ?? {}) as Record<string, unknown>;
   const rawSegments = Array.isArray(audienceMapping.audience_segments)
     ? (audienceMapping.audience_segments as Record<string, unknown>[])
     : [];
@@ -589,30 +843,36 @@ export function assembleDossierBundle(previewReport: unknown, fallbackSolutionId
     payability: typeof seg.payability_class === 'string' ? seg.payability_class : null,
   }));
 
-  const theses = (pr.idea_theses ?? {}) as Record<string, unknown>;
-
-  const difficulty = (pr.niche_difficulty_verdict ?? {}) as Record<string, unknown>;
-  const examinedRuledOut = Array.isArray(pr.examined_ruled_out) ? (pr.examined_ruled_out as Record<string, unknown>[]) : [];
-  const researchMetadata = (pr.research_metadata ?? {}) as Record<string, unknown>;
-  const funnelCounts = (researchMetadata.funnel_counts ?? {}) as Record<string, number>;
-
-  const mfOf = (idea: Record<string, unknown>) => (typeof idea.market_fit_score === 'number' ? idea.market_fit_score : null);
-  // Display title, not the internal codename: these names are read out verbatim in the
-  // analyst's opening message ("Top ideas: …").
-  const nameOf = (idea: Record<string, unknown>, i: number) =>
-    ideaDisplayTitle(idea) || `Idea ${i + 1}`;
-
-  const scored: DossierIdeaSummary[] = rawIdeas.map((idea, i) => ({ name: nameOf(idea, i), mf: mfOf(idea) }));
-  const maxVisibleMf = scored.reduce<number | null>(
-    (acc, s) => (s.mf !== null && (acc === null || s.mf > acc) ? s.mf : acc),
-    null
+  const theses = (previewSnapshot.idea_theses ?? {}) as Record<string, unknown>;
+  const rawIdeaTheses = Array.isArray(theses.theses)
+    ? (theses.theses as Record<string, unknown>[])
+    : [];
+  const rawUncoveredFamilies = Array.isArray(theses.uncovered_families)
+    ? (theses.uncovered_families as Record<string, unknown>[])
+    : [];
+  const difficulty = (previewSnapshot.niche_difficulty_verdict ?? {}) as Record<string, unknown>;
+  const examinedRuledOut = Array.isArray(previewSnapshot.examined_ruled_out)
+    ? (previewSnapshot.examined_ruled_out as Record<string, unknown>[])
+    : [];
+  const researchMetadata = (previewSnapshot.research_metadata ?? {}) as Record<string, unknown>;
+  const rawFunnelCounts = (researchMetadata.funnel_counts ?? {}) as Record<string, unknown>;
+  const funnelCounts = Object.fromEntries(
+    Object.entries(rawFunnelCounts).filter((entry): entry is [string, number] =>
+      typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+    ),
   );
-  const topIdeas = [...scored].sort((a, b) => (b.mf ?? -1) - (a.mf ?? -1)).slice(0, 3);
+  funnelCounts.candidates_shown = displayedCount;
+
+  const ideaValidation =
+    previewSnapshot.idea_validation && typeof previewSnapshot.idea_validation === 'object'
+      ? (previewSnapshot.idea_validation as Record<string, unknown>)
+      : null;
 
   return {
-    ideas: rawIdeas,
+    verification: 'verified',
+    candidatePoolVersion: artifacts.candidatePoolVersion,
     segments,
-    portfolioSummary: typeof pr.idea_portfolio_summary === 'string' ? pr.idea_portfolio_summary : null,
+    portfolioSummary: rawPortfolioSummary,
     walletClass: typeof wallet.wallet_class === 'string' ? wallet.wallet_class : null,
     walletEvidence: typeof wallet.evidence === 'string' ? wallet.evidence : null,
     incumbents,
@@ -621,52 +881,82 @@ export function assembleDossierBundle(previewReport: unknown, fallbackSolutionId
     difficultyNarrative: typeof difficulty.narrative_summary === 'string' ? difficulty.narrative_summary : null,
     examinedRuledOut,
     funnelCounts,
-    maxVisibleMf,
-    topIdeas,
-    ideaTheses: Array.isArray(theses.theses) ? (theses.theses as Record<string, unknown>[]) : [],
-    uncoveredFamilies: Array.isArray(theses.uncovered_families)
-      ? (theses.uncovered_families as Record<string, unknown>[])
-      : [],
+    ideaTheses: rawIdeaTheses,
+    uncoveredFamilies: rawUncoveredFamilies,
+    ideaValidation,
+  };
+}
+
+/** Candidate metrics and ordering are computed before any run-artifact narrowing. */
+export function assembleDossierBundle(context: CurrentSelectionContext): DossierBundle {
+  const canonicalIdeas = [...context.canonical.candidates];
+  const mfOf = (idea: Record<string, unknown>) =>
+    typeof idea.market_fit_score === 'number' ? idea.market_fit_score : null;
+  const scored: DossierIdeaSummary[] = canonicalIdeas.map((idea, index) => ({
+    name: ideaDisplayTitle(idea) || `Idea ${index + 1}`,
+    mf: mfOf(idea),
+  }));
+  const maxVisibleMf = scored.reduce<number | null>(
+    (acc, score) => score.mf !== null && (acc === null || score.mf > acc) ? score.mf : acc,
+    null,
+  );
+  const topIdeas = [...scored]
+    .sort((left, right) => (right.mf ?? -1) - (left.mf ?? -1))
+    .slice(0, 3);
+
+  if (context.runArtifacts.verification === 'untrusted') {
+    return {
+      canonical: {
+        ideas: canonicalIdeas,
+        displayedCount: context.canonical.displayedCount,
+        maxVisibleMf,
+        topIdeas,
+      },
+      run: {
+        verification: 'untrusted',
+        reason: context.runArtifacts.reason,
+        degradedCopy: context.runArtifacts.reason === 'unresolvable_candidate_pool'
+          ? PORTFOLIO_GUIDANCE_UNRESOLVABLE_COPY
+          : PORTFOLIO_GUIDANCE_DEGRADED_COPY,
+      },
+      painTitles: [],
+    };
+  }
+
+  const previewIdeas = Array.isArray(context.runArtifacts.previewReport.alternative_solutions)
+    ? context.runArtifacts.previewReport.alternative_solutions.filter(
+        (idea): idea is IdeaRecord => !!idea && typeof idea === 'object' && !Array.isArray(idea),
+      )
+    : [];
+  return {
+    canonical: {
+      ideas: canonicalDossierIdeas(canonicalIdeas, previewIdeas),
+      displayedCount: context.canonical.displayedCount,
+      maxVisibleMf,
+      topIdeas,
+    },
+    run: assembleVerifiedRunDossier(context.runArtifacts, context.canonical.displayedCount),
     painTitles: [],
   };
 }
 
 /**
  * Candidate membership, order, identity, and mutable fields come from Job.solutionIdeas.
- * Preview data may only enrich an exact revision (or a one-to-one legacy name match);
+ * Preview data may only enrich an exact revision;
  * it can never add, omit, reorder, or positionally retarget a selectable candidate.
  */
 export function canonicalDossierIdeas(
   canonicalIdeas: IdeaRecord[],
   previewIdeas: Record<string, unknown>[],
 ): IdeaRecord[] {
-  const canonicalNameCounts = new Map<string, number>();
-  const previewNameCounts = new Map<string, number>();
-  for (const idea of canonicalIdeas) {
-    const name = ideaName(idea);
-    if (name) canonicalNameCounts.set(name, (canonicalNameCounts.get(name) ?? 0) + 1);
-  }
-  for (const idea of previewIdeas) {
-    const name = ideaName(idea);
-    if (name) previewNameCounts.set(name, (previewNameCounts.get(name) ?? 0) + 1);
-  }
-
   return canonicalIdeas.map((canonical) => {
     const exact = previewIdeas.find((preview) =>
       preview.idea_id === canonical.idea_id
       && preview.idea_revision === canonical.idea_revision
     );
-    const canonicalName = ideaName(canonical);
-    const legacy = !exact
-      && canonicalName
-      && canonicalNameCounts.get(canonicalName) === 1
-      && previewNameCounts.get(canonicalName) === 1
-      ? previewIdeas.find((preview) => ideaName(preview) === canonicalName)
-      : undefined;
-    const enrichment = exact ?? legacy;
-    return enrichment
+    return exact
       ? {
-          ...enrichment,
+          ...exact,
           ...canonical,
           idea_id: canonical.idea_id,
           idea_revision: canonical.idea_revision,
@@ -767,6 +1057,13 @@ function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudg
   const pricingStrategy = idea.pricing_strategy ?? idea.pricing_model;
 
   const bodyLines = [
+    // "Check my idea": the analyst must never lose track of WHICH candidate is the
+    // user's own — this line is the dossier-side twin of the UI's "Your idea" chip.
+    idea.source_frame === 'user_seed' && idea.generation_operation_id === 'validate'
+      ? "THIS IS THE USER'S OWN IDEA — their submitted pitch, developed into this product spec."
+      : idea.source_frame === 'user_seed' && idea.generation_operation_id === 'validate_pivot'
+        ? "This is a revision of THE USER'S OWN IDEA (drafted against a competitor finding)."
+        : '',
     status !== 'active' ? `Status: ${CANDIDATE_STATUS_LABEL[status] || humanizeKey(status)}` : '',
     `What it is: ${(idea.description as string) || (idea.short_description as string) || ''}`,
     `Value proposition: ${(idea.value_proposition as string) || ''}`,
@@ -812,7 +1109,7 @@ export function resolveIdeaSynthesisPatch(
 ): IdeaSynthesisPatch | null {
   const parents = args.source_refs.map((ref, index) => {
     const match = /^R([1-9]\d*)$/.exec(ref);
-    const idea = match ? bundle.ideas[Number(match[1]) - 1] : undefined;
+    const idea = match ? bundle.canonical.ideas[Number(match[1]) - 1] : undefined;
     const resolvedName = idea ? ideaName(idea) : null;
     if (
       !idea ||
@@ -850,7 +1147,7 @@ export function resolveIdeaSynthesisPatch(
     adjacent: 'Validate that evidence from the source market transfers to the adjacent buyer or workflow.',
   };
   const sourceAnchors = resolvedParents.map((parent) => {
-    const idea = bundle.ideas.find((candidate) =>
+    const idea = bundle.canonical.ideas.find((candidate) =>
       candidate.idea_id === parent.ideaId
       && candidate.idea_revision === parent.ideaRevision
     )!;
@@ -968,14 +1265,17 @@ const UNCOVERED_REASON_PHRASE: Record<string, string> = {
  * and never reaches the model.
  */
 function buildThesisBlock(bundle: DossierBundle): string {
-  if (!bundle.ideaTheses.length && !bundle.uncoveredFamilies.length) return '';
+  if (bundle.run.verification === 'untrusted') {
+    return 'Saved candidate structure: the thesis grouping and uncovered buyer-job coverage cannot be verified against the current candidate set, so they are withheld from current pool framing.';
+  }
+  if (!bundle.run.ideaTheses.length && !bundle.run.uncoveredFamilies.length) return '';
   const refByName = new Map<string, string>();
-  bundle.ideas.forEach((idea, index) => {
+  bundle.canonical.ideas.forEach((idea, index) => {
     const codename = ideaName(idea);
     if (codename) refByName.set(codename, `[R${index + 1}] ${ideaDisplayTitle(idea) || codename}`);
   });
 
-  const thesisLines = bundle.ideaTheses.slice(0, 8).map((thesis) => {
+  const thesisLines = bundle.run.ideaTheses.slice(0, 8).map((thesis) => {
     const members = Array.isArray(thesis.members) ? (thesis.members as Record<string, unknown>[]) : [];
     const labels = members
       .map((member) => refByName.get(String(member.name ?? '')))
@@ -1005,7 +1305,7 @@ function buildThesisBlock(bundle: DossierBundle): string {
       .join('\n');
   });
 
-  const uncoveredLines = bundle.uncoveredFamilies.slice(0, 6).map((family) => {
+  const uncoveredLines = bundle.run.uncoveredFamilies.slice(0, 6).map((family) => {
     const reason = UNCOVERED_REASON_PHRASE[String(family.reason ?? 'unknown')]
       ?? UNCOVERED_REASON_PHRASE.unknown;
     return `- ${family.display_label ?? 'Unnamed buyer job'}: ${reason}`;
@@ -1026,13 +1326,92 @@ function buildThesisBlock(bundle: DossierBundle): string {
 /** Run-level blocks: portfolio summary, wallet/market reality, niche difficulty, the
  * examined-and-ruled-out findings (WITH reasons), and funnel counts. Sections with no
  * data are omitted rather than rendered empty. Every label is plain English. */
+const IDEA_CHECK_OUTCOME_PHRASE: Record<string, string> = {
+  worth_testing: 'Worth testing',
+  occupied: 'Already shipped by a competitor',
+  premise_unproven: 'Premise unproven',
+  ruled_out: 'Ruled out',
+  not_evaluated: 'Not evaluated (the run degraded)',
+};
+
+const IDEA_CHECK_CLAUSE_PHRASE: Record<string, string> = {
+  mechanism: 'mechanism',
+  audience: 'buyer',
+  problem: 'problem',
+  delivery: 'delivery form',
+};
+
+const IDEA_CHECK_RISK_SOURCE_PHRASE: Record<string, string> = {
+  adversarial_review: 'stress test',
+  score_critic: 'our scorer',
+  market_signal: 'market signal',
+};
+
+/** "Check my idea" runs: the block that tells the analyst whose idea this run is about.
+ *  Leads the dossier so every later candidate reads against it. */
+function buildIdeaCheckBlock(bundle: DossierBundle): string {
+  if (bundle.run.verification === 'untrusted') return '';
+  const iv = bundle.run.ideaValidation;
+  if (!iv) return '';
+  const pitch = (iv.user_idea_text as string) || (iv.user_idea_brief as string) || '';
+  const name = (iv.idea_name as string) || 'the evaluated idea';
+  const outcome = IDEA_CHECK_OUTCOME_PHRASE[String(iv.outcome ?? '')] || String(iv.outcome ?? '');
+  const refinement = iv.refinement as { kept?: string[]; changed?: string[]; because?: string | null } | null;
+  const killRisks = Array.isArray(iv.kill_risks) ? (iv.kill_risks as Record<string, unknown>[]) : [];
+  const pivot = (iv.pivot ?? {}) as Record<string, unknown>;
+
+  const clauseList = (clauses: string[] | undefined) =>
+    (clauses ?? []).map((c) => IDEA_CHECK_CLAUSE_PHRASE[c] || c).join(', ');
+
+  const lines = [
+    "THE USER'S SUBMITTED IDEA (this is an idea-check run):",
+    pitch ? `The user pitched: "${pitch}"` : '',
+    `We developed that pitch into the product spec "${name}" — the candidate marked THE USER'S OWN IDEA in the ranked list below. When the user says "my idea" or uses that name, they mean that candidate.`,
+    refinement
+      ? `The evaluation changed part of the pitch — kept: ${clauseList(refinement.kept) || 'nothing stated'}; changed: ${clauseList(refinement.changed)}${refinement.because ? `; because: ${refinement.because}` : ''}.`
+      : 'The spec keeps everything the user stated; the name and the build details are ours.',
+    iv.headline ? `Verdict: ${outcome} — ${iv.headline}` : `Verdict: ${outcome}`,
+    iv.evidence_confidence
+      ? `Evidence confidence: ${iv.evidence_confidence}${iv.evidence_confidence_reason ? ` (${iv.evidence_confidence_reason})` : ''}`
+      : '',
+    iv.original_mechanism_parity
+      ? `Competitor finding on the PITCHED mechanism: ${incumbentParityPhrase(String(iv.original_mechanism_parity))}`
+      : '',
+    killRisks.length
+      ? `What would kill it: ${killRisks
+          .slice(0, 3)
+          .map((k) => `${k.claim}${k.source ? ` [${IDEA_CHECK_RISK_SOURCE_PHRASE[String(k.source)] || k.source}]` : ''}`)
+          .join(' · ')}`
+      : '',
+    pivot.outcome === 'accepted'
+      ? `A revision of their idea ("${pivot.name ?? 'unnamed'}") was drafted against a competitor finding and is also in the list.`
+      : pivot.outcome === 'rejected'
+        ? 'A revision of their idea was drafted against a competitor finding but scored no better, so it is not shown.'
+        : '',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
 function buildRunLevelBlock(bundle: DossierBundle): string {
   const lines: string[] = [];
-  if (bundle.portfolioSummary) lines.push(`Portfolio summary: ${bundle.portfolioSummary}`);
+  if (bundle.painTitles.length) {
+    lines.push(
+      `Pain points from this run's discovery data (reference for propose_new_idea's pain_ref — use one of these exact titles only if the user's idea clearly matches one; otherwise leave it out):\n${bundle.painTitles
+        .slice(0, 20)
+        .map((t) => `- ${t}`)
+        .join('\n')}`
+    );
+  }
+  if (bundle.run.verification === 'untrusted') {
+    lines.unshift(bundle.run.degradedCopy);
+    return lines.join('\n\n');
+  }
+  const run = bundle.run;
+  if (run.portfolioSummary) lines.unshift(`Portfolio summary: ${run.portfolioSummary}`);
   const thesisBlock = buildThesisBlock(bundle);
   if (thesisBlock) lines.push(thesisBlock);
-  if (bundle.segments.length) {
-    const segLines = bundle.segments.map((s) => {
+  if (run.segments.length) {
+    const segLines = run.segments.map((s) => {
       const bits = [
         s.size ? `size: ${s.size}` : '',
         s.budgetSensitivity ? `price sensitivity: ${s.budgetSensitivity}` : '',
@@ -1043,51 +1422,45 @@ function buildRunLevelBlock(bundle: DossierBundle): string {
     lines.push(`Audience segments:\n${segLines.join('\n')}`);
     // Say the gap out loud. Left unsaid, the analyst invents a reason for it — or, as
     // it did live, invents a schema and blames that.
-    if (bundle.segments.every((s) => !s.payability)) {
+    if (run.segments.every((s) => !s.payability)) {
       lines.push(
         'Buyer payability: this run did not score how readily each segment pays — the audience work covered size, motivations and price sensitivity only. Deep Research is where the wallet question gets tested properly.'
       );
     }
   }
-  if (bundle.walletClass) {
-    const phrase = WALLET_CLASS_PHRASE[bundle.walletClass] || bundle.walletClass;
-    lines.push(`Who pays here: ${phrase}${bundle.walletEvidence ? ` — ${bundle.walletEvidence}` : ''}`);
+  if (run.walletClass) {
+    const phrase = WALLET_CLASS_PHRASE[run.walletClass] || run.walletClass;
+    lines.push(`Who pays here: ${phrase}${run.walletEvidence ? ` — ${run.walletEvidence}` : ''}`);
   }
-  if (bundle.incumbents.length) {
-    const incLines = bundle.incumbents
+  if (run.incumbents.length) {
+    const incLines = run.incumbents
       .slice(0, 8)
       .map((i) => `- ${i.name}${i.pricing ? ` (${i.pricing})` : ''}${i.gap ? `: ${i.gap}` : ''}`);
     lines.push(`Known competitors:\n${incLines.join('\n')}`);
   }
-  if (bundle.difficultyHeadline || bundle.difficultyNarrative) {
+  if (run.difficultyHeadline || run.difficultyNarrative) {
     lines.push(
-      `Niche difficulty: ${bundle.difficultyHeadline || ''}${bundle.difficultyNarrative ? ` — ${bundle.difficultyNarrative}` : ''}`
+      `Niche difficulty: ${run.difficultyHeadline || ''}${run.difficultyNarrative ? ` — ${run.difficultyNarrative}` : ''}`
     );
   }
-  if (bundle.painTitles.length) {
-    lines.push(
-      `Pain points from this run's discovery data (reference for propose_new_idea's pain_ref — use one of these exact titles only if the user's idea clearly matches one; otherwise leave it out):\n${bundle.painTitles
-        .slice(0, 20)
-        .map((t) => `- ${t}`)
-        .join('\n')}`
-    );
-  }
-  if (bundle.examinedRuledOut.length) {
-    const ruledBlocks = bundle.examinedRuledOut
+  if (run.examinedRuledOut.length) {
+    const ruledBlocks = run.examinedRuledOut
       .slice(0, 10)
       .map((finding, index) => buildRuledOutSection(finding, index, 1_200));
     lines.push(`Ideas we examined and ruled out (full decision context):\n${ruledBlocks.join('\n\n')}`);
   }
-  const funnelEntries = Object.entries(bundle.funnelCounts || {});
+  const funnelEntries = Object.entries(run.funnelCounts);
   if (funnelEntries.length) {
-    lines.push(`Idea funnel: ${funnelEntries.map(([k, v]) => `${humanizeKey(k)}: ${v}`).join(', ')}`);
+    lines.push(
+      `Idea funnel: recorded pipeline history; all stages are historical except candidates shown, which is refreshed from the current locked pool — ${funnelEntries.map(([k, v]) => `${humanizeKey(k)}: ${v}`).join(', ')}`,
+    );
   }
   return lines.join('\n\n');
 }
 
 /** Fenced, token-capped G3 dossier (grounding data for both the live chat prompt and the
  * opening-message generator). */
-function buildG3Dossier(
+export function buildG3Dossier(
   jobId: string,
   niche: string,
   bundle: DossierBundle,
@@ -1107,22 +1480,23 @@ function buildG3Dossier(
 ): string {
   const perIdeaBudget = Math.max(
     DOSSIER_MIN_PER_IDEA_BUDGET,
-    Math.floor(DOSSIER_IDEAS_CHAR_BUDGET / Math.max(1, bundle.ideas.length))
+    Math.floor(DOSSIER_IDEAS_CHAR_BUDGET / Math.max(1, bundle.canonical.ideas.length))
   );
-  const ideaBlocks = bundle.ideas.map((idea, i) => buildIdeaSection(idea, i, perIdeaBudget)).join('\n\n');
+  const ideaBlocks = bundle.canonical.ideas.map((idea, i) => buildIdeaSection(idea, i, perIdeaBudget)).join('\n\n');
   const runBlock = buildRunLevelBlock(bundle);
-  const founderDecisionBlock = buildFounderDecisionBlock(profile, founderFit, bundle.ideas);
-  const selectionChallengeBlock = buildSelectionChallengeBlock(selectionChallenges, bundle.ideas);
-  const ownerEvidenceBlock = buildOwnerEvidenceBlock(ownerEvidence, bundle.ideas);
-  const experimentBriefBlock = buildExperimentBriefBlock(experimentBriefs, bundle.ideas);
+  const founderDecisionBlock = buildFounderDecisionBlock(profile, founderFit, bundle.canonical.ideas);
+  const selectionChallengeBlock = buildSelectionChallengeBlock(selectionChallenges, bundle.canonical.ideas);
+  const ownerEvidenceBlock = buildOwnerEvidenceBlock(ownerEvidence, bundle.canonical.ideas);
+  const experimentBriefBlock = buildExperimentBriefBlock(experimentBriefs, bundle.canonical.ideas);
   const experimentConclusionBlock = buildExperimentConclusionBlock(experimentConclusions);
   const selectionAssumptionBlock = buildSelectionAssumptionBlock(selectionAssumptions);
-  const conceptSetBlock = buildConceptSetBlock(selectionConceptSets, bundle.ideas);
-  const collaboratorFeedbackBlock = buildCollaboratorFeedbackBlock(collaboratorFeedback, bundle.ideas);
-  const workingShortlistBlock = buildWorkingShortlistBlock(selectionDraft, bundle.ideas);
-  const selectionDecisionStateBlock = buildSelectionDecisionStateBlock(selectionDecisionState, bundle.ideas, decisionTools);
+  const conceptSetBlock = buildConceptSetBlock(selectionConceptSets, bundle.canonical.ideas);
+  const collaboratorFeedbackBlock = buildCollaboratorFeedbackBlock(collaboratorFeedback, bundle.canonical.ideas);
+  const workingShortlistBlock = buildWorkingShortlistBlock(selectionDraft, bundle.canonical.ideas);
+  const selectionDecisionStateBlock = buildSelectionDecisionStateBlock(selectionDecisionState, bundle.canonical.ideas, decisionTools);
   const body = [
     `Niche: ${niche}`,
+    buildIdeaCheckBlock(bundle),
     runBlock,
     founderDecisionBlock,
     selectionChallengeBlock,
@@ -1135,7 +1509,7 @@ function buildG3Dossier(
     workingShortlistBlock,
     selectionDecisionStateBlock,
     selectionCopilotReferenceBlock,
-    `Ranked solution ideas (${bundle.ideas.length}):`,
+    `Ranked solution ideas (${bundle.canonical.displayedCount}):`,
     ideaBlocks,
   ]
     .filter(Boolean)
@@ -1199,8 +1573,11 @@ const EXPORT_IDEA_NOT_A_SELECTION_ACTION_LINE =
   '\n- Do NOT route export requests through prepare_selection_action; opening the candidate view is not an export.';
 
 /** Grounded system prompt for the G3 (AWAITING_SELECTION) chat surface. */
-function buildG3SystemPrompt(niche: string, dossier: string, weak: boolean, toolUsageBlock: string, decisionTools: boolean): string {
-  return `You are the NicheIQ research analyst embedded in a live market-research run. The user is reviewing a ranked list of solution ideas generated for the niche "${niche}" and may ask about them or ask you to steer the next regeneration batch.
+function buildG3SystemPrompt(niche: string, dossier: string, weak: boolean, toolUsageBlock: string, decisionTools: boolean, ideaCheck = false): string {
+  const framing = ideaCheck
+    ? `You are the NicheIQ research analyst embedded in a live "Check my idea" run. The user submitted THEIR OWN product idea; the run developed their pitch into a complete product spec and graded it beside every other approach the same market evidence supports. The dossier below opens with the idea-check section naming their idea and its verdict, and their candidate is marked THE USER'S OWN IDEA in the ranked list. When the user says "my idea" (or uses that product's name), ground your answer in that candidate and the idea-check verdict — the rest of the list is the benchmark pool and optional additions to the Deep Research scope. Their submitted idea is ALREADY evaluated in this run: answer questions about it from the dossier, and never treat a question about it as a request to propose a new idea.`
+    : `You are the NicheIQ research analyst embedded in a live market-research run. The user is reviewing a ranked list of solution ideas generated for the niche "${niche}" and may ask about them or ask you to steer the next regeneration batch.`;
+  return `${framing}
 
 GROUNDING RULES:
 - Answer run-specific questions ONLY from the dossier below. If something isn't in it, say so plainly — never invent scores, features, or evidence.
@@ -1258,26 +1635,28 @@ const OPENING_MESSAGE_SYSTEM_PROMPT =
   '(no markdown headers). Never use internal field names or snake_case keys — plain English ' +
   'only.';
 
-function buildOpeningMessageUserPrompt(niche: string, bundle: DossierBundle, health: PoolHealthResult): string {
+function buildOpeningMessageUserPrompt(niche: string, bundle: VerifiedDossierBundle, health: PoolHealthResult): string {
+  const run = bundle.run;
   const ruledBlocks =
-    bundle.examinedRuledOut
+    run.examinedRuledOut
       .slice(0, 6)
       .map((finding, index) => buildRuledOutSection(finding, index, 700))
       .join('\n\n') || '(none)';
   const incumbentLines =
-    bundle.incumbents
+    run.incumbents
       .slice(0, 6)
       .map((i) => `- ${i.name}${i.pricing ? ` (${i.pricing})` : ''}`)
       .join('\n') || '(none found)';
   const topLines =
-    bundle.topIdeas.map((t) => `- ${t.name} (market fit: ${scoreBand(t.mf)})`).join('\n') || '(no scored ideas)';
+    bundle.canonical.topIdeas.map((t) => `- ${t.name} (market fit: ${scoreBand(t.mf)})`).join('\n') || '(no scored ideas)';
 
   const grounding = [
     `Niche: ${niche}`,
+    buildIdeaCheckBlock(bundle),
     `Pool-health read: ${health.weak ? 'weak' : 'healthy'}${health.advisoryLine ? ` — ${health.advisoryLine}` : ''}`,
-    bundle.portfolioSummary ? `Portfolio summary: ${bundle.portfolioSummary}` : '',
-    bundle.walletClass ? `Who pays here: ${WALLET_CLASS_PHRASE[bundle.walletClass] || bundle.walletClass}${bundle.walletEvidence ? ` — ${bundle.walletEvidence}` : ''}` : '',
-    bundle.difficultyHeadline ? `Niche difficulty: ${bundle.difficultyHeadline}` : '',
+    run.portfolioSummary ? `Portfolio summary: ${run.portfolioSummary}` : '',
+    run.walletClass ? `Who pays here: ${WALLET_CLASS_PHRASE[run.walletClass] || run.walletClass}${run.walletEvidence ? ` — ${run.walletEvidence}` : ''}` : '',
+    run.difficultyHeadline ? `Niche difficulty: ${run.difficultyHeadline}` : '',
     `Top ideas:\n${topLines}`,
     `Ideas we examined and ruled out:\n${ruledBlocks}`,
     `Known competitors:\n${incumbentLines}`,
@@ -1285,15 +1664,22 @@ function buildOpeningMessageUserPrompt(niche: string, bundle: DossierBundle, hea
     .filter(Boolean)
     .join('\n\n');
 
-  const instructions = health.weak
-    ? 'Lead with the honest read: we don\'t recommend spending Deep Research credits on this pool. ' +
-      'Then propose 2-3 ADJACENT niches with better product potential, each grounded in a cited ' +
-      'finding above (e.g. who the wallet probe or incumbent map shows actually paying), with your ' +
-      'own reasoning clearly labeled as such ("my read is…"). Format each suggested niche as a ' +
-      'markdown link the user can click: [niche text](/new?niche=<url-encoded niche text>). End with ' +
-      'what the user can do next.'
-    : "Summarize the pool's strengths and weaknesses, grounded in the findings above. End with what " +
-      'the user can do next.';
+  const instructions = run.ideaValidation
+    ? "This is an idea-check run: the user submitted THEIR OWN idea, and the idea-check section " +
+      'above holds its verdict. Lead with their idea — name it, state the verdict plainly ' +
+      '(outcome, evidence confidence, the biggest risk), and say in one sentence that their pitch ' +
+      'was developed into that full product spec so it could be graded. Then place it against the ' +
+      `strongest alternative in the list.${health.weak ? ' Be honest that this market read is weak overall.' : ''} ` +
+      'End with what the user can do next.'
+    : health.weak
+      ? 'Lead with the honest read: we don\'t recommend spending Deep Research credits on this pool. ' +
+        'Then propose 2-3 ADJACENT niches with better product potential, each grounded in a cited ' +
+        'finding above (e.g. who the wallet probe or incumbent map shows actually paying), with your ' +
+        'own reasoning clearly labeled as such ("my read is…"). Format each suggested niche as a ' +
+        'markdown link the user can click: [niche text](/new?niche=<url-encoded niche text>). End with ' +
+        'what the user can do next.'
+      : "Summarize the pool's strengths and weaknesses, grounded in the findings above. End with what " +
+        'the user can do next.';
 
   return `${fenceContent(grounding, 'job_dossier', '', 'RESEARCH DOSSIER')}\n\n${instructions}`;
 }
@@ -1301,16 +1687,17 @@ function buildOpeningMessageUserPrompt(niche: string, bundle: DossierBundle, hea
 /** Deterministic fallback opening (zero LLM calls) — used both when the LLM call fails
  * (fail-soft) and composes the same shape the original spec called for. */
 function composeDeterministicOpening(bundle: DossierBundle, health: PoolHealthResult): string {
+  if (bundle.run.verification === 'untrusted') return `${bundle.run.degradedCopy}\n\nAsk me about any idea, or tell me what to change.`;
   const lead = health.weak && health.advisoryLine ? health.advisoryLine : "Here's my read of the pool:";
   const closing = 'Ask me about any idea, or tell me what to change.';
-  return [lead, bundle.portfolioSummary || '', closing].filter(Boolean).join('\n\n');
+  return [lead, bundle.run.portfolioSummary || '', closing].filter(Boolean).join('\n\n');
 }
 
 /** Generates the LLM opening note. Returns null (never throws) on any failure so the
  * caller can fall back to `composeDeterministicOpening`. */
 async function generateOpeningMessage(
   niche: string,
-  bundle: DossierBundle,
+  bundle: VerifiedDossierBundle,
   health: PoolHealthResult
 ): Promise<{ content: string; costUsd: number; model: string; usage: AnalystTokenUsage } | null> {
   const model = await resolveAnalystModel();
@@ -2050,7 +2437,10 @@ async function executeToolCall(
     if (name === 'get_competitor_detail') {
       const args = GetCompetitorDetailArgsSchema.safeParse(parsedArgs);
       if (!args.success) return fail('Competitor lookup failed', 'missing name');
-      const r = await executeGetCompetitorDetail(args.data.name, ctx.bundle);
+      const evidenceDossier = ctx.bundle && ctx.bundle.run.verification === 'verified'
+        ? { incumbents: ctx.bundle.run.incumbents, ideas: ctx.bundle.canonical.ideas }
+        : null;
+      const r = await executeGetCompetitorDetail(args.data.name, evidenceDossier);
       return { ok: true, label: r.label, fencedResult: fenceContent(r.resultText, 'tool_result', name, 'TOOL RESULT') };
     }
     if (name === 'get_report_section') {
@@ -2084,7 +2474,7 @@ async function executeToolCall(
         : (parsed.data as z.infer<typeof CompareSolutionsArgsSchema>).idea_refs;
       const resolved = ideaRefs.map((ideaRef) => {
         const match = /^R([1-9]\d*)$/.exec(ideaRef);
-        const idea = match ? ctx.bundle!.ideas[Number(match[1]) - 1] : undefined;
+        const idea = match ? ctx.bundle!.canonical.ideas[Number(match[1]) - 1] : undefined;
         if (
           !idea
           || typeof idea.idea_id !== 'string'
@@ -2095,7 +2485,7 @@ async function executeToolCall(
         }
         const solutionName = ideaName(idea);
         const isNameAmbiguous = solutionName
-          ? ctx.bundle!.ideas.filter(
+          ? ctx.bundle!.canonical.ideas.filter(
               (candidate) => ideaName(candidate)?.trim().toLowerCase() === solutionName.trim().toLowerCase(),
             ).length > 1
           : false;
@@ -2181,7 +2571,7 @@ async function executeToolCall(
       const args = ExportIdeaArgsSchema.safeParse(parsedArgs);
       if (!args.success || !ctx.bundle) return fail('Export failed', 'invalid format, idea reference, or unavailable candidate list');
       const match = /^R([1-9]\d*)$/.exec(args.data.idea_ref);
-      const idea = match ? ctx.bundle.ideas[Number(match[1]) - 1] : undefined;
+      const idea = match ? ctx.bundle.canonical.ideas[Number(match[1]) - 1] : undefined;
       if (!idea || typeof idea.idea_id !== 'string' || !Number.isInteger(idea.idea_revision)) {
         return fail('Export failed', `unknown candidate reference "${args.data.idea_ref}" — use a current R reference from the dossier`);
       }
@@ -2210,6 +2600,7 @@ class TurnCapExceededError extends Error {}
 // would otherwise let this endpoint stream a reply grounded in stale data and persist a
 // patch proposal anchored to a gate that no longer exists.
 class GateChangedMidRequestError extends Error {}
+class StaleSynthesisSourceError extends Error {}
 
 /**
  * POST /api/jobs/:jobId/chat
@@ -2253,7 +2644,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     select: {
       status: true,
       niche: true,
-      solutionIdeas: true,
+      entryMode: true,
       gateStage: true,
       gateArtifact: true,
       activeDispatchId: true,
@@ -2294,21 +2685,6 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     res.status(409).json({ error: 'Ideas can only be reshaped during idea selection' });
     return;
   }
-  if (synthesisIntent) {
-    const canonicalPool = ensureIdeaIdentities(jobId, job.solutionIdeas);
-    const missingParent = synthesisIntent.parents.some((reference) => !canonicalPool.some((idea) =>
-      idea.idea_id === reference.ideaId
-      && idea.idea_revision === reference.ideaRevision
-    ));
-    if (missingParent) {
-      res.status(409).json({
-        error: 'A selected candidate changed before the workshop request was sent',
-        code: 'STALE_SYNTHESIS_SOURCE',
-      });
-      return;
-    }
-  }
-
   const entitled = await hasAnalystAccess(userId);
   if (!entitled) {
     res.status(402).json({ error: 'Guided chat requires an active subscription', code: 'NOT_ENTITLED' });
@@ -2357,18 +2733,43 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
   // (userMessageId/usedTurnsAfter are declared at the top of the handler, above the outer
   // try — the catch-all needs them in scope too.)
 
-  let history: { role: string; content: string }[];
+  let history: { role: string; content: string; origin?: string | null }[];
+  let currentSelection: CurrentSelectionContext;
   try {
-    history = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`;
+    const lockedResult = await prisma.$transaction(async (tx) => {
       // Re-validate status/gateStage right before persisting the user turn (finding 11): a
       // gate action or regeneration could have flipped the job between the initial
       // snapshot read above and acquiring this lock — 409 rather than answering/proposing
       // against a gate that has already moved on.
-      const freshJob = await tx.job.findUnique({
-        where: { id: jobId },
-        select: { status: true, gateStage: true },
+      const snapshot = await loadLockedChatSnapshot<{
+        gateStage: number | null;
+        role: string;
+        content: string;
+        origin: string | null;
+        candidatePoolVersion: number | null;
+      }>(tx, {
+        jobId,
+        routeLabel: 'POST /chat',
+        completeHistory: (rows) => rows.length < HISTORY_TURN_LIMIT,
+        loadHistory: async (lockedTx) => (
+          await lockedTx.chatMessage.findMany({
+            where: effectiveGateStage === REPORT_GATE_STAGE
+              ? { jobId, role: { in: ['user', 'assistant'] } }
+              : { jobId, gateStage: effectiveGateStage, role: { in: ['user', 'assistant'] } },
+            orderBy: { createdAt: 'desc' },
+            take: HISTORY_TURN_LIMIT,
+            select: {
+              gateStage: true,
+              role: true,
+              content: true,
+              origin: true,
+              candidatePoolVersion: true,
+            },
+          })
+        ).reverse(),
       });
+      if (!snapshot) throw new GateChangedMidRequestError();
+      const freshJob = snapshot.selection.job;
       const freshGateStage: 1 | 4 | 5 | 6 =
         freshJob?.status === 'COMPLETED'
           ? REPORT_GATE_STAGE
@@ -2378,6 +2779,14 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       if (!freshJob || freshJob.status !== job.status || freshGateStage !== effectiveGateStage) {
         throw new GateChangedMidRequestError();
       }
+      if (synthesisIntent) {
+        const canonicalIdeas = snapshot.selection.canonical.candidates;
+        const missingParent = synthesisIntent.parents.some((reference) => !canonicalIdeas.some((idea) =>
+          idea.idea_id === reference.ideaId
+          && idea.idea_revision === reference.ideaRevision
+        ));
+        if (missingParent) throw new StaleSynthesisSourceError();
+      }
       const userTurnCount = await tx.chatMessage.count({
         where: effectiveGateStage === REPORT_GATE_STAGE
           ? { jobId, gateStage: REPORT_GATE_STAGE, role: 'user' }
@@ -2386,30 +2795,19 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       if (userTurnCount >= MAX_USER_TURNS_PER_JOB) {
         throw new TurnCapExceededError();
       }
-      // Conversational rows ONLY: 'receipt'/'system' ledger rows (durable
-      // applied-change + lifecycle markers) must never reach the model — the
-      // downstream mapper treats every non-assistant row as a user turn, so an
-      // unfiltered marker would be injected as if the user had said it.
-      // Window is the LATEST turns, not the earliest (the model needs recent
-      // context; `asc` + `take` silently handed it the oldest 40).
-      const priorRows = (
-        await tx.chatMessage.findMany({
-          where: effectiveGateStage === REPORT_GATE_STAGE
-            ? { jobId, role: { in: ['user', 'assistant'] } }
-            : { jobId, gateStage: effectiveGateStage, role: { in: ['user', 'assistant'] } },
-          orderBy: { createdAt: 'desc' },
-          take: HISTORY_TURN_LIMIT,
-          select: { role: true, content: true },
-        })
-      ).reverse();
       const userRow = await tx.chatMessage.create({
         data: { jobId, gateStage: effectiveGateStage, role: 'user', content: message, origin: 'user_chat' },
         select: { id: true },
       });
       userMessageId = userRow.id;
       usedTurnsAfter = userTurnCount + 1;
-      return priorRows;
+      return {
+        history: snapshot.history.rows.map(({ role, content, origin }) => ({ role, content, origin })),
+        selection: snapshot.selection,
+      };
     });
+    history = lockedResult.history;
+    currentSelection = lockedResult.selection;
   } catch (err) {
     if (err instanceof TurnCapExceededError) {
       // Distinct from the rate-limit 429 above. Both are 429s, and the client could not tell "wait
@@ -2425,6 +2823,13 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     }
     if (err instanceof GateChangedMidRequestError) {
       res.status(409).json({ error: 'The job state changed before this message could be sent — please refresh and try again.' });
+      return;
+    }
+    if (err instanceof StaleSynthesisSourceError) {
+      res.status(409).json({
+        error: 'A selected candidate changed before the workshop request was sent',
+        code: 'STALE_SYNTHESIS_SOURCE',
+      });
       return;
     }
     console.error('Failed to record chat turn:', err);
@@ -2467,8 +2872,8 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     // Decision-journey grounding (G5/G2): the completed run is frozen, so R-references
     // bind against the job's stored ranked pool and the decision-lab artifacts are filtered
     // by idea membership only (their fingerprint inputs are no longer live).
-    const completedIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
-    toolExecBundle = assembleDossierBundle(null, completedIdeas);
+    const completedIdeas = [...currentSelection.canonical.candidates];
+    toolExecBundle = assembleDossierBundle(currentSelection);
     const completedContext = await prisma.job.findUnique({
       where: { id: jobId },
       select: {
@@ -2565,19 +2970,19 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       EXPORT_REPORT_TOOL,
     );
   } else {
-    const previewReport = await getPreviewReportForJob(jobId).catch(() => null);
-    const canonicalIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
-    const bundle = assembleDossierBundle(previewReport, canonicalIdeas);
-    bundle.ideas = canonicalDossierIdeas(canonicalIdeas, bundle.ideas);
+    const bundle = assembleDossierBundle(currentSelection);
+    const previewReport = currentSelection.runArtifacts.verification === 'verified'
+      ? currentSelection.runArtifacts.previewReport
+      : null;
     toolExecBundle = bundle;
     const poolHealth = assessPoolHealth({
-      wallet_class: bundle.walletClass,
-      max_visible_mf: bundle.maxVisibleMf,
-      difficulty_level: bundle.difficultyLevel,
+      wallet_class: bundle.run.verification === 'verified' ? bundle.run.walletClass : null,
+      max_visible_mf: bundle.canonical.maxVisibleMf,
+      difficulty_level: bundle.run.verification === 'verified' ? bundle.run.difficultyLevel : null,
     });
     const g3Discovery = await getDiscoveryDataForJob(jobId).catch(() => null);
     const g3HasEvidence = hasQuotesData(g3Discovery);
-    const g3HasCompetitors = bundle.incumbents.length > 0;
+    const g3HasCompetitors = bundle.run.verification === 'verified' && bundle.run.incumbents.length > 0;
     if (g3HasEvidence) evidenceTools.push(GET_PAIN_EVIDENCE_TOOL);
     if (g3HasCompetitors) evidenceTools.push(GET_COMPETITOR_DETAIL_TOOL);
     // Canonical pain-title reference for propose_new_idea's advisory pain_ref (plan:
@@ -2587,12 +2992,6 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     // authoritative resolver; this just gives the model closer titles to reach for.
     const quotesByPain = extractQuotesByPain(g3Discovery);
     bundle.painTitles = quotesByPain ? Object.keys(quotesByPain) : [];
-    const selectionDecisionState = await loadOwnedSelectionDecisionState(
-      jobId,
-      req.user!.id,
-      { previewReport, discoveryData: g3Discovery },
-      decisionTools,
-    );
     const g3SelectionContext = await prisma.job.findUnique({
       where: { id: jobId },
       select: {
@@ -2609,7 +3008,14 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         selectionChallenges: {
           orderBy: { createdAt: 'desc' },
           take: 50,
-          select: { id: true, artifact: true },
+          select: {
+            id: true,
+            ideaId: true,
+            ideaRevision: true,
+            lens: true,
+            inputFingerprint: true,
+            artifact: true,
+          },
         },
         selectionExperiments: {
           orderBy: { createdAt: 'desc' },
@@ -2619,12 +3025,26 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
             ideaId: true,
             ideaRevision: true,
             status: true,
+            assumptionId: true,
+            originChallengeId: true,
+            originChallenge: {
+              select: { id: true, ideaId: true, ideaRevision: true, lens: true },
+            },
             assumption: true,
             method: true,
             primaryMetric: true,
             passThreshold: true,
             failThreshold: true,
-            conclusion: { select: { id: true, snapshot: true } },
+            conclusion: {
+              select: {
+                id: true,
+                ideaId: true,
+                ideaRevision: true,
+                outcome: true,
+                createdAt: true,
+                snapshot: true,
+              },
+            },
             run: { select: { status: true, launchedAt: true, closedAt: true } },
           },
         },
@@ -2643,6 +3063,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
             content: true,
             sourceUrl: true,
             observedAt: true,
+            createdAt: true,
             retractedAt: true,
           },
         },
@@ -2650,7 +3071,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
           where: { archivedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 20,
-          select: { id: true, artifact: true },
+          select: { id: true, artifact: true, candidatePoolVersion: true },
         },
         selectionAssumptions: {
           include: selectionAssumptionInclude,
@@ -2659,9 +3080,27 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         },
       },
     });
+    const selectionDecisionState = g3SelectionContext
+      ? buildSelectionDecisionState({
+          jobId,
+          status: job.status,
+          solutionIdeas: currentSelection.canonical.candidates,
+          selectionDraft: job.selectionDraft,
+          selectionDraftVersion: job.selectionDraftVersion,
+          selectionDecisionProfile: job.selectionDecisionProfile,
+          selectionFounderFit: job.selectionFounderFit,
+          challenges: g3SelectionContext.selectionChallenges ?? [],
+          ownerEvidence: g3SelectionContext.selectionOwnerEvidence ?? [],
+          assumptions: g3SelectionContext.selectionAssumptions ?? [],
+          experiments: g3SelectionContext.selectionExperiments ?? [],
+          previewReport,
+          discoveryData: g3Discovery,
+          decisionTools,
+        })
+      : null;
     const decisionProfile = SelectionDecisionProfileSchema.safeParse(job.selectionDecisionProfile);
     const founderFit = decisionProfile.success
-      ? parseCurrentFounderFitArtifact(job.selectionFounderFit, decisionProfile.data, bundle.ideas)
+      ? parseCurrentFounderFitArtifact(job.selectionFounderFit, decisionProfile.data, bundle.canonical.ideas)
       : null;
     const selectionChallenges = selectionDecisionState
       ? selectionChallengesFromDecisionState(
@@ -2670,7 +3109,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         )
       : currentSelectionChallenges(
           g3SelectionContext?.selectionChallenges ?? [],
-          bundle.ideas,
+          bundle.canonical.ideas,
           previewReport,
           g3Discovery,
         );
@@ -2681,28 +3120,31 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         )
       : currentExperimentConclusions(
           g3SelectionContext?.selectionExperiments ?? [],
-          bundle.ideas,
+          bundle.canonical.ideas,
         );
     const selectionAssumptions = currentSelectionAssumptions(
       g3SelectionContext?.selectionAssumptions ?? [],
-      bundle.ideas,
+      bundle.canonical.ideas,
     );
     const selectionConceptSets = currentSelectionConceptSets(
-      g3SelectionContext?.selectionConceptSets ?? [],
-      bundle.ideas,
+      (g3SelectionContext?.selectionConceptSets ?? []).filter((row) => (
+        currentSelection.canonical.version !== null
+        && row.candidatePoolVersion === currentSelection.canonical.version
+      )),
+      bundle.canonical.ideas,
     );
     const ownerEvidence = currentOwnerEvidence(
       g3SelectionContext?.selectionOwnerEvidence ?? [],
-      bundle.ideas,
+      bundle.canonical.ideas,
     );
     const experimentBriefs = currentExperimentBriefs(
       g3SelectionContext?.selectionExperiments ?? [],
-      bundle.ideas,
+      bundle.canonical.ideas,
     );
     // Not built without the grant: nothing may consume it, and an empty catalog is one
     // less way for a stray tool call to resolve into a real action.
     selectionCopilotCatalog = !decisionTools ? null : buildSelectionCopilotCatalog({
-      ideas: bundle.ideas,
+      ideas: bundle.canonical.ideas,
       assumptions: g3SelectionContext?.selectionAssumptions ?? [],
       experiments: g3SelectionContext?.selectionExperiments ?? [],
       ownerEvidence: g3SelectionContext?.selectionOwnerEvidence ?? [],
@@ -2728,7 +3170,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       currentSelectionDraft(
         job.selectionDraft,
         job.selectionDraftVersion,
-        bundle.ideas,
+        bundle.canonical.ideas,
       ),
       selectionDecisionState,
       selectionCopilotCatalog ? buildSelectionCopilotReferenceBlock(selectionCopilotCatalog) : '',
@@ -2737,13 +3179,20 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       decisionTools ? experimentBriefs : [],
       decisionTools,
     );
-    systemPrompt = buildG3SystemPrompt(job.niche, dossier, poolHealth.weak, buildToolUsageBlock(g3HasEvidence, g3HasCompetitors), decisionTools);
+    systemPrompt = buildG3SystemPrompt(
+      job.niche,
+      dossier,
+      poolHealth.weak,
+      buildToolUsageBlock(g3HasEvidence, g3HasCompetitors),
+      decisionTools,
+      job.entryMode === 'validate_idea',
+    );
     // A client can name a gated workspace ("risks" / "tests" / "alternatives") in
     // selectionContext, and the block below ends by telling the model to prepare a draft
     // "through the existing selection action tool" — a tool this owner does not have.
     if (selectionContext && decisionTools) {
       const resolvedIdeas = selectionContext.ideas.flatMap((requested) => {
-        const index = bundle.ideas.findIndex((idea) =>
+        const index = bundle.canonical.ideas.findIndex((idea) =>
           idea.idea_id === requested.ideaId
           && idea.idea_revision === requested.ideaRevision
         );
@@ -2801,7 +3250,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     }
     if (synthesisIntent) {
       lockedSynthesisRefs = synthesisIntent.parents.map((parent) => {
-        const index = bundle.ideas.findIndex((idea) =>
+        const index = bundle.canonical.ideas.findIndex((idea) =>
           idea.idea_id === parent.ideaId && idea.idea_revision === parent.ideaRevision
         );
         return `R${index + 1}`;
@@ -2999,8 +3448,11 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
             toolCallsJson: (toolReceipts.length ? toolReceipts : undefined) as Prisma.InputJsonValue | undefined,
             truncated: true,
             costUsd: abortCostUsd ?? undefined,
-            model: analystModel,
+            model: contractMarkedChatModel(analystModel),
             origin: 'user_chat',
+            candidatePoolVersion: effectiveGateStage === G3_GATE_STAGE
+              ? currentSelection.canonical.version
+              : undefined,
             inputTokens: usageAccum.inputTokens,
             outputTokens: usageAccum.outputTokens,
             cacheWriteTokens: usageAccum.cacheWriteTokens,
@@ -3209,8 +3661,11 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         patchJson: (patchJson ?? undefined) as Prisma.InputJsonValue | undefined,
         toolCallsJson: (toolReceipts.length ? toolReceipts : undefined) as Prisma.InputJsonValue | undefined,
         costUsd: costUsd ?? undefined,
-        model: analystModel,
+        model: contractMarkedChatModel(analystModel),
         origin: 'user_chat',
+        candidatePoolVersion: effectiveGateStage === G3_GATE_STAGE
+          ? currentSelection.canonical.version
+          : undefined,
         inputTokens: usageAccum.inputTokens,
         outputTokens: usageAccum.outputTokens,
         cacheWriteTokens: usageAccum.cacheWriteTokens,
@@ -3380,6 +3835,9 @@ const HISTORY_SELECT = {
   patchJson: true,
   toolCallsJson: true,
   suggestionsJson: true,
+  origin: true,
+  candidatePoolVersion: true,
+  model: true,
   truncated: true,
   createdAt: true,
 } as const;
@@ -3388,87 +3846,130 @@ chatRouter.get('/:jobId/chat/history', requireInternalAuth, validateJobId, async
   const { jobId } = req.params;
   const userId = req.user!.id;
 
-  const job = await prisma.job.findFirst({
+  const ownedJob = await prisma.job.findFirst({
     where: { id: jobId, userId },
-    select: { id: true, status: true, niche: true, solutionIdeas: true, gateStage: true, activeDispatchId: true },
+    select: { id: true },
   });
-  if (!job) {
+  if (!ownedJob) {
     res.status(404).json({ error: 'Job not found' });
     return;
   }
 
-  let rows = await prisma.chatMessage.findMany({
-    where: { jobId },
-    orderBy: { createdAt: 'asc' },
-    select: HISTORY_SELECT,
-  });
+  const lockedResult = await prisma.$transaction(async (tx) => {
+    const snapshot = await loadLockedChatSnapshot(tx, {
+      jobId,
+      routeLabel: 'GET /chat/history',
+      loadHistory: (lockedTx) => lockedTx.chatMessage.findMany({
+        where: { jobId },
+        orderBy: { createdAt: 'asc' },
+        select: HISTORY_SELECT,
+      }),
+    });
+    if (!snapshot) return null;
 
-  // G3-only: compute the pool-health flag and synthesize one idea-selection opening.
-  // The empty check is stage-scoped because earlier guided-chat messages remain in the
-  // same thread and must not suppress this checkpoint's analyst summary.
-  let weakPool = false;
-  if (job.status === 'AWAITING_SELECTION') {
-    try {
-      const previewReport = await getPreviewReportForJob(jobId).catch(() => null);
-      const bundle = assembleDossierBundle(previewReport, job.solutionIdeas);
-      const health = assessPoolHealth({
-        wallet_class: bundle.walletClass,
-        max_visible_mf: bundle.maxVisibleMf,
-        difficulty_level: bundle.difficultyLevel,
-      });
-      weakPool = health.weak;
+    let rows = snapshot.history.rows;
+    let weakPool = false;
+    let openingCostUsd = 0;
+    if (snapshot.selection.job.status === 'AWAITING_SELECTION') {
+      try {
+        const bundle = assembleDossierBundle(snapshot.selection);
+        const health = assessPoolHealth({
+          wallet_class: bundle.run.verification === 'verified' ? bundle.run.walletClass : null,
+          max_visible_mf: bundle.canonical.maxVisibleMf,
+          difficulty_level: bundle.run.verification === 'verified' ? bundle.run.difficultyLevel : null,
+        });
+        weakPool = health.weak;
 
-      if (!rows.some((row) => row.gateStage === G3_GATE_STAGE)) {
-        // Generate OUTSIDE the lock — this is a network call to the LLM, and holding a
-        // DB transaction/connection open across it (rather than just around the quick
-        // check-then-insert below) would serialize unrelated requests behind however
-        // long that call takes, for no correctness benefit.
-        const generated = await generateOpeningMessage(job.niche, bundle, health);
-        const content = generated?.content ?? composeDeterministicOpening(bundle, health);
-        const costUsd = generated?.costUsd ?? 0;
-        const openingModel = generated?.model;
-        const openingUsage = generated?.usage;
+        const currentOpenings = snapshot.history.currentOpenings;
+        const staleOpenings = snapshot.history.staleOpenings;
+        const hasCurrentOpening = currentOpenings.length > 0;
+        const hasStaleOpening = staleOpenings.length > 0;
+        const stageIsEmpty = !rows.some((row) => row.gateStage === G3_GATE_STAGE);
+        if (!hasCurrentOpening && (hasStaleOpening || stageIsEmpty)) {
+          const generated = hasVerifiedRun(bundle)
+            ? await generateOpeningMessage(snapshot.selection.job.niche, bundle, health)
+            : null;
+          const content = generated?.content ?? composeDeterministicOpening(bundle, health);
+          const expectedOrigin = snapshot.selection.openingOrigin;
+          const costUsd = generated?.costUsd ?? 0;
+          const openingModel = generated?.model;
+          const openingUsage = generated?.usage;
+          const staleOpening = staleOpenings[0];
 
-        // Two concurrent history requests can both observe no G3 rows. The advisory lock
-        // keeps the stage-scoped check and insert atomic, so only one opening is persisted.
-        const inserted = await prisma.$transaction(async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`;
-          const stageIsEmpty = (await tx.chatMessage.count({
+          if (staleOpening && 'id' in staleOpening && typeof staleOpening.id === 'string') {
+            await tx.chatMessage.update({
+              where: { id: staleOpening.id },
+              data: {
+                content,
+                costUsd: costUsd || null,
+                model: contractMarkedChatModel(openingModel),
+                origin: expectedOrigin,
+                candidatePoolVersion: snapshot.selection.canonical.version,
+                inputTokens: openingUsage?.inputTokens ?? null,
+                outputTokens: openingUsage?.outputTokens ?? null,
+                cacheWriteTokens: openingUsage?.cacheWriteTokens ?? null,
+                cacheReadTokens: openingUsage?.cacheReadTokens ?? null,
+              },
+            });
+            rows = [...rows, {
+              ...staleOpening,
+              content,
+              origin: expectedOrigin,
+              candidatePoolVersion: snapshot.selection.canonical.version,
+            }]
+              .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+            openingCostUsd = costUsd;
+          } else if (stageIsEmpty && (await tx.chatMessage.count({
             where: { jobId, gateStage: G3_GATE_STAGE },
-          })) === 0;
-          if (!stageIsEmpty) return false;
-          await tx.chatMessage.create({
-            data: {
-              jobId,
+          })) === 0) {
+            const created = await tx.chatMessage.create({
+              data: {
+                jobId,
+                gateStage: G3_GATE_STAGE,
+                role: 'assistant',
+                content,
+                costUsd: costUsd || undefined,
+                model: contractMarkedChatModel(openingModel),
+                origin: expectedOrigin,
+                candidatePoolVersion: snapshot.selection.canonical.version,
+                inputTokens: openingUsage?.inputTokens,
+                outputTokens: openingUsage?.outputTokens,
+                cacheWriteTokens: openingUsage?.cacheWriteTokens,
+                cacheReadTokens: openingUsage?.cacheReadTokens,
+              },
+              select: HISTORY_SELECT,
+            });
+            rows = [...rows, {
+              ...created,
               gateStage: G3_GATE_STAGE,
               role: 'assistant',
               content,
-              costUsd: costUsd || undefined,
-              model: openingModel,
-              origin: 'opening',
-              inputTokens: openingUsage?.inputTokens,
-              outputTokens: openingUsage?.outputTokens,
-              cacheWriteTokens: openingUsage?.cacheWriteTokens,
-              cacheReadTokens: openingUsage?.cacheReadTokens,
-            },
-          });
-          return true;
-        });
-
-        if (inserted && costUsd) {
-          await prisma.job
-            .update({ where: { id: jobId }, data: { chatCostUsd: { increment: costUsd } } })
-            .catch((err) => console.error('Failed to increment chatCostUsd:', err));
+              origin: expectedOrigin,
+              patchJson: created.patchJson ?? null,
+              toolCallsJson: created.toolCallsJson ?? null,
+              suggestionsJson: created.suggestionsJson ?? null,
+              truncated: created.truncated ?? false,
+              createdAt: created.createdAt ?? new Date(),
+            }];
+            openingCostUsd = costUsd;
+          }
         }
-        rows = await prisma.chatMessage.findMany({
-          where: { jobId },
-          orderBy: { createdAt: 'asc' },
-          select: HISTORY_SELECT,
-        });
+      } catch (err) {
+        console.error('Pool-health / opening-message assembly failed (non-fatal):', err);
       }
-    } catch (err) {
-      console.error('Pool-health / opening-message assembly failed (non-fatal):', err);
     }
+
+    return { job: snapshot.selection.job, rows, weakPool, openingCostUsd };
+  });
+  if (!lockedResult) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+  const { job, rows, weakPool, openingCostUsd } = lockedResult;
+  if (openingCostUsd) {
+    await prisma.job
+      .update({ where: { id: jobId }, data: { chatCostUsd: { increment: openingCostUsd } } })
+      .catch((err) => console.error('Failed to increment chatCostUsd:', err));
   }
 
   // The cap is GLOBAL per job (see MAX_USER_TURNS_PER_JOB above) — report it so the
@@ -3495,8 +3996,18 @@ chatRouter.get('/:jobId/chat/history', requireInternalAuth, validateJobId, async
         ? ['ask', 'read_current', 'propose_selection', 'regenerate_ideas', 'seed_idea', 'export_idea']
         : ['ask', 'read_current', 'propose_current_stage_patch'];
 
+  const publication = await fenceHistoricAssistantMessages(jobId, rows);
+  const messages = publication.rows.map(({
+    origin: _origin,
+    model: _model,
+    candidatePoolVersion: _candidatePoolVersion,
+    ...row
+  }) => row);
+
   res.json({
-    messages: rows,
+    messages,
+    publicationState: publication.blockedCount > 0 ? 'DEGRADED' : 'READY',
+    publicationBlockedMessages: publication.blockedCount,
     weakPool,
     usedTurns,
     maxTurns: MAX_USER_TURNS_PER_JOB,

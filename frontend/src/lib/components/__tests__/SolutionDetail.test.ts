@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import SolutionDetail from "../SolutionDetail.svelte";
 import type { SolutionPreview } from "$lib/types/job";
 import type { OverlapGroup } from "$lib/types/report";
+import capturedArtifacts from "$lib/selection/__tests__/fixtures/runArtifacts.captured.json";
 
 afterEach(() => cleanup());
 
@@ -435,5 +436,95 @@ describe("SolutionDetail lifecycle and provenance", () => {
     expect(document.getElementById("shortlist-disabled-note")).toHaveTextContent(
       "Another idea update is running. You can change the shortlist when it finishes.",
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline vocabulary
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE LEAK WAS NEVER IN THE FUNCTION, IT WAS IN WHO CALLED IT. Rounds 4-7 each proved
+ * `buyerFacingIdeaProse` correct with a unit test and each shipped the vocabulary anyway,
+ * because the fix lived at ONE of four call sites. `/selection/review` mounts this overlay
+ * with `data.workspace.ideas` straight off `resolveSelectionWorkspace`, and
+ * SelectedSolutionsSummary mounts it with `job.solutionIdeas` — both RAW.
+ *
+ * So this test renders the component the way those two pages do: raw pipeline values,
+ * CAPTURED from artifacts under `output/` and stored with the path they were copied from,
+ * never retyped. A unit test on the function cannot fail when the call site is missing;
+ * this one can, and it is the only kind that could have caught the last four rounds.
+ */
+function capturedRaw(path: string): string {
+  const hit = capturedArtifacts.find((entry) => entry.path === path);
+  if (!hit) throw new Error(`fixture lost its capture: ${path}`);
+  return hit.value;
+}
+
+describe("SolutionDetail renders buyer-facing prose from a RAW pipeline payload", () => {
+  const raw = () => solution({
+    solution_name: "AuditFlowPM",
+    winning_angle: "distribution_seo",
+    market_fit_score: 0.42,
+    solo_dev_feasibility: 0.4,
+    data_access_model: "restricted",
+    angle_rationale: capturedRaw(".solution_ideas[2].angle_rationale"),
+    data_acquisition_notes: capturedRaw(".idea_ruled_out[0].idea.data_acquisition_notes"),
+    critic_concern: capturedRaw(".alternative_solutions[4].critic_concern"),
+    refine_binding_constraint: capturedRaw(".solution_ideas[0].refine_binding_constraint"),
+  });
+
+  it("prints no pipeline vocabulary on the decision-summary tab", () => {
+    renderDetail({ solution: raw(), lifecycle: "reference" });
+    const text = document.body.textContent ?? "";
+
+    expect(text).toContain("The read");
+    expect(text).toMatch(/search opportunity/);
+    expect(text).not.toMatch(/SEO surface/i);
+    expect(text).not.toMatch(/data representation/i);
+    // The angle rationale is the one field printed on this tab; the other three live on
+    // the All-details tab and are asserted there.
+    expect(text).not.toMatch(/\bcorpus\b/i);
+  });
+
+  it("prints no pipeline vocabulary on the all-details tab", async () => {
+    const view = renderDetail({ solution: raw(), lifecycle: "reference" });
+    await fireEvent.click(view.getByRole("tab", { name: /All details/i }));
+    const text = document.body.textContent ?? "";
+
+    // data_acquisition_notes
+    expect(text).not.toMatch(/cold[-\s]start/i);
+    expect(text).not.toMatch(/\bcorpus\b/i);
+    expect(text).toContain("up-front dataset required");
+    expect(text).toContain("with no bulk download route confirmed and per-record access");
+    // critic_concern
+    expect(text).not.toMatch(/mechanism parity/i);
+    expect(text).not.toMatch(/build_feas/i);
+    expect(text).toContain("feature overlap");
+    expect(text).toContain("limited build feasibility");
+    // refine_binding_constraint
+    expect(text).not.toMatch(/\bwedge\b/i);
+    expect(text).toContain("Sharpen the entry point");
+    // Every dash in the three captured fields is gone, and the two clause dashes in the
+    // constraint became sentences with their first word cased — asserted as whole strings
+    // so a rule that only half-fires cannot pass.
+    expect(text).toContain(
+      "First-party user submissions; up-front dataset required, with no bulk download route "
+      + "confirmed and per-record access that is unverified.",
+    );
+    expect(text).toContain(
+      "The comparison engine is solid but generic. Every affiliate site does feature grids. "
+      + "Sharpen the entry point: make the scoring system expose hidden cost of switching as "
+      + "the primary axis. For each tool, compute a \"lock-in risk\" score from "
+      + "(a) data exportability. Can you get your analytics/scheduled posts OUT?",
+    );
+  });
+
+  it("feeds the SANITISED note to the solo-dev score rationale", async () => {
+    const view = renderDetail({ solution: raw(), lifecycle: "reference" });
+    await fireEvent.click(view.getByRole("button", { name: /Solo/ }));
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("up-front dataset required");
+    expect(text).not.toMatch(/cold[-\s]start/i);
   });
 });

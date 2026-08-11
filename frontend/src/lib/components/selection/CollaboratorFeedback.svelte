@@ -103,12 +103,12 @@
   }
   .feedback > summary strong {
     color: var(--color-text-primary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
   }
   .feedback > summary small {
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
   .feedback > summary b {
@@ -120,7 +120,9 @@
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
+    /* A count in the mono face: tabular so a 9 and a 12 sit on the same axis. */
+    font-variant-numeric: tabular-nums;
   }
   .feedback > summary:focus-visible,
   .feedback button:focus-visible {
@@ -142,7 +144,7 @@
   .toolbar p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
   .toolbar button,
   .group header button {
@@ -151,7 +153,7 @@
     border: 0;
     background: transparent;
     color: var(--color-accent-dark);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-default);
@@ -182,13 +184,13 @@
     margin: 0;
     padding: 0;
     color: var(--color-text-primary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     text-align: left;
   }
   .group header span {
     color: var(--color-text-secondary);
-    font-size: 0.7rem;
+    font-size: var(--text-11);
   }
   .group ul {
     display: grid;
@@ -200,7 +202,7 @@
   .group blockquote {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     text-wrap: pretty;
     overflow-wrap: anywhere;

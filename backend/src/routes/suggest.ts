@@ -3,17 +3,24 @@ import { z } from 'zod';
 import OpenAI from 'openai';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
-import { checkSuggestRateLimit } from '../middleware/rateLimit.js';
+import { checkClarifyRateLimit, checkSuggestRateLimit } from '../middleware/rateLimit.js';
 import { chatComplete, hasApiKeyForModel } from '../services/openai.js';
+import { runClarifyIdea } from '../services/clarifyIdea.js';
 
 export const suggestRouter = Router();
 
 // Request validation schema
 const SuggestRequestSchema = z.object({
-  mode: z.enum(['feeling_lucky', 'auto_complete']),
-  partial_input: z.string().optional(),
+  mode: z.enum(['feeling_lucky', 'auto_complete', 'clarify_idea']),
+  partial_input: z.string().max(2000).optional(),
   count: z.number().int().min(1).max(5).optional().default(3),
 });
+
+/** clarify_idea's request contract (P2 plan): normalized 40-1700 chars —
+ *  matches the "Check my idea" textarea's own min/max so the client-side
+ *  precheck gate and this backend check never disagree. */
+const CLARIFY_INPUT_MIN = 40;
+const CLARIFY_INPUT_MAX = 1700;
 
 // Response types
 interface NicheSuggestion {
@@ -320,6 +327,39 @@ suggestRouter.post('/', requireInternalAuth, async (req: AuthenticatedRequest, r
     }
 
     const { mode, partial_input, count } = parseResult.data;
+
+    // 'clarify_idea' is a distinct cost surface (own rate-limit keyspace, own
+    // prompt/response shape) — branch out to the dedicated service before any
+    // of the feeling_lucky/auto_complete logic below.
+    if (mode === 'clarify_idea') {
+      const trimmedInput = partial_input?.trim() ?? '';
+      if (trimmedInput.length < CLARIFY_INPUT_MIN || trimmedInput.length > CLARIFY_INPUT_MAX) {
+        res.status(400).json({
+          error: `partial_input must be between ${CLARIFY_INPUT_MIN} and ${CLARIFY_INPUT_MAX} characters for clarify_idea mode`,
+        });
+        return;
+      }
+
+      const rateLimit = await checkClarifyRateLimit(req.user!.id);
+      if (!rateLimit.allowed) {
+        res.status(429).json({
+          error: 'Rate limit exceeded',
+          remaining: rateLimit.remaining,
+          retryAfter: rateLimit.retryAfter,
+        });
+        return;
+      }
+
+      if (!hasApiKeyForModel(CONFIG.suggestModel)) {
+        console.error(`API key not configured for suggestion model ${CONFIG.suggestModel}`);
+        res.status(503).json({ error: 'Suggestion service unavailable' });
+        return;
+      }
+
+      const clarify = await runClarifyIdea(trimmedInput);
+      res.json({ clarify, remaining: rateLimit.remaining });
+      return;
+    }
 
     // Validate partial_input is provided for auto_complete mode
     if (mode === 'auto_complete' && (!partial_input || !partial_input.trim())) {

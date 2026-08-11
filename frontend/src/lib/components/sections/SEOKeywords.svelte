@@ -280,13 +280,13 @@
         {/if}
         {#if kq.forum_soft_serp_share}
           <span class="sep">·</span>
-          <span title="Forum/UGC results in these SERPs signal extra ranking room — a bonus, not the verdict driver. Difficulty (KD) is the real competition signal.">
+          <span title="Forum/UGC results in these SERPs signal extra ranking room, a bonus, not the verdict driver. Difficulty (KD) is the real competition signal.">
             {Math.round(kq.forum_soft_serp_share * 100)}% forum-soft SERPs (bonus room)
           </span>
         {/if}
         {#if kq.institutional_serp_share != null && kq.institutional_serp_share >= 0.5}
           <span class="sep">·</span>
-          <span class="serp-caution" title="Most sampled SERPs are dominated by government/education/Wikipedia results. A new site faces a ranking headwind that keyword-difficulty can understate — verify winnability before committing.">
+          <span class="serp-caution" title="Most sampled SERPs are dominated by government/education/Wikipedia results. A new site faces a ranking headwind that keyword-difficulty can understate. Verify winnability before committing.">
             {Math.round(kq.institutional_serp_share * 100)}% authority-heavy SERPs (headwind)
           </span>
         {/if}
@@ -579,8 +579,6 @@
                         >
                           {getSeoDifficultyLabel(kw.keyword_difficulty)}
                         </span>
-                      {:else}
-                        <span class="difficulty-na">—</span>
                       {/if}
                     </div>
                   </td>
@@ -1083,11 +1081,6 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-  }
-
-  .difficulty-na {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
   }
 
   .difficulty-hint {

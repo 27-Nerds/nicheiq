@@ -52,6 +52,7 @@ from ..models.solution_idea import (
     RawConceptList,
 )
 from ..models.solution_selection import SolutionSelection
+from ..validators.report_consistency import parse_stamp_vendor
 from ..tools import CachedSerperDevTool, CompetitorQueryTool
 from ..utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
 from ..utils.idea_carryover import carry_forward_idea_fields
@@ -198,9 +199,17 @@ def _archetype_directive(allowed_types: list[str] | None, preferred_type: str | 
         f"{allowed_str}."
     )
     if not restricted:
+        # D1 round 16, Priority 6. This used to read "...often the strongest programmatic-SEO +
+        # low-maintenance ad/affiliate play for a solo creator". That is a zero-price license at
+        # IDEATION, where no wallet reading is in scope, and it steers `project_type` — the sole
+        # gate on Stage-8 traffic monetization. The product-shape encouragement is kept; the
+        # commercial-shape half is removed, because how an idea charges is settled by
+        # {monetization_directive}, which is wallet-derived and lives in the same prompt.
         base += (
             " Info-products (directory / aggregator / comparison) are first-class — often the strongest "
-            "programmatic-SEO + low-maintenance ad/affiliate play for a solo creator."
+            "programmatic-SEO reach and the lowest maintenance load for a solo creator. That is a "
+            "DISTRIBUTION property; it says nothing about how the product charges, which the "
+            "monetization directive settles."
         )
     base += (
         " Choose the shape with the best build-effort-to-revenue ratio for a solo creator; do NOT force a "
@@ -339,6 +348,54 @@ class SeedRequest:
     tool_ref: str | None = None
     dispatch_id: str = "seed"
     synthesis_evaluation: dict | None = None
+    # "Check my idea" only: Stage-1 stated-clause keyword lists
+    # ({mechanism|audience|problem|delivery: list[str]}) + which clauses were
+    # inferred. When present, the seed cell constrains generation to the stated
+    # clauses and the pipeline runs a post-birth clause-drift gate with one
+    # corrective rewrite — the evaluated project must stay the PITCHED product
+    # (a Chrome-extension pitch yields a Chrome-extension project).
+    identity_terms: dict | None = None
+    inferred_fields: list | None = None
+
+
+_STATED_CLAUSE_LABELS = (
+    ("mechanism", "mechanism (the product's core loop)"),
+    ("audience", "audience (the buyer)"),
+    ("problem", "problem (the pain it removes)"),
+    ("delivery", "delivery (the product form)"),
+)
+
+
+def _stated_clause_lens_block(identity_terms: dict | None) -> str:
+    """Hard identity constraints for the user-seed generation lens ("Check my idea").
+
+    Empty/None terms → empty string (chat seeds and legacy states unchanged). The
+    stated clauses are the user's OWN words from Stage 1 — a variant may sharpen
+    positioning inside them but must never swap the delivery form, the buyer, or the
+    core mechanism (the live failure this guards: a "drafts replies" pitch evaluated
+    as an approved-answer retrieval desk positioned AGAINST reply drafting)."""
+    if not isinstance(identity_terms, dict):
+        return ""
+    lines = []
+    for key, label in _STATED_CLAUSE_LABELS:
+        terms = [t.strip() for t in (identity_terms.get(key) or [])
+                 if isinstance(t, str) and t.strip()]
+        if terms:
+            lines.append(f"- {label}: {'; '.join(terms)}")
+    if not lines:
+        return ""
+    return (
+        "\n\n## STATED-IDENTITY CONSTRAINTS — the pitch states these EXPLICITLY\n"
+        + "\n".join(lines) + "\n"
+        "Every variant MUST keep every stated clause above, in recognizable words: a "
+        "pitch that says 'Chrome extension' stays a Chrome extension; the stated "
+        "mechanism stays the product's PRIMARY loop — never demoted to a secondary "
+        "feature, replaced, or argued against in the copy. Differentiate on "
+        "positioning, wedge, feature depth, and data advantage INSIDE these "
+        "constraints. A variant that changes a stated clause is invalid. Name the "
+        "product from the user's stated mechanism vocabulary; never from a mechanism "
+        "they did not state."
+    )
 
 
 # Per-cell archetype nudge rotation (pool-level project-type spread; filtered by allowed_types).
@@ -1335,7 +1392,10 @@ class UnifiedSolutionCrew:
                 name: str = ""
                 pricing: str = _F("", description="e.g. '$15-49/mo' or 'free' or 'unknown'")
                 focus: str = _F("", description="what it does, <=10 words")
-                gap: str = _F("", description="what it does NOT cover, <=12 words")
+                gap: str = _F("", description=(
+                    "capability/workflow/audience limitation, <=12 words; '' when the "
+                    "results establish no gap; NEVER price availability "
+                    "('pricing not disclosed' is not a gap)"))
 
             class _Incumbents(BaseModel):
                 incumbents: list[_Incumbent] = _F(default_factory=list)
@@ -2702,6 +2762,88 @@ class UnifiedSolutionCrew:
                     setattr(idea, f, None)
         except Exception as e:
             logger.warning(f"[ParityProbe] failed (non-fatal, scores unchanged): {str(e)[:120]}")
+
+    def _probe_seed_brief_parity(
+        self, seed, mechanism_terms: list[str],
+    ) -> tuple[str | None, int]:
+        """Display-only parity probe of the PITCHED mechanism ("Check my idea", Q1).
+
+        The in-wave probe above searches the EVALUATED product's vocabulary — for a
+        validate seed refined during evaluation that can miss the crowded category the
+        user actually described (live: "drafts Reddit replies" became a "policy-safe
+        response desk", so AI-reply tools were never searched). This probe searches the
+        pitch's own Stage-1 mechanism terms and returns (note, serper_calls) in the
+        in-wave note format, or (None, n) on failure.
+
+        A standalone COPY of the in-wave probe's shape ON PURPOSE: that method is one
+        230-line try with an inseparable re-scoring tail. This one must NOT write
+        `incumbent_parity` and must NOT call `_validate_idea_caps` — the finding lands
+        on `state.user_idea_brief_parity` and is display-only (never feeds outcome,
+        confidence, scores, or the pivot). Fail-soft: any failure returns None.
+        """
+        calls = 0
+        try:
+            search_tool = getattr(self, "search_tool", None)
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            terms = [t.strip() for t in (mechanism_terms or [])
+                     if isinstance(t, str) and t.strip()]
+            if search_tool is None or not terms:
+                return None, calls
+            # De-duplicated word sequence of the top terms — short enough to survive as
+            # a real search phrase ("drafts replies answering repetitive questions").
+            mechanism = " ".join(dict.fromkeys(" ".join(terms[:3]).split()))[:80]
+            niche_label = " ".join(niche.split()[:6])[:60]
+            # Three angles on the same category. The "best … tools" listicle form is
+            # the discovery workhorse — the run that found the crowded category found
+            # it through a roundup article; the run with only the two plain forms
+            # missed it (same pitch). Kept ≤3 queries per the probe's cost budget.
+            queries = [f"{mechanism} tool"[:120],
+                       f"best {mechanism} tools"[:120],
+                       f"{mechanism} software {niche_label}"[:120]]
+            snippets = []
+            for q in queries:
+                try:
+                    calls += 1
+                    snippets.append(str(search_tool.run(search_query=q))[:1500])
+                except Exception:
+                    continue
+            if not snippets:
+                return None, calls
+
+            from pydantic import BaseModel, Field as _F
+
+            class _SeedBriefParity(BaseModel):
+                covered_by: str = _F("", description="product name, '' if none")
+                evidence: str = _F("", description="what it ships, <=20 words")
+                parity: str = _F("none", description="shipped | partial | substitute | none")
+
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Market: {niche}\n\n"
+                        "A user pitched a product whose core mechanism is: "
+                        f"{mechanism}\n\n"
+                        f"Web search results:\n{chr(10).join(snippets)}\n\n"
+                        "Judge from the search results ONLY whether a product already "
+                        "SHIPS this mechanism: parity=shipped (a COMMERCIAL product or "
+                        "first-party feature ships it), partial (adjacent/limited "
+                        "commercial version), substitute (NO commercial product, but a "
+                        "free/DIY route already delivers the core outcome today — name "
+                        "it in covered_by), none (no evidence of either). Cite only "
+                        "what the results actually show — never invent features. "
+                        "Return JSON."),
+                output_model=_SeedBriefParity, temperature=0, timeout=120,
+                model_name=settings.report_structured_llm, reasoning_effort="none")
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage(
+                    "Stage 5 - Seed Brief Parity", usage.to_dict())
+            if r.parity in ("shipped", "partial") and r.covered_by:
+                return f"{r.parity} by {r.covered_by}: {r.evidence or 'n/a'}", calls
+            if r.parity == "substitute":
+                return (f"substitute ({r.covered_by or 'DIY'}): "
+                        f"{r.evidence or 'free/DIY route exists'}"), calls
+            return "none found", calls
+        except Exception as exc:  # noqa: BLE001 — display-only, never blocks injection
+            logger.warning(f"[SeedBriefParity] probe failed (display-only): {exc}")
+            return None, calls
 
     def _format_blacklist(self, compact: bool = False) -> str:
         """Format existing ideas as a structured blacklist for prompt injection.
@@ -5911,15 +6053,18 @@ class UnifiedSolutionCrew:
         # Pricing guidance (Fix #2): this custom prompt does NOT render the solution_refinement task,
         # so without this the pricing_strategy is generated with zero WTP context and defaults to $/mo
         # subscription. Steer it WTP-first from the niche directive + this pain's own commercial intent.
+        #
+        # The WTP ladder that used to be spelled out here was a hard-coded duplicate of the one in
+        # `unified_solution_tasks.yaml`, and neither copy could see the niche's wallet reading — so
+        # a niche with verified prices still got "WTP < 3/10 -> default to a FREE tool ... NOT
+        # per-seat subscription". Both copies are deleted; `_monetization_directive` (which IS
+        # wallet-derived) now carries the ladder as the single source (D1 round 15, Priority 3).
         _ci = getattr(pain, "commercial_intent", None) if pain else None
         _wtp = f"{_ci * 10:.1f}/10" if isinstance(_ci, (int, float)) else "unknown"
         pricing_directive = (
             f"\nPRICING (WTP-FIRST): {getattr(self, '_monetization_directive', '')}\n"
-            f"This pain's WTP is {_wtp}. Price to WTP FIRST — project type shapes the FORM of "
-            "monetization, not whether to charge: WTP < 3/10 → default to a FREE tool with "
-            "distribution monetization (ads / affiliate / lead-gen / cheap team tier), NOT per-seat "
-            "subscription; WTP >= 5/10 → paid / subscription is on the table. If you propose a "
-            "subscription, the rationale must name this pain's WTP.\n"
+            f"This pain's WTP is {_wtp}. If you propose a subscription, the rationale must name "
+            "this pain's WTP.\n"
         )
         if frame == "pain":
             anchor_line = f"pain_points_addressed MUST include \"{pain_title}\".\n\n"
@@ -6888,7 +7033,7 @@ class UnifiedSolutionCrew:
         parity = (getattr(idea, "incumbent_parity", None) or "").strip()
         pl = parity.lower()
         if pl.startswith(("shipped", "partial")):
-            reason = (f"Already well-served — {parity}. A new entrant here competes head-on with "
+            reason = (f"Already well-served: {parity}. A new entrant here competes head-on with "
                       "an incumbent rather than filling a gap.")
         elif pl.startswith("substitute"):
             reason = (f"Buyers already solve this without paid tooling ({parity}); willingness "
@@ -6899,8 +7044,8 @@ class UnifiedSolutionCrew:
             bf = getattr(idea, "build_feasibility_score", None)
             if isinstance(pay, (int, float)) and pay < settings.payability_low_threshold:
                 seg = getattr(idea, "source_segment", None) or "this audience"
-                reason = (f"Buyers in this segment ({seg}) rarely pay for tooling — the pain is "
-                          "real but the wallet is thin.")
+                reason = (f"Buyers in this segment ({seg}) rarely pay for tooling. The pain is "
+                          "real, but the wallet is thin.")
                 # Operator≠payer hypothesis (run-quality fixes §5): computed INLINE so the
                 # demotion-time snapshot carries it — a post-hoc stamp would arrive after
                 # _record_ruled_out has already materialized the finding.
@@ -6910,7 +7055,7 @@ class UnifiedSolutionCrew:
                     reason = f"{reason} {hint}"
             elif dam in ("unofficial", "restricted", "blocked") or (
                     isinstance(bf, (int, float)) and bf < 0.5):
-                reason = ("No defensible, buildable mechanism on obtainable data — the viable "
+                reason = ("No defensible, buildable mechanism on obtainable data. The viable "
                           "versions of this idea can't be built as scoped.")
             else:
                 reason = ("Mild demand: the pain is real but too weak or too niche to anchor a "
@@ -7217,9 +7362,18 @@ class UnifiedSolutionCrew:
             self._segment_payability_map()
         except Exception as e:
             logger.warning(f"[Seed] segment payability for monetization directive skipped: {e}")
+        # The wallet brief is the FIRST input to the directive, not an optional extra: omitting it
+        # here is what kept the paying-wallet branch unreachable outside tests while this same
+        # block printed the niche's verified prices two lines down (D1 round 15, Priority 2).
+        # `_probe_niche_wallet` is cached and fail-soft, so this is at most one probe per run.
+        try:
+            self._probe_niche_wallet()
+        except Exception as e:
+            logger.warning(f"[Seed] niche wallet probe for monetization directive skipped: {e}")
         monetization_directive = derive_monetization_directive(
             self.pain_point_analysis.pain_points,
             list(getattr(self.audience_mapping, "audience_segments", None) or []),
+            getattr(self, "_niche_wallet_brief", None),
         )
         wallet_line = self._wallet_prompt_line()
         if wallet_line:
@@ -7257,7 +7411,7 @@ class UnifiedSolutionCrew:
 
     def _run_seed_cell(self, *, seed_text: str, pain_ref: str | None = None,
                        tool_ref: str | None = None, dispatch_id: str = "seed",
-                       search=None, usages: list):
+                       search=None, usages: list, identity_terms: dict | None = None):
         """User-seed pipeline entry point (eager-meandering-feather.md Phase 4, sections B/D):
         resolve the user's free-text idea to an exact validated pain (+ segment) if one genuinely
         matches (`resolve_seed_anchors`), build the 'user_seed' FrameFocus/cell, generate
@@ -7276,16 +7430,28 @@ class UnifiedSolutionCrew:
         pains = list(getattr(self.pain_point_analysis, "pain_points", None) or [])
         segments = list(getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or [])
         try:
-            resolved = resolve_seed_anchors(seed_text, pain_ref, tool_ref, pains, segments)
+            # Mechanism+problem terms steer anchor selection toward the pitch's CORE —
+            # whole-brief overlap alone let context vocabulary (coach, parent, game)
+            # out-rank the pains that restate the mechanism.
+            _focus_terms = [
+                t for key in ("mechanism", "problem")
+                for t in ((identity_terms or {}).get(key) or [])
+                if isinstance(t, str)
+            ]
+            resolved = resolve_seed_anchors(
+                seed_text, pain_ref, tool_ref, pains, segments,
+                focus_terms=_focus_terms or None)
             anchor_titles, segment = list(resolved.anchor_pain_titles), resolved.segment
             if resolved.rejected_pain_ref:
                 logger.info(
                     f"[Seed] advisory pain rejected as product mismatch: "
                     f"'{resolved.rejected_pain_ref}'")
             if anchor_titles:
+                _plural = "s" if len(anchor_titles) != 1 else ""
                 logger.info(
-                    f"[Seed] matched primary pain ({resolved.match_kind}; "
-                    f"shared={','.join(resolved.shared_terms)}): '{anchor_titles[0]}'")
+                    f"[Seed] matched {len(anchor_titles)} anchor pain{_plural} "
+                    f"({resolved.match_kind}; shared={','.join(resolved.shared_terms)}): "
+                    + "; ".join(f"'{t}'" for t in anchor_titles))
             else:
                 logger.info(
                     "[Seed] no validated pain matched the submitted product — "
@@ -7330,6 +7496,7 @@ class UnifiedSolutionCrew:
                     "core loop/mechanism, interaction model, and audience verbatim enough that each "
                     "variant is immediately recognizable as the user's idea. Explore product-design "
                     "choices inside that boundary; do not search the surrounding pain space."
+                    + _stated_clause_lens_block(identity_terms)
                 ),
                 model=model, effort=effort, partitioned_block=block, min_concepts=1,
                 allow_zero=spec.always_allow_zero, timeout=90,
@@ -7776,10 +7943,10 @@ class UnifiedSolutionCrew:
         (fail-soft)."""
         try:
             finding = (getattr(orig, "incumbent_parity", "") or "").strip()
-            inc_name = ""
-            for token in finding.replace("shipped by", "").replace("partial by", "").split(":")[0].split("("):
-                inc_name = token.strip()
-                break
+            # Shared stamp parser (2026-08): the old token loop returned the CLASS word
+            # ("substitute") for paren-format stamps, so the gap lookup missed.
+            parsed = parse_stamp_vendor(finding)
+            inc_name = parsed[1] if parsed else ""
             gap = gaps_by_name.get(inc_name.lower(), "")
             dissat = (getattr(self, "_dissatisfaction_text", None) or "")[:600]
 
@@ -7871,6 +8038,116 @@ class UnifiedSolutionCrew:
         except Exception as e:
             logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
             return None
+
+    def _enforce_seed_identity(
+        self, idea, identity_terms: dict, inferred_fields: list,
+    ) -> None:
+        """"Check my idea" stated-clause gate: the evaluated project must BE the pitched
+        product. Detect per-clause drift (negation-aware — the live failure reused the
+        pitch's vocabulary while arguing against it), and on drift run ONE corrective
+        rewrite of the identity copy. Fail-soft and in-place: the idea is never
+        dropped here — residual drift is disclosed by the report's refinement panel."""
+        from ..utils.seed_fidelity import seed_clause_drift
+
+        try:
+            drifted = seed_clause_drift(identity_terms, idea, inferred_fields)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[Seed] stated-clause check failed (skipping): {exc}")
+            return
+        if not drifted:
+            logger.info("[Seed] stated-clause check: faithful to the pitch")
+            return
+        logger.warning(
+            f"[Seed] winner drifted from stated clauses {drifted} — corrective rewrite")
+        if not self._restore_seed_clauses(idea, identity_terms, drifted):
+            logger.warning(
+                "[Seed] corrective rewrite failed — drift will be disclosed in the report")
+            return
+        try:
+            residual = seed_clause_drift(identity_terms, idea, inferred_fields)
+        except Exception:  # noqa: BLE001
+            residual = None
+        if residual:
+            logger.warning(
+                f"[Seed] stated-clause drift remains on {residual} after rewrite — "
+                "disclosed in the report")
+        else:
+            logger.info("[Seed] stated clauses restored by corrective rewrite")
+
+    def _restore_seed_clauses(
+        self, idea, identity_terms: dict, drifted: list[str],
+    ) -> bool:
+        """ONE structured rewrite of the identity copy so the stated clauses are the
+        product again (mirrors `_generate_pivot_revision`'s shape). Keeps the spec's
+        genuine improvements as positioning/features where compatible; scores are NOT
+        emitted here — the caller re-scores through the normal wave. Returns False on
+        any failure (fail-soft)."""
+        try:
+            stated_lines = []
+            for key, label in _STATED_CLAUSE_LABELS:
+                terms = [t.strip() for t in (identity_terms.get(key) or [])
+                         if isinstance(t, str) and t.strip()]
+                if terms:
+                    stated_lines.append(f"- {label}: {'; '.join(terms)}")
+
+            from pydantic import BaseModel, Field as _F
+
+            class _RestoredSeed(BaseModel):
+                solution_name: str = ""
+                value_proposition: str = ""
+                description: str = ""
+                core_features: list[str] = _F(default_factory=list)
+                why_it_works: str = ""
+                innovation_angle: str = ""
+                technical_approach: str = ""
+                mechanism_tag: str = _F(
+                    "", description="3-6 word kebab-or-plain tag naming the core mechanism")
+
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    "A user asked us to evaluate THEIR product idea. The evaluation "
+                    "produced a spec that drifted from the pitched identity on: "
+                    f"{', '.join(drifted)}.\n\n"
+                    "THE PITCH STATES (the product's fixed identity — keep every clause):\n"
+                    + "\n".join(stated_lines) + "\n\n"
+                    "CURRENT SPEC (drifted):\n"
+                    f"- name: {getattr(idea, 'solution_name', '')}\n"
+                    f"- value_prop: {(getattr(idea, 'value_proposition', '') or '')[:300]}\n"
+                    f"- description: {(getattr(idea, 'description', '') or '')[:400]}\n"
+                    f"- mechanism: {(getattr(idea, 'technical_approach', '') or '')[:300]}\n"
+                    f"- innovation_angle: {(getattr(idea, 'innovation_angle', '') or '')[:250]}\n"
+                    f"- features: {'; '.join((getattr(idea, 'core_features', None) or [])[:6])[:400]}\n\n"
+                    "Rewrite the spec so the product IS the pitched product: the stated "
+                    "mechanism is the PRIMARY loop, the stated delivery form and buyer are "
+                    "kept, and the copy never argues against the pitched approach. Keep the "
+                    "spec's genuine insights (wedge, safeguards, data advantage) as "
+                    "secondary positioning or features where they fit the stated identity; "
+                    "drop what contradicts it. No new capabilities. Name the product from "
+                    "the user's stated mechanism vocabulary; never from a mechanism they "
+                    "did not state. Fill every field."),
+                output_model=_RestoredSeed, temperature=0.3, timeout=180,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium",
+                creative=True)
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage(
+                    "Stage 5 - Seed Identity Restore", usage.to_dict())
+            d = r.model_dump()
+            if not d.get("value_proposition") or not d.get("description"):
+                return False
+            for field in ("solution_name", "value_proposition", "description",
+                          "why_it_works", "innovation_angle", "technical_approach",
+                          "mechanism_tag"):
+                value = (d.get(field) or "").strip()
+                if value:
+                    setattr(idea, field, value)
+            features = [f.strip() for f in (d.get("core_features") or [])
+                        if isinstance(f, str) and f.strip()]
+            if features:
+                idea.core_features = features
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[Seed] identity restore failed: {exc}")
+            return False
 
     @staticmethod
     def _pivot_acceptable(orig, rev) -> bool:
@@ -8535,6 +8812,9 @@ class UnifiedSolutionCrew:
         tool_ref = _get("tool_ref")
         dispatch_id = _get("dispatch_id") or "seed"
         synthesis_evaluation = _get("synthesis_evaluation")
+        _terms_raw = _get("identity_terms")
+        identity_terms = _terms_raw if isinstance(_terms_raw, dict) else None
+        inferred_fields = list(_get("inferred_fields") or [])
         # Read by `_record_ruled_out` (via `_sweep_demote` in `_finalize_seed_tail` below) so a
         # DEMOTED seed's ruled-out finding carries the dispatch id — never set for any other
         # birth path (execute_pipeline never touches this attr), so every non-seed finding still
@@ -8573,7 +8853,8 @@ class UnifiedSolutionCrew:
         else:
             idea = self._run_seed_cell(
                 seed_text=seed_text, pain_ref=pain_ref, tool_ref=tool_ref,
-                dispatch_id=dispatch_id, search=search, usages=usages)
+                dispatch_id=dispatch_id, search=search, usages=usages,
+                identity_terms=identity_terms)
         if idea is None:
             self._record_divergent_usage(usages)
             return None
@@ -8607,11 +8888,24 @@ class UnifiedSolutionCrew:
         if self._current_seed_evaluation is not None:
             self._stamp_exact_synthesis(idea, self._current_seed_evaluation)
 
+        # "Check my idea" stated-clause gate — BEFORE scoring, so every downstream score
+        # is computed on the product the user actually pitched, not a repositioned one.
+        if identity_terms and self._current_seed_evaluation is None:
+            self._enforce_seed_identity(idea, identity_terms, inferred_fields)
+
         self._score_wave([idea], birth_verified=[idea])
         if not _identity_is_faithful(idea):
             logger.error("[Seed] scoring replaced the submitted product; refusing replacement")
             self._record_divergent_usage(usages)
             return None
+        if identity_terms and self._current_seed_evaluation is None:
+            from ..utils.seed_fidelity import seed_clause_drift
+            _post_wave_drift = seed_clause_drift(identity_terms, idea, inferred_fields)
+            if _post_wave_drift:
+                # Telemetry only: pinpoints whether drift enters at scoring rather than
+                # birth. Residual drift is disclosed by the report's refinement panel.
+                logger.warning(
+                    f"[Seed] stated-clause drift after scoring wave: {_post_wave_drift}")
         if self._current_seed_evaluation is not None:
             self._stamp_exact_synthesis(idea, self._current_seed_evaluation)
 
@@ -9091,7 +9385,19 @@ class UnifiedSolutionCrew:
             # this contract runs (worker/tasks.py run_regenerate_ideas / run_seed_idea), on the
             # newly generated ideas only — so an unconditional reset here can never wipe a real
             # stamp, and a first-run pool is guaranteed null.
-            idea.generation_operation_id = None
+            #
+            # "Check my idea" keep-guard: the validate seed/pivot markers are the durable
+            # selector for the idea_validation report block, and later operations (regenerate,
+            # chat seed batches) re-enter this contract over merged pools — stripping them
+            # would silently delete the user's report. Only this exact source_frame + marker
+            # pair survives; a generator would have to fabricate BOTH 'user_seed' AND one of
+            # the two literal ids to slip through (accepted residual risk).
+            _keep_validate_marker = (
+                (getattr(idea, "source_frame", None) or "").strip().lower() == "user_seed"
+                and getattr(idea, "generation_operation_id", None) in ("validate", "validate_pivot")
+            )
+            if not _keep_validate_marker:
+                idea.generation_operation_id = None
             idea.generation_batch_ordinal = None
             # Same reset-then-stamp reason: `rebuild_origin` sits on BaseSolutionIdea, so a
             # generator can invent it. Only the pivot/merge/red-team accept blocks may stamp
@@ -9779,9 +10085,20 @@ class UnifiedSolutionCrew:
                 self._segment_payability_map()
             except Exception as e:
                 logger.warning(f"segment payability for monetization directive skipped: {e}")
+            # The wallet brief is the FIRST input to the directive. Without it the directive was
+            # computed from the corpus alone and could steer the generator away from charging in
+            # the same prompt block that quotes the niche's verified prices — the D1 contradiction,
+            # produced by an omitted argument rather than by a model (round 15, Priority 2).
+            # `_probe_niche_wallet` is cached and fail-soft (the divergent pool calls it too), so
+            # this only moves the one probe earlier; it does not add a second.
+            try:
+                self._probe_niche_wallet()
+            except Exception as e:
+                logger.warning(f"niche wallet probe for monetization directive skipped: {e}")
             monetization_directive = derive_monetization_directive(
                 self.pain_point_analysis.pain_points,
                 list(getattr(self.audience_mapping, "audience_segments", None) or []),
+                getattr(self, "_niche_wallet_brief", None),
             )
             _wallet_line = self._wallet_prompt_line()
             if _wallet_line:

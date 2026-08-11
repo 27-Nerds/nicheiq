@@ -1,0 +1,14 @@
+[
+  {
+    "why": "two spaced em dashes and a raw `Cold-start` label: the hand-rolled chain lower-cased BOTH tails and left the vocabulary standing",
+    "file": "output/checkpoints/checkpoint_athletes_and_serious_gym_goers_who_interested_in_p_abbf42e5-f65f-45d6-867d-e53e1fe63c65_20260623_144251/stage_5_3_refinement.json",
+    "path": ".solution_ideas[3].data_acquisition_notes",
+    "value": "User-submitted Janoshik COA PDFs; requires verification mechanism to prevent fake submissions — checking against known Janoshik report formats (watermarks, QR codes, layout). Cold-start problem: needs ~30 initial submissions to generate meaningful vendor scores — solved by partnering with existing community testing pools and offering free premium access as upload incentive."
+  },
+  {
+    "why": "`cold-start` twice, once mid-clause and once as a dash tail the chain lower-cased",
+    "file": "output/checkpoints/checkpoint_athletes_and_serious_gym_goers_who_are_interested_validate-phase1-scoring_20260621_213146/stage_5_3_refinement.json",
+    "path": ".solution_ideas[2].data_acquisition_notes",
+    "value": "User-submitted COA PDFs via upload (free, but requires cold-start seeding with initial batch data); scraped compounder websites publishing batch IDs (public pages, ToS-gray); community-submitted test results from forums (public content, manual curation needed); graph database requires minimum data density to produce useful cross-references — cold start is the primary risk"
+  }
+]

@@ -95,6 +95,68 @@ describe("humanizeInternalJargon", () => {
     );
   });
 
+  it("replaces the raw field names the quality caveats print", () => {
+    expect(
+      humanizeInternalJargon(
+        "is not in the selected solution's pain_points_addressed list.",
+      ),
+    ).toBe("is not in the selected solution's addressed problems list.");
+    expect(
+      humanizeInternalJargon("dashboard niche-relevant volume (1,490) vs seo_analytics total volume"),
+    ).toBe("dashboard niche-relevant volume (1,490) vs SEO analytics total volume");
+  });
+
+  it("glosses the PainPoint repr the coverage checker interpolates into a caveat", () => {
+    expect(
+      humanizeInternalJargon(
+        "severity_score=0.9 willingness_to_pay_score=0.6 representative_quote=\"I am burnt "
+          + "the F out.\" source_platform='Reddit r/gamedev'",
+      ),
+    ).toBe(
+      "severity score=0.9 commercial-intent score=0.6 representative quote=\"I am burnt "
+        + "the F out.\" source platform='Reddit r/gamedev'",
+    );
+  });
+
+  /**
+   * THE FIFTH REPR KEY. `title` has no underscore, so the map's four snake_case names covered
+   * four fifths of the dump and the suite's `INTERNAL_TOKEN` regex — which matched a
+   * snake_case identifier — reported it complete.
+   *
+   * It cannot share the `=` lookahead the other four use. Over the 2,223,988 distinct strings
+   * under `output/`, `\btitle\s*=` occurs in 6 and only one is this repr; two of the rest are
+   * product advice a bare rule would corrupt, and both are asserted below.
+   */
+  it("glosses the repr's title, and only inside the repr", () => {
+    expect(
+      humanizeInternalJargon(
+        "Core pain point 'title='Burnout and Mental Health Struggles' severity_score=0.9'",
+      ),
+    ).toBe("Core pain point 'problem title='Burnout and Mental Health Struggles' severity score=0.9'");
+
+    // Captured shapes: an HTML snippet the SEO recommendations hand the reader — whose `=` is
+    // TIGHT, so it satisfies the shared lookahead exactly — and an Open Graph example.
+    const snippet = '<a href="/picky-eaters-guide/" title="Picky Eater Solutions">Learn more</a>';
+    expect(humanizeInternalJargon(snippet)).toBe(snippet);
+    const og = 'Example: og:title = "Ingredient Transparency Checklist"';
+    expect(humanizeInternalJargon(og)).toBe(og);
+  });
+
+  /**
+   * `humanizeInternalJargon` is the body of `humanizeReportProse`, an unconditional
+   * FIELD-BLIND deep walk, so a bare word rule for `severity_score` reaches a `technical_
+   * approach` that names it as a column of a schema the PRODUCT would define. This is the
+   * only occurrence of any of the four repr names WITHOUT a following `=` in every distinct
+   * prose string under `output/`, and half-translating a schema list is exactly the defect
+   * that kept the research vocabulary out of this table.
+   */
+  it("leaves a field name alone when it is a column of the product's own schema", () => {
+    const schema =
+      "using a structured JSON schema (complaint, workaround, severity_score, pay_signal, "
+      + "source_url).";
+    expect(humanizeInternalJargon(schema)).toBe(schema);
+  });
+
   it("renames WTP to commercial intent and labels the scale", () => {
     expect(humanizeInternalJargon("Pains show an average WTP score of 0.43 overall.")).toBe(
       "Pains show an average commercial-intent score of 43/100 overall.",
@@ -223,6 +285,27 @@ describe("humanizeReportProse", () => {
       niche: "Independent live music venues",
     };
     expect(humanizeReportProse(source)).toBe(source);
+  });
+
+  /**
+   * A user's own words are never rewritten, and `selftext` is Reddit's name for them. The
+   * walk is FIELD-BLIND, so the guard has to be in place before a rule reaches the key, not
+   * after somebody reads a reworded quotation in a shipped report — which is how `body` and
+   * `quote` got onto the list.
+   */
+  it("never rewrites a scraped post's own text", () => {
+    const source = {
+      social_content: [{
+        selftext: "Our WTP was low so we shipped the free tier.",
+        body: "Same here, WTP never justified the build.",
+      }],
+      rationale: "Average WTP of 0.40 across the set.",
+    };
+    const humanized = humanizeReportProse(source);
+    expect(humanized.social_content[0].selftext).toBe(source.social_content[0].selftext);
+    expect(humanized.social_content[0].body).toBe(source.social_content[0].body);
+    // …while the prose around it still is.
+    expect(humanized.rationale).toBe("Average commercial-intent score of 40/100 across the set.");
   });
 });
 

@@ -14,6 +14,13 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..utils.llm_service import build_crew_llm
+from ..utils.market_brief import parse_market_wallet_line
+from ..utils.niche_difficulty import (
+    ZERO_PRICE_PRICING_MODELS,
+    has_zero_price_prescription,
+    wallet_reading_shows_verified_prices,
+    zero_price_model_contradicts_wallet,
+)
 from ..utils.validation.crew_guardrails import validate_pricing_strategy
 from ..models.competitor import find_landscape_for_solution
 from ..models.research_state import PricingStrategyResult
@@ -87,11 +94,104 @@ class PricingStrategyCrew:
 
     def _pricing_guardrail(self, task_output):
         """Bound guardrail wrapper: passes the pre-computed CAC anchor (set in
-        analyze()) so the numeric ratio cross-check can run."""
-        return validate_pricing_strategy(
+        analyze()) so the numeric ratio cross-check can run, then applies the wallet contract."""
+        ok, payload = validate_pricing_strategy(
             task_output,
             suggested_cac_range=getattr(self, '_suggested_cac_range', None),
         )
+        if not ok:
+            return (ok, payload)
+        return self._wallet_contract_guardrail(task_output, payload)
+
+    def _wallet_contract_guardrail(self, task_output, payload):
+        """Reject a zero-price `pricing_model` OR `pricing_rationale` in a niche whose prices
+        this run VERIFIED.
+
+        Stage 7 is where the report NAMES the money model, and until D1 round 16 nothing validated
+        that field against the wallet: the prompt gates could be tightened indefinitely and the
+        crew could still return `Ad-Supported-Free` in the same report that quotes the incumbents'
+        monthly prices. Rejecting here (rather than after kickoff) is what gives the model a fresh
+        call to correct itself — a guardrail cannot repair output, only refuse it.
+        """
+        wallet_class, wallet_evidence = getattr(self, "_wallet_reading", ("", ""))
+        candidate = getattr(task_output, "pydantic", None) or payload
+        reason = self._wallet_contract_violation(
+            self._pricing_model_of(task_output, payload),
+            getattr(candidate, "pricing_rationale", None),
+            wallet_class,
+            wallet_evidence,
+        )
+        if reason is None:
+            return (True, payload)
+        logger.warning(f"[Stage 7] rejecting pricing output: {reason}")
+        return (False, reason)
+
+    @staticmethod
+    def _wallet_contract_violation(
+        pricing_model: str | None,
+        pricing_rationale: str | None,
+        wallet_class: str,
+        wallet_evidence: str,
+    ) -> str | None:
+        """The reason this pricing output contradicts the niche's verified wallet, or None.
+
+        Two report-visible money outputs, one reading. `pricing_model` is a closed `Literal`, so
+        it is checked as a value; `pricing_rationale` is the prose paragraph rendered under it,
+        and nothing scanned it at all — a run could be forced onto `Freemium` by the field
+        contract and still tell the reader, in the paragraph right beneath, to give the product
+        away. Both use the polarity-blind detector's own question: does this RECOMMEND a shape in
+        which this audience does not pay?
+        """
+        if zero_price_model_contradicts_wallet(pricing_model, wallet_class, wallet_evidence):
+            return (
+                f"pricing_model '{pricing_model}' puts the price at zero for this audience, but "
+                f"this niche's wallet reading is '{wallet_class}' with verified prices "
+                f"({wallet_evidence!r}). Somebody in this market pays today, so a zero-price "
+                "model contradicts the report's own evidence. Choose a model with a price on at "
+                "least one tier and justify it against those verified prices; if traffic "
+                "monetization genuinely belongs alongside the paid tier, use Hybrid."
+            )
+        rationale = pricing_rationale if isinstance(pricing_rationale, str) else ""
+        # THE TWO HALVES MUST AGREE. The field half permits every model that keeps a price on some
+        # tier — `Freemium` above all — so the paragraph beneath it is allowed to say "free tier"
+        # and the prose half must not reject the prose form of the choice the field form passed.
+        # Where the model is field-permitted, only a rationale that RULES OUT the audience paying
+        # ("a free tool funded by affiliate links rather than a monthly subscription") contradicts
+        # anything; a bare zero-price object does not. Without this the modal legitimate outcome —
+        # a priced model whose paragraph mentions its own free tier — was refused, `analyze()`
+        # returned None, and the solution silently lost its pricing section.
+        field_gate_permits_the_model = (
+            (pricing_model or "").strip() not in ZERO_PRICE_PRICING_MODELS
+        )
+        if (
+            rationale.strip()
+            and wallet_reading_shows_verified_prices(wallet_class, wallet_evidence)
+            and has_zero_price_prescription(
+                rationale, rejection_only=field_gate_permits_the_model
+            )
+        ):
+            return (
+                "pricing_rationale recommends a shape in which this audience does not pay, but "
+                f"this niche's wallet reading is '{wallet_class}' with verified prices "
+                f"({wallet_evidence!r}). The paragraph is rendered to the reader directly under "
+                "the pricing model, so it contradicts the report's own evidence just as the "
+                "field would. Justify the priced model against those verified prices instead: "
+                f"{rationale[:200]!r}"
+            )
+        return None
+
+    @staticmethod
+    def _pricing_model_of(task_output, payload) -> str:
+        """The chosen `pricing_model`, wherever this guardrail's predecessor left it.
+
+        `validate_pricing_strategy` hands back the raw payload it was given on success, so the
+        parsed object is read from the task output first and the payload only as a fallback.
+        """
+        for candidate in (getattr(task_output, "pydantic", None), payload):
+            model = getattr(candidate, "pricing_model", None)
+            if isinstance(model, str) and model.strip():
+                return model.strip()
+        return ""
 
     @crew
     def crew(self) -> Crew:
@@ -284,7 +384,7 @@ class PricingStrategyCrew:
         """
         logger.info("[Stage 7] Starting Pricing Strategy Validation...")
         logger.info(f"  Solution: {selected_solution.solution_name}")
-        logger.info(f"  Analyzing competitor pricing and WTP scores...")
+        logger.info("  Analyzing competitor pricing and WTP scores...")
 
         # Extract data for task inputs
         competitor_pricing = self._extract_competitor_pricing(competitive_analysis, selected_solution.solution_name)
@@ -296,6 +396,9 @@ class PricingStrategyCrew:
         mfs = selected_solution.market_fit_score if hasattr(selected_solution, 'market_fit_score') else None
         suggested_cac_range = compute_cac_range(mfs)
         self._suggested_cac_range = suggested_cac_range  # for the guardrail's ratio cross-check
+        # The wallet reading the guardrail validates `pricing_model` against. Parsed back out of
+        # the rendered line because that string is the only form of the reading this crew is given.
+        self._wallet_reading = parse_market_wallet_line(market_wallet_line)
 
         # The idea's OWN CAC — the only value ltv_to_cac_ratio may divide by. Blank on a
         # rebuilt idea by design (unified_solution_crew._UNGROUNDABLE_ON_REBUILD); the task
@@ -349,6 +452,24 @@ class PricingStrategyCrew:
 
             if result and result.pydantic:
                 pricing_result = result.pydantic
+                wallet_class, wallet_evidence = self._wallet_reading
+                violation = self._wallet_contract_violation(
+                    getattr(pricing_result, "pricing_model", None),
+                    getattr(pricing_result, "pricing_rationale", None),
+                    wallet_class,
+                    wallet_evidence,
+                )
+                if violation:
+                    # The guardrail above refuses this and retries; reaching here means the
+                    # retries were exhausted or the guardrail was bypassed. Publishing it would
+                    # put "free forever" in the same report as the market's own price list, so
+                    # Stage 7 is dropped instead. A missing pricing section is recoverable; a
+                    # report that contradicts itself about money is the finding.
+                    logger.error(
+                        f"[Stage 7] discarding the pricing result rather than publishing the "
+                        f"contradiction: {violation}"
+                    )
+                    return None
                 logger.info("[Stage 7] Pricing Strategy Validation Complete")
                 logger.info(f"  Recommended Starter: {pricing_result.recommended_starter_price}")
                 logger.info(f"  Recommended Pro: {pricing_result.recommended_pro_price}")

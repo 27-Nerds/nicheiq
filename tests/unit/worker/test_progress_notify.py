@@ -55,6 +55,7 @@ def test_report_ready_carries_dispatch_and_exact_winner(_wid, _dispatch):
         "job_id": "job-1",
         "report_path": "/tmp/report.json",
         "dispatch_id": "dispatch-2",
+        "commercial_copy_contract_version": "paying-wallet-positive-copy-v1",
         "winner_name": "Alpha Hub",
         "winner_ref": winner_ref,
     }
@@ -236,6 +237,7 @@ def test_regeneration_complete_delivers_batch_correlation_and_counts(
         "job_id": "job-1",
         "solutions": [],
         "dispatch_id": "dispatch-2",
+        "commercial_copy_contract_version": "paying-wallet-positive-copy-v1",
         "batch_ordinal": 2,
         "generated_count": 3,
         "ruled_out_count": 3,

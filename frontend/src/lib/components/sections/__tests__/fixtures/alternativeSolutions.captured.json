@@ -1,0 +1,26 @@
+[
+  {
+    "why": "critic_concern carrying the bare `wedge` noun, printed under \"Independent critic's take\"",
+    "file": "output/checkpoints/preview_report_056b2c68-8166-42da-90cf-ef265acd9941.json",
+    "path": ".alternative_solutions[2].critic_concern",
+    "value": "Addresses high-severity hallucination pain (good) with a working pre-publish verification mechanism; partial overlap with NapoleonCat exists but the claim-level diff against company docs is a specific, defensible wedge in a high-pain area."
+  },
+  {
+    "why": "critic_concern carrying the pipeline scoring label `mechanism parity` and the raw field name `build_feas`",
+    "file": "output/checkpoints/preview_report_51a491dc-c095-4e21-befb-5cadf540629a.json",
+    "path": ".alternative_solutions[4].critic_concern",
+    "value": "Addresses high-severity reconciliation pain (good) but mechanism parity shows VetSnap already auto-checks entries for discrepancies between logs and invoices; additionally, build_feas of limited signals the core PIMS integration route may be unverified or unreliable."
+  },
+  {
+    "why": "critic_concern carrying the raw field name `data_feas`",
+    "file": "output/audit-snapshots/2026-07-30-run-quality-audit/preview_c02420e2-ca3f-431f-8cda-02af9e4ccd19.json",
+    "path": ".alternative_solutions[4].critic_concern",
+    "value": "Addresses high-severity (good) cleanup pain with small-business budget payability (moderate), but data_feas good and unverified data access introduce mechanism risk; fuzzy matching for accounting reclassification is plausible but unproven at scale."
+  },
+  {
+    "why": "data_acquisition_notes carrying `cold-start corpus`; it rides the same object into the data badge's tooltip",
+    "file": "output/checkpoints/preview_report_568bf0f3-160d-4e08-9fe7-ed815b2e032d.json",
+    "path": ".alternative_solutions[2].data_acquisition_notes",
+    "value": "User-submitted fix reports via web form; requires cold-start corpus but no technical barriers."
+  }
+]

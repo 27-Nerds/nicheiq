@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { buyerFacingCoverageNote } from "$lib/selection/buyerFacingResearchProse";
   import type { MarketReality } from "$lib/types/report";
 
   interface Props {
@@ -9,6 +10,50 @@
   }
 
   let { shapeLine = null, coverageNotes, userAdjustments, marketReality = null }: Props = $props();
+
+  const WALLET_LABELS: Record<string, string> = {
+    paying: "Paid tools are established",
+    mixed: "Free and paid tools coexist",
+    "free-culture": "Buyers mostly use free or DIY tools",
+  };
+
+  function availableValue(value: string | null | undefined): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed || /^(?:unknown|not available|n\/a|tbd|--|-)$/i.test(trimmed)) return null;
+    return trimmed;
+  }
+
+  // `coverage_notes` / `user_adjustments` are sanitised by `buyerFacingCoverageNote`, which
+  // is where this component's own stanza now lives. IT MOVED BECAUSE THE SHORTLIST IS NOT THE
+  // ONLY SURFACE THAT PRINTS THESE TWO FIELDS: the paid Deep Research report prints
+  // `quality_caveats` through `CoverageNotes.svelte` and `user_adjustments` through
+  // ReportContent's "How this run was shaped" note, and both printed them as they arrived —
+  // 71 producer phrases and 73 raw em/en dashes over the same 165 corpus values this
+  // component was measured on. Copying the stanza there would have made a fourth hand-rolled
+  // sibling; the shared function cannot answer the two surfaces differently. The rendering
+  // here is unchanged — see the module's own note for what the stanza owns and why.
+  const displayCoverageNotes = $derived(
+    coverageNotes.map(buyerFacingCoverageNote).filter(Boolean),
+  );
+  const displayUserAdjustments = $derived(
+    userAdjustments.map(buyerFacingCoverageNote).filter(Boolean),
+  );
+  const displayIncumbents = $derived((marketReality?.incumbents ?? []).flatMap((incumbent) => {
+    const name = availableValue(incumbent.name);
+    return name ? [{
+      name,
+      pricing: availableValue(incumbent.pricing),
+      focus: availableValue(incumbent.focus),
+      gap: availableValue(incumbent.gap),
+    }] : [];
+  }));
+  const showPricing = $derived(displayIncumbents.some((incumbent) => incumbent.pricing));
+  const showFocus = $derived(displayIncumbents.some((incumbent) => incumbent.focus));
+  const showGap = $derived(displayIncumbents.some((incumbent) => incumbent.gap));
+  const walletLabel = $derived(
+    WALLET_LABELS[marketReality?.wallet?.wallet_class?.trim().toLowerCase() ?? ""] ?? null,
+  );
+  const walletEvidence = $derived(availableValue(marketReality?.wallet?.evidence));
 
   // Native <details> popovers have no built-in Escape/outside-click
   // dismissal; track every open disclosure so both can close it (N2).
@@ -57,61 +102,66 @@
     </div>
   {/if}
   <div class="context-disclosures">
-    {#if userAdjustments.length}
+    {#if displayUserAdjustments.length}
       <details class="coverage-disclosure" use:trackDisclosure>
         <summary>
           <span>User adjustments</span>
-          <strong>{userAdjustments.length}</strong>
+          <strong>{displayUserAdjustments.length}</strong>
         </summary>
         <ul role="list">
-          {#each userAdjustments as note}
-            {#if note?.trim()}<li>{note}</li>{/if}
+          {#each displayUserAdjustments as note}
+            <li>{note}</li>
           {/each}
         </ul>
       </details>
     {/if}
-    {#if coverageNotes.length}
+    {#if displayCoverageNotes.length}
       <details class="coverage-disclosure" use:trackDisclosure>
         <summary>
           <span>Data caveats</span>
-          <strong>{coverageNotes.length}</strong>
+          <strong>{displayCoverageNotes.length}</strong>
         </summary>
         <ul role="list">
-          {#each coverageNotes as note}
-            {#if note?.trim()}<li>{note}</li>{/if}
+          {#each displayCoverageNotes as note}
+            <li>{note}</li>
           {/each}
         </ul>
       </details>
     {/if}
-    {#if marketReality?.incumbents?.length}
+    {#if displayIncumbents.length}
       <details class="coverage-disclosure market-reality-disclosure" use:trackDisclosure>
         <summary>
           <span>Market reality</span>
-          <strong>{marketReality.incumbents.length}</strong>
+          <strong>{displayIncumbents.length}</strong>
         </summary>
         <div class="market-reality-body">
           <table class="market-reality-table">
             <caption class="sr-only">Market reality: comparable tools and where they fall short</caption>
             <thead>
-              <tr><th scope="col">Tool</th><th scope="col">Pricing</th><th scope="col">Focus</th><th scope="col">Weak at</th></tr>
+              <tr>
+                <th scope="col">Tool</th>
+                {#if showPricing}<th scope="col">Pricing</th>{/if}
+                {#if showFocus}<th scope="col">Focus</th>{/if}
+                {#if showGap}<th scope="col">Weak at</th>{/if}
+              </tr>
             </thead>
             <tbody>
-              {#each marketReality.incumbents as incumbent}
+              {#each displayIncumbents as incumbent}
                 <tr>
                   <td>{incumbent.name}</td>
-                  <td>{incumbent.pricing ?? "--"}</td>
-                  <td>{incumbent.focus ?? "--"}</td>
-                  <td>{incumbent.gap ?? "--"}</td>
+                  {#if showPricing}<td>{incumbent.pricing ?? ""}</td>{/if}
+                  {#if showFocus}<td>{incumbent.focus ?? ""}</td>{/if}
+                  {#if showGap}<td>{incumbent.gap ?? ""}</td>{/if}
                 </tr>
               {/each}
             </tbody>
           </table>
-          {#if marketReality.wallet?.wallet_class || marketReality.wallet?.evidence}
+          {#if walletLabel || walletEvidence}
             <p class="market-reality-wallet">
               <span class="market-reality-wallet-label">Niche spend</span>
-              {#if marketReality.wallet.wallet_class}<strong>{marketReality.wallet.wallet_class}</strong>{/if}
-              {#if marketReality.wallet.evidence}
-                {marketReality.wallet.wallet_class ? ": " : ""}{marketReality.wallet.evidence}
+              {#if walletLabel}<strong>{walletLabel}</strong>{/if}
+              {#if walletEvidence}
+                {walletLabel ? ": " : ""}{walletEvidence}
               {/if}
             </p>
           {/if}

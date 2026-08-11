@@ -14,9 +14,10 @@ import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import {
   getDiscoveryDataForJob,
-  getPreviewReportForJob,
   getReportJsonForJob,
 } from '../services/assetService.js';
+import { getPreviewReportForJob } from '../services/selectionBoundary/rawPreviewReport.js';
+import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
 import { prisma } from '../services/db.js';
 import {
   selectionAssumptionInclude,
@@ -739,7 +740,16 @@ selectionFinalDecisionsRouter.post('/:jobId/final-decision', requireInternalAuth
         reportVerdict: publicSources(sources).recommendation.verdict,
         phaseOneRationale: sources.job.selectionRationale,
         decisionProfile: sources.job.selectionDecisionProfile,
-        founderFit: sources.job.selectionFounderFit,
+        // Through the read-time contract, not raw. This snapshot is permanent and the
+        // decision-handoff export carries it verbatim, so a stored artifact written under a
+        // different delivery model (or one whose ideas have since moved on) would be frozen
+        // into the record forever. A rejected artifact is recorded as absent, same as anywhere
+        // else it is served.
+        founderFit: parseCurrentFounderFitArtifact(
+          sources.job.selectionFounderFit,
+          sources.job.selectionDecisionProfile,
+          allIdeas,
+        ),
         experimentConclusions: sources.conclusionSnapshots,
         selectedTestBrief: selectedTestBrief ? {
           ...selectedTestBrief.brief,

@@ -1,3 +1,46 @@
+<script lang="ts" module>
+  const STOPWORDS = new Set([
+    "the", "and", "for", "with", "from", "that", "this", "what", "how", "are", "was",
+    "were", "have", "has", "had", "into", "through", "during", "without", "your", "their",
+    "our", "you", "they", "them", "its", "about", "when", "where", "which", "while", "than",
+  ]);
+
+  function contentTokens(text: string): Set<string> {
+    const tokens = text
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter((token) => token.length > 2 && !STOPWORDS.has(token))
+      .map((token) => {
+        if (token.endsWith("ies") && token.length > 4) return `${token.slice(0, -3)}y`;
+        if (token.endsWith("ing") && token.length > 5) token = token.slice(0, -3);
+        else if (token.endsWith("ed") && token.length > 4) token = token.slice(0, -2);
+        if (token.endsWith("s") && token.length > 3) return token.slice(0, -1);
+        if (/(.)\1$/.test(token)) return token.slice(0, -1);
+        return token;
+      });
+    return new Set(tokens);
+  }
+
+  export function orderQuotesByRelevance(quotes: string[], vocabulary: string[]): string[] {
+    const focus = contentTokens(vocabulary.join(" "));
+    if (focus.size === 0) return quotes;
+
+    const scored = quotes.map((quote, index) => ({
+      quote,
+      index,
+      relevance: [...contentTokens(quote)].filter((token) => focus.has(token)).length,
+    }));
+    if (!scored.some(({ relevance }) => relevance > 0)) return quotes;
+
+    return scored
+      .sort((a, b) => b.relevance - a.relevance || a.index - b.index)
+      .map(({ quote }) => quote);
+  }
+</script>
+
 <script lang="ts">
   import type { DetailedPainPoint } from "$lib/types/report";
   import { cleanEvidenceExcerpt } from "$lib/utils/cleanEvidenceExcerpt";
@@ -29,9 +72,17 @@
   );
 
   const quotes = $derived(
-    (painPoint.representative_quotes ?? [])
-      .map(cleanEvidenceExcerpt)
-      .filter((quote) => quote.length > 0)
+    orderQuotesByRelevance(
+      (painPoint.representative_quotes ?? [])
+        .map(cleanEvidenceExcerpt)
+        .filter((quote) => quote.length > 0),
+      [
+        painPoint.title,
+        painPoint.description,
+        ...(painPoint.categories ?? []),
+        ...(painPoint.affected_segments ?? []),
+      ],
+    )
       .slice(0, 3)
   );
 

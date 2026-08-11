@@ -102,3 +102,48 @@ describe("authenticated app layout billing state", () => {
     });
   });
 });
+
+// Feature access is fetched with the same `.catch(() => null)` as the billing
+// calls, so without a load-state flag a transient failure is indistinguishable
+// from a revoked grant — and the analyst surfaces, which fail closed on it,
+// would tell a paying subscriber to subscribe.
+describe("authenticated app layout feature access", () => {
+  function backend(accessResponse: () => Promise<Response>) {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/users/user-1/feature-access") return accessResponse();
+      if (path === "/api/saves/counts") return Promise.resolve(response({ ideas: 0, painPoints: 0 }));
+      return Promise.resolve(response({ subscription: null }));
+    });
+  }
+
+  it("reports a read grant as available", async () => {
+    backend(() => Promise.resolve(response({ analyst: true, decisionTools: false })));
+
+    const result = await loadData();
+
+    expect(result.featureAccess).toEqual({ analyst: true, decisionTools: false });
+    expect(result.featureAccessUnavailable).toBe(false);
+  });
+
+  it("distinguishes a read denial from an unread grant", async () => {
+    backend(() => Promise.resolve(response({ analyst: false, decisionTools: false })));
+
+    const denied = await loadData();
+    expect(denied.featureAccess.analyst).toBe(false);
+    expect(denied.featureAccessUnavailable).toBe(false);
+
+    backend(() => Promise.reject(new Error("feature-access offline")));
+
+    const unavailable = await loadData();
+    expect(unavailable.featureAccess.analyst).toBe(false);
+    expect(unavailable.featureAccessUnavailable).toBe(true);
+  });
+
+  it("marks a non-ok feature-access response unavailable", async () => {
+    backend(() => Promise.resolve(response({}, 503)));
+
+    const result = await loadData();
+
+    expect(result.featureAccessUnavailable).toBe(true);
+  });
+});

@@ -697,6 +697,7 @@ const ReportReadySchema = z.object({
   job_id: z.string().uuid(),
   dispatch_id: z.string().uuid().optional(),
   report_path: z.string().min(1).max(500),
+  commercial_copy_contract_version: z.string().max(64).optional(),
   winner_name: z.string().max(255).optional(),
   winner_ref: z.object({
     idea_id: z.string().min(1).max(128),
@@ -885,6 +886,15 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
         res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
         return;
       }
+      if (data.commercial_copy_contract_version) {
+        const { stampJobAssetCommercialCopy } = await import('../services/jobService.js');
+        await stampJobAssetCommercialCopy(
+          data.job_id,
+          AssetType.REPORT_JSON,
+          data.report_path,
+          data.commercial_copy_contract_version,
+        );
+      }
       if (publication === 'idempotent') {
         res.json({ status: 'ok', idempotent: true });
         return;
@@ -896,7 +906,17 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       }
       const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
       isFirstDelivery = existingAsset == null;
-      await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
+      if (data.commercial_copy_contract_version) {
+        await addJobAsset(
+          data.job_id,
+          AssetType.REPORT_JSON,
+          data.report_path,
+          undefined,
+          data.commercial_copy_contract_version,
+        );
+      } else {
+        await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
+      }
     }
 
     const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
@@ -1164,6 +1184,7 @@ const ProgressSchema = z.object({
   status: z.enum(['running', 'completed', 'skipped', 'failed']),
   error: z.string().max(10000).optional(),
   report_path: z.string().max(500).optional(),
+  commercial_copy_contract_version: z.string().max(64).optional(),
   landing_path: z.string().max(500).optional(),
   artifact: z.record(z.unknown()).optional(),
   dispatch_id: z.string().uuid().optional(),
@@ -1492,6 +1513,15 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
       }
 
       try {
+        if (data.commercial_copy_contract_version) {
+          const { stampJobAssetCommercialCopy } = await import('../services/jobService.js');
+          await stampJobAssetCommercialCopy(
+            data.job_id,
+            AssetType.REPORT_JSON,
+            data.report_path,
+            data.commercial_copy_contract_version,
+          );
+        }
         const completedJob = await completionDb.job.findUnique({
           where: { id: data.job_id },
           select: { niche: true },
@@ -1740,7 +1770,17 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
       const { AssetType } = await import('@prisma/client');
       const { addJobAsset } = await import('../services/jobService.js');
       try {
-        await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+        if (data.commercial_copy_contract_version) {
+          await addJobAsset(
+            data.job_id,
+            AssetType.PREVIEW_REPORT,
+            data.preview_report_path,
+            undefined,
+            data.commercial_copy_contract_version,
+          );
+        } else {
+          await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+        }
         console.log(`[Workers] Preview report asset registered for job ${data.job_id}`);
       } catch (err) {
         console.warn(`[Workers] Failed to register preview report asset:`, err);
@@ -2022,6 +2062,18 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
     // The worker rewrites PREVIEW_REPORT in place from the merged candidate pool. Evict
     // this process's 10-minute parse cache before any analyst/UI reader can observe the
     // updated Job.solutionIdeas alongside the old preview-backed dossier.
+    if (data.commercial_copy_contract_version) {
+      const previewAsset = await getJobAsset(data.job_id, AssetType.PREVIEW_REPORT);
+      if (previewAsset) {
+        const { stampJobAssetCommercialCopy } = await import('../services/jobService.js');
+        await stampJobAssetCommercialCopy(
+          data.job_id,
+          AssetType.PREVIEW_REPORT,
+          previewAsset.filePath,
+          data.commercial_copy_contract_version,
+        );
+      }
+    }
     const { invalidatePreviewReportCache } = await import('../services/assetService.js');
     invalidatePreviewReportCache(data.job_id);
 
@@ -2377,6 +2429,18 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
     // whenever a seed settles, to fold in the new ruled-out/accepted record — drop the
     // in-memory cache so the next read re-parses it instead of serving the pre-seed
     // snapshot for up to CACHE_TTL.
+    if (data.commercial_copy_contract_version) {
+      const previewAsset = await getJobAsset(data.job_id, AssetType.PREVIEW_REPORT);
+      if (previewAsset) {
+        const { stampJobAssetCommercialCopy } = await import('../services/jobService.js');
+        await stampJobAssetCommercialCopy(
+          data.job_id,
+          AssetType.PREVIEW_REPORT,
+          previewAsset.filePath,
+          data.commercial_copy_contract_version,
+        );
+      }
+    }
     const { invalidatePreviewReportCache } = await import('../services/assetService.js');
     invalidatePreviewReportCache(data.job_id);
 
@@ -2950,6 +3014,7 @@ const CatalogPainPointsReadySchema = z.object({
   // before notifying. Worker raises if materialization fails. Optional in
   // schema for forward compat but rejected at handler level when absent.
   preview_report_path: z.string().min(1).max(500).optional(),
+  commercial_copy_contract_version: z.string().max(64).optional(),
 });
 
 /**
@@ -3007,7 +3072,17 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
     // Both are idempotent. Reading the preview file is sync I/O and must
     // not hold a transactional connection.
     const { addJobAsset } = await import('../services/jobService.js');
-    await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+    if (data.commercial_copy_contract_version) {
+      await addJobAsset(
+        data.job_id,
+        AssetType.PREVIEW_REPORT,
+        data.preview_report_path,
+        undefined,
+        data.commercial_copy_contract_version,
+      );
+    } else {
+      await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+    }
 
     const { extractOrCreateResearchContext, hasMeaningfulResearchContext, MEANINGFUL_SELECT } = await import(
       '../services/researchContextService.js'

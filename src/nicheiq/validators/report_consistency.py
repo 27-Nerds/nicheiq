@@ -42,18 +42,49 @@ _PRICING_CURRENCY_RE = re.compile(
     r"[$€£]\s*\d|\b\d+(?:\.\d+)?\s*(?:USD|EUR|GBP)\b", re.IGNORECASE)
 
 
-def parse_stamp_vendor(stamp) -> Optional[tuple[str, str]]:
-    """(class, vendor) from a class-prefixed parity stamp, or None ('none found', free text)."""
+def parse_stamp_vendor_evidence(stamp) -> Optional[tuple[str, str, str]]:
+    """(class, vendor, evidence) from a class-prefixed parity stamp, or None
+    ('none found', free text). Evidence is the text after the stamp prefix,
+    separator stripped — may be ''."""
     if not isinstance(stamp, str):
         return None
-    m = _STAMP_VENDOR_RE.match(stamp.strip())
+    text = stamp.strip()
+    m = _STAMP_VENDOR_RE.match(text)
     if not m:
         return None
     vendor = (m.group("vendor_paren") or m.group("vendor_paren_nc")
               or m.group("vendor_by") or "").strip()
     if not vendor:
         return None
-    return m.group("klass").lower(), vendor
+    evidence = text[m.end():].lstrip(" :").strip()
+    return m.group("klass").lower(), vendor, evidence
+
+
+def parse_stamp_vendor(stamp) -> Optional[tuple[str, str]]:
+    """(class, vendor) from a class-prefixed parity stamp, or None ('none found', free text)."""
+    parsed = parse_stamp_vendor_evidence(stamp)
+    if parsed is None:
+        return None
+    return parsed[0], parsed[1]
+
+
+def strip_vendor_echo(vendor: str, evidence: str) -> str:
+    """Evidence lines routinely re-open with the vendor the stamp already names
+    ('shipped by X: X offers …'). Strip that leading echo at a word boundary; keep the
+    original when the remainder would be empty (live case: evidence that is only the
+    vendor name plus a colon)."""
+    if not vendor or not evidence:
+        return evidence
+    # Separator lookahead, not \b: vendors ending in a non-word char ('… (pepdose.com)')
+    # have no word boundary before the following space. Dashes are NOT in the
+    # lookahead — an unspaced dash after the vendor is a compound word ('X-ray'),
+    # only a spaced dash (reached through the \s) is a separator.
+    m = re.match(rf"^{re.escape(vendor)}(?=[\s:,]|$)[\s:,\-–—]*",
+                 evidence, re.IGNORECASE)
+    if not m:
+        return evidence
+    remainder = evidence[m.end():].strip()
+    return remainder if remainder else evidence
 
 
 class ConsistencyWarning(BaseModel):

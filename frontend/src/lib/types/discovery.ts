@@ -9,6 +9,23 @@ export interface DiscoveryQuote {
   source_url: string;
   upvotes: number;
   subreddit: string;
+  speaker_attribution?: SpeakerAttribution;
+}
+
+export type SpeakerRole = "buyer" | "adjacent_worker" | "customer" | "unknown";
+
+export interface SpeakerAttribution {
+  role: SpeakerRole;
+  confidence: number;
+  rationale: string;
+  identity_evidence?: string | null;
+  authority_evidence?: string | null;
+  target_segment: string;
+  contribution_id?: string | null;
+  author?: string | null;
+  is_submitter?: boolean | null;
+  content_kind?: string | null;
+  method: "llm";
 }
 
 export interface HeroQuote extends DiscoveryQuote {
@@ -59,6 +76,7 @@ export interface SocialPost {
   num_comments: number;
   url: string;
   created_utc: string;
+  speaker_attribution?: SpeakerAttribution;
 }
 
 export interface DiscoveryMethodology {
@@ -81,6 +99,8 @@ export interface DiscoveryData {
   social_posts_sample: SocialPost[];
   subreddit_names: string[];
   subreddit_post_counts?: Record<string, number>;
+  speaker_attribution_version?: number | null;
+  speaker_attribution_target?: string | null;
   data_attribution: string;
   sources_searched?: Record<string, { enabled: boolean; posts_found: number }>;
   discussion_trend?: { month: string; count: number }[];

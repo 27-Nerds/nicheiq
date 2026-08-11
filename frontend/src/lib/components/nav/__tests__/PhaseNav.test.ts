@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PhaseNav from "../PhaseNav.svelte";
+import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -8,6 +9,24 @@ beforeEach(() => {
 });
 
 describe("PhaseNav selection journey", () => {
+  it("returns every Choose ideas link to the visible first ranked row", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        activeTool: "review",
+      },
+    });
+
+    const links = view.getAllByRole("link", { name: "Choose ideas" });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", rankedIdeasHref("job-1"));
+    }
+  });
+
   it("keeps the same four decision destinations on every selection route", () => {
     const view = render(PhaseNav, {
       props: {

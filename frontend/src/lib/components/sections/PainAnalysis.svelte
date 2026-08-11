@@ -384,7 +384,7 @@
       {#if previewMode && onUnlockClick}
         <div class="unlock-link-wrapper">
           <button class="unlock-link" onclick={onUnlockClick}>
-            See how each problem maps to a solution — unlock Deep Research
+            See how each problem maps to a solution. Unlock Deep Research
           </button>
         </div>
       {/if}
@@ -532,11 +532,17 @@
                 <!-- Score Rings -->
                 <div class="pain-point-scores">
                   <div class="score-ring-item">
+                    <!-- NOT color="auto". ProgressRing's auto ramp is a GOODNESS
+                         ramp (>=0.7 green, <0.4 red), and severity is a badness
+                         scale, so auto painted the worst pain green and the
+                         mildest one red. The arc length already grades it; the
+                         colour must not say the opposite. Matches the Journey
+                         tab's severity ring above, which is color="error". -->
                     <ProgressRing
                       value={point.severity_score}
                       size={56}
                       strokeWidth={4}
-                      color="auto"
+                      color="error"
                       showValue={true}
                       animate={true}
                     />

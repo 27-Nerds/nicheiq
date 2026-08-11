@@ -1,13 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { readFileSync } from 'fs';
-import { existsSync } from 'fs';
 import { prisma } from '../services/db.js';
-import { getJob, getJobAsset } from '../services/jobService.js';
-import { JobStatus, AssetType } from '@prisma/client';
+import { getJob } from '../services/jobService.js';
+import { getReportJsonForJob } from '../services/assetService.js';
+import { JobStatus } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
-import { resolveAssetPath } from '../utils/assetPath.js';
 import { populateItemCache, removeItemCache } from '../services/catalogService.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
@@ -320,16 +318,15 @@ publicShareRouter.get('/:shareToken', publicShareLimiter, async (req: Request, r
       return;
     }
 
-    // Get report file
-    const asset = await getJobAsset(share.jobId, AssetType.REPORT_JSON);
-    const resolvedPath = asset ? resolveAssetPath(asset.filePath) : '';
-    if (!asset || !existsSync(resolvedPath)) {
+    // The service enforces the authoritative JobAsset content hash/publication fence.
+    const publishableReport = await getReportJsonForJob(share.jobId);
+    if (!publishableReport || typeof publishableReport !== 'object' || Array.isArray(publishableReport)) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
 
     // Read and sanitize report
-    let rawReport = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
+    let rawReport = structuredClone(publishableReport) as Record<string, unknown>;
     for (const field of STRIPPED_FIELDS) {
       delete rawReport[field];
     }
@@ -345,7 +342,7 @@ publicShareRouter.get('/:shareToken', publicShareLimiter, async (req: Request, r
       )
         ? originalReasoning
         : 'The owner selected this shortlist after reviewing the Discovery evidence.';
-      rawReport = redactPrivateSelectionNote(rawReport, privateSelectionNote);
+      rawReport = redactPrivateSelectionNote(rawReport, privateSelectionNote) as Record<string, unknown>;
     }
 
     // Set SEO headers (conditional based on admin indexing toggle)

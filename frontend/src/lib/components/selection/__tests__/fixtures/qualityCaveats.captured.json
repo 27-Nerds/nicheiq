@@ -1,0 +1,50 @@
+[
+ {
+  "why": "a raw internal field name and the WTP acronym in one caveat, both invisible to the old chain",
+  "file": "output/final_report_20260701_111647.json",
+  "path": ".data_quality_summary.quality_caveats[6]",
+  "value": "Core pain point 'Manual invoicing and payment tracking consumes 3-5 hours per studio per week' (the #1 pain point by severity+WTP) is not in the selected solution's pain_points_addressed list. The recommended solution does not claim to address the top problem."
+ },
+ {
+  "why": "a whole PainPoint repr interpolated into a caveat — four raw field names in a row",
+  "file": "output/nicheiq_report_71eeda56-81d4-4dce-88c5-4aa55dde8c65.json",
+  "path": ".data_quality_summary.quality_caveats[2]",
+  "value": "Core pain point 'title='Burnout and Mental Health Struggles' severity_score=0.9 willingness_to_pay_score=0.6 representative_quote=\"I am burnt the F out. I had a bit of a breakdown 1.5 weeks ago, then another a few days after that, and another a few days after that. I haven't taken a full week off since I started the company in 2016.\" source_platform='Reddit r/gamedev'' (the #1 pain point by severity+WTP) is not in the selected solution's pain_points_addressed list. The recommended solution does not claim to address the top problem."
+ },
+ {
+  "why": "a raw table name in the SEO volume caveat",
+  "file": "output/final_report_20260203_193338.json",
+  "path": ".data_quality_summary.quality_caveats[2]",
+  "value": "Suspiciously low volume filter ratio (0.1%): dashboard niche-relevant volume (1,490) vs seo_analytics total volume (1,908,170). Keyword filtering may be overly aggressive."
+ },
+ {
+  "why": "a clause dash whose tail the old blind replace lower-cased",
+  "file": "output/checkpoints/preview_report_5144763b-7715-4d47-a6c3-d8bcdcef36a1.json",
+  "path": ".data_quality_summary.quality_caveats[1]",
+  "value": "Mechanism-parity probe found no incumbent for 11 of 13 ideas — this usually means the searches (framed by each idea's own audience) missed the adjacent commercial market, not that the field is open. Treat 'none found' as low probe coverage, not a green light."
+ },
+ {
+  "why": "a second lower-cased tail, after a closing bracket",
+  "file": "output/checkpoints/preview_report_056b2c68-8166-42da-90cf-ef265acd9941.json",
+  "path": ".data_quality_summary.quality_caveats[2]",
+  "value": "3 ideas address one pain ('Social listening misses relevant conversations across source') — above the diversity cap of 2."
+ },
+ {
+  "why": "the coverage-set stanza, carrying a TIGHT en-dash range the old chain destroyed on a second pass",
+  "file": "output/checkpoints/preview_report_abb8e45e-5f94-4d00-9ec2-752fedb4f191.json",
+  "path": ".data_quality_summary.quality_caveats[1]",
+  "value": "Idea-set coverage — validated pains with no idea: Indecision between incremental upgrades and saving for an endgame machine; Fear of purchasing the wrong upgrade that cannot be resold or modified; Morning espresso routine takes 15–20 minutes, causing delays to work; Burr alignment drifts over time, requiring frequent recalibration. Concentration may reflect where the real opportunity is, not a defect — shown for your judgment."
+ },
+ {
+  "why": "the calibration-note stanza this surface owns and no shared authority does",
+  "file": "output/checkpoints/preview_report_056b2c68-8166-42da-90cf-ef265acd9941.json",
+  "path": ".data_quality_summary.quality_caveats[0]",
+  "value": "Calibration note for \"AgencySeatTaxCalc\" cites data route \"Deterministic arithmetic on the user's own inputs\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension."
+ },
+ {
+  "why": "the TWO-clause shape of the coverage note: the concentration clause the producer joins in front of the uncovered-pains clause, which round 1's pattern could not match",
+  "file": "output/checkpoints/preview_report_3dd08182-92b8-49c3-99da-2d44ce37d94e.json",
+  "path": ".data_quality_summary.quality_caveats[0]",
+  "value": "Idea-set coverage — 5 of 7 ideas address \"Inability to verify grey-market peptide purity and safety\"; validated pains with no idea: Fear of accelerating cancer growth with angiogenic peptides. Concentration may reflect where the real opportunity is, not a defect — shown for your judgment."
+ }
+]

@@ -43,8 +43,10 @@ vi.mock('../../config.js', () => ({
   CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '', chatModel: 'gpt-test', challengeModel: 'gpt-challenge-test' },
 }));
 vi.mock('../../services/assetService.js', () => ({
-  getPreviewReportForJob: mocks.preview,
   getDiscoveryDataForJob: mocks.discovery,
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: mocks.preview,
 }));
 // Keep the REAL ChallengeAssessmentError so the route's instanceof mapping works.
 vi.mock('../../services/selectionChallengeService.js', async (importOriginal) => ({

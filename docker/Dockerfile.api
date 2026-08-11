@@ -3,8 +3,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl wget
+# Install OpenSSL for Prisma plus the minimal Python runtime used by the mandatory, Python-backed
+# commercial-copy migration. This intentionally does not duplicate its policy in TypeScript.
+RUN apk add --no-cache openssl wget python3 py3-pip \
+    && python3 -m venv /opt/commercial-backfill \
+    && /opt/commercial-backfill/bin/pip install --no-cache-dir \
+      'pydantic>=2.11.9,<2.12' 'loguru>=0.7.0' 'psycopg[binary]>=3.2.0,<4.0'
 
 # Copy package files
 COPY backend/package*.json ./
@@ -19,6 +23,11 @@ RUN npx prisma generate
 # Copy source for TypeScript execution with tsx
 COPY backend/src ./src/
 COPY backend/tsconfig.json ./
+
+# Python contract + authoritative migration runner. PYTHONPATH points at the package root.
+COPY src/nicheiq ./python-src/nicheiq/
+COPY scripts/backfill_paying_wallet_assets.py ./maintenance/backfill_paying_wallet_assets.py
+ENV PYTHONPATH=/app/python-src
 
 # Copy maintenance scripts (run via `docker compose exec api npm run <script>`),
 # e.g. assign:free-preview. They import from ./src and run with the same tsx + env.

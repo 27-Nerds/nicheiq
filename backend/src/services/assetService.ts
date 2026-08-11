@@ -1,83 +1,41 @@
-import { readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
 import { AssetType } from '@prisma/client';
-import { getJobAsset } from './jobService.js';
-import { resolveAssetPath, getAllowedAssetRoot } from '../utils/assetPath.js';
+import {
+  discoveryCache,
+  previewReportCache,
+  readAssetJson,
+  reportJsonCache,
+  writeToCache,
+} from './selectionBoundary/privateAssetReader.js';
 
-const CACHE_TTL = 10 * 60 * 1000;
-const CACHE_MAX = 200;
-
-const discoveryCache = new Map<string, { data: unknown; ts: number }>();
-const previewReportCache = new Map<string, { data: unknown; ts: number }>();
-
-const reportJsonCache = new Map<string, { data: unknown; ts: number }>();
-
-function readFromCache(cache: Map<string, { data: unknown; ts: number }>, key: string): unknown | null {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
-  return null;
-}
-
-function writeToCache(cache: Map<string, { data: unknown; ts: number }>, key: string, data: unknown): void {
-  if (cache.size >= CACHE_MAX) {
-    const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
-    if (oldest) cache.delete(oldest[0]);
-  }
-  cache.set(key, { data, ts: Date.now() });
-}
-
-async function readAssetJson(jobId: string, assetType: AssetType, logLabel: string): Promise<unknown | null> {
-  const asset = await getJobAsset(jobId, assetType);
-  if (!asset) return null;
-
-  let resolvedPath: string;
-  try {
-    resolvedPath = resolveAssetPath(asset.filePath);
-  } catch (err) {
-    console.error(`[assetService] ${logLabel} path rejected: ${(err as Error).message} (filePath=${asset.filePath})`);
-    return null;
-  }
-
-  const allowedRoot = getAllowedAssetRoot();
-  if (resolvedPath !== allowedRoot && !resolvedPath.startsWith(allowedRoot + path.sep)) {
-    console.error(`[assetService] ${logLabel} path traversal attempt: ${resolvedPath}`);
-    return null;
-  }
-  if (!existsSync(resolvedPath)) return null;
-
-  const raw = await readFile(resolvedPath, 'utf-8');
-  return JSON.parse(raw);
-}
+export type ReportJsonPublicationResult =
+  | { status: 'ready'; report: unknown }
+  | { status: 'missing' }
+  | { status: 'publication_blocked'; reason: string };
 
 export async function getDiscoveryDataForJob(jobId: string): Promise<unknown | null> {
-  const cached = readFromCache(discoveryCache, jobId);
-  if (cached) return cached;
-
-  const data = await readAssetJson(jobId, AssetType.DISCOVERY_DATA, 'Discovery data');
-  if (data === null) return null;
-  writeToCache(discoveryCache, jobId, data);
-  return data;
-}
-
-export async function getPreviewReportForJob(jobId: string): Promise<unknown | null> {
-  const cached = readFromCache(previewReportCache, jobId);
-  if (cached) return cached;
-
-  const data = await readAssetJson(jobId, AssetType.PREVIEW_REPORT, 'Preview report');
-  if (data === null) return null;
-  writeToCache(previewReportCache, jobId, data);
-  return data;
+  const asset = await readAssetJson(
+    jobId, AssetType.DISCOVERY_DATA, 'Discovery data', discoveryCache, false,
+  );
+  if (asset.status !== 'ready') return null;
+  if (asset.asset.mtimeMs === 0) return asset.asset.data;
+  writeToCache(discoveryCache, jobId, asset.asset);
+  return asset.asset.data;
 }
 
 export async function getReportJsonForJob(jobId: string): Promise<unknown | null> {
-  const cached = readFromCache(reportJsonCache, jobId);
-  if (cached) return cached;
+  const result = await getReportJsonPublicationForJob(jobId);
+  return result.status === 'ready' ? result.report : null;
+}
 
-  const data = await readAssetJson(jobId, AssetType.REPORT_JSON, 'Report JSON');
-  if (data === null) return null;
-  writeToCache(reportJsonCache, jobId, data);
-  return data;
+export async function getReportJsonPublicationForJob(
+  jobId: string,
+): Promise<ReportJsonPublicationResult> {
+  const asset = await readAssetJson(
+    jobId, AssetType.REPORT_JSON, 'Report JSON', reportJsonCache,
+  );
+  if (asset.status !== 'ready') return asset;
+  if (asset.asset.mtimeMs !== 0) writeToCache(reportJsonCache, jobId, asset.asset);
+  return { status: 'ready', report: asset.asset.data };
 }
 
 export function invalidateReportJsonCache(jobId: string): void {

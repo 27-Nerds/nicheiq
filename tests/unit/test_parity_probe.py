@@ -841,3 +841,91 @@ class TestCapabilityPhraseQueries:
             crew._probe_mechanism_parity([_idea("A", 0.6)])
 
         assert len(calls) == 1, "capability phrases must be cached per run"
+
+
+class TestVendorEvidenceStoredVerbatim:
+    """2026-08 revision (post-audit): writers STORE the probe's evidence sentence
+    verbatim, vendor echo included — presentation is decided at display time
+    (idea_validation_block._display_parity), where a subject-echo sentence renders
+    on its own. Stripping at the writers produced verb-first fragments
+    ('shipped by X: ships Y') that read as a broken template stitch."""
+
+    def test_strip_helper_boundary_and_fallback(self):
+        from nicheiq.validators.report_consistency import strip_vendor_echo
+        assert strip_vendor_echo("MoeGo", "MoeGo offers routing") == "offers routing"
+        assert strip_vendor_echo("MoeGo", "MoeGo: offers routing") == "offers routing"
+        assert strip_vendor_echo("moego", "MoeGo — offers routing") == "offers routing"
+        # word boundary: MoeGoPro is a different token — no strip
+        assert strip_vendor_echo("MoeGo", "MoeGoPro ships it") == "MoeGoPro ships it"
+        # empty remainder falls back to the original (live 'PepLab Platform:' case)
+        assert strip_vendor_echo("PepLab Platform", "PepLab Platform:") == "PepLab Platform:"
+        assert strip_vendor_echo("", "evidence") == "evidence"
+        assert strip_vendor_echo("MoeGo", "") == ""
+
+    def test_main_probe_shipped_writer_stores_echo_verbatim(self):
+        crew = _crew()
+        ideas = [_idea("A", 0.7)]
+        fake = SimpleNamespace(findings=[
+            _finding("A", evidence="MoeGo ships Smart Schedule route optimization")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_mechanism_parity(ideas)
+        assert ideas[0].incumbent_parity == (
+            "shipped by MoeGo: MoeGo ships Smart Schedule route optimization")
+
+    def test_main_probe_substitute_writer_stores_echo_verbatim(self):
+        crew = _crew()
+        ideas = [_idea("A", 0.7)]
+        fake = SimpleNamespace(findings=[
+            _finding("A", parity="substitute", covered_by="Zapier",
+                     evidence="Zapier free-tier automations already cover this")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_mechanism_parity(ideas)
+        assert ideas[0].incumbent_parity == (
+            "substitute (Zapier): Zapier free-tier automations already cover this")
+
+    def test_main_probe_empty_evidence_keeps_fallback(self):
+        # empty evidence: the writer's n/a fallback survives
+        crew = _crew()
+        ideas = [_idea("A", 0.7)]
+        fake = SimpleNamespace(findings=[_finding("A", evidence="")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_mechanism_parity(ideas)
+        assert ideas[0].incumbent_parity == "shipped by MoeGo: n/a"
+
+    def test_toolbelt_writer_stores_echo_verbatim(self):
+        crew = _toolbelt_crew(lambda q: "VetSnap ships a controlled drug logging module")
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[
+            _tb_finding("A", evidence="VetSnap tracks controlled drug logs")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_toolbelt_free_bundle([idea])
+        assert idea.incumbent_parity == "partial by VetSnap: VetSnap tracks controlled drug logs"
+
+    def test_adjacent_niche_backfill_stores_echo_verbatim(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_shipped_market_fit_cap", 0.45)
+        monkeypatch.setattr(settings, "parity_partial_market_fit_cap", 0.55)
+        crew = _crew()
+        crew.search_tool = _search_stub("HigherGov results")
+        idea = _idea("A", 0.6)
+        idea.mechanism_tag = "procurement-mining"
+        idea.data_source_tag = "government-open-data"
+        idea.adjacent_market_parity = None
+        idea.technical_approach = "ETL over USAspending"
+        idea.project_type = "aggregator"
+        idea.incumbent_parity = "partial by OldCo: limited overlap"
+        key = "procurement mining|government open data"
+        niche_finding = SimpleNamespace(
+            family_key=key, incumbent="", category="", evidence="",
+            niche_parity="shipped", niche_covered_by="HigherGov",
+            niche_evidence="HigherGov ships a dedicated niche feed",
+            covered_idea_names=["A"])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(markets=[_market(key, ["procurement data"])],
+                                             findings=[niche_finding])):
+            crew._probe_adjacent_markets([idea])
+        assert idea.incumbent_parity == ("shipped by HigherGov: HigherGov ships a "
+                                         "dedicated niche feed")

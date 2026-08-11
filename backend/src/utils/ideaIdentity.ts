@@ -135,6 +135,12 @@ export function ideaName(idea: IdeaRecord): string | null {
  * user-facing prose. Mirrors the frontend's `solutionDisplayTitle()`.
  */
 export function ideaDisplayTitle(idea: IdeaRecord): string | null {
+  // "Check my idea": every UI surface names the user's own seed by solution_name
+  // (report title, compare row, review page) — mirror the frontend rule so the
+  // analyst and the screen use the same name for the same idea.
+  if (idea.source_frame === 'user_seed' && idea.generation_operation_id === 'validate') {
+    return ideaName(idea) ?? (typeof idea.headline === 'string' && idea.headline.trim() ? idea.headline.trim() : null);
+  }
   const headline = idea.headline;
   if (typeof headline === 'string' && headline.trim()) return headline.trim();
   return ideaName(idea);

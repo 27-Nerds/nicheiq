@@ -1,9 +1,9 @@
 <script lang="ts" module>
-  export type EntryMode = "idea" | "audience" | "discovery";
+  export type EntryMode = "idea" | "audience" | "discovery" | "validate_idea";
 </script>
 
 <script lang="ts">
-  import { Lightbulb, Users, TrendingUp } from "lucide-svelte";
+  import { Lightbulb, Users, TrendingUp, ClipboardCheck } from "lucide-svelte";
 
   interface Props {
     selected: EntryMode;
@@ -30,6 +30,12 @@
       title: "Find what's emerging",
       description: "You want to see what's trending",
       icon: TrendingUp,
+    },
+    {
+      id: "validate_idea" as EntryMode,
+      title: "Check my idea",
+      description: "You have a specific product in mind",
+      icon: ClipboardCheck,
     },
   ] as const;
 
@@ -86,7 +92,12 @@
   }
   @media (min-width: 640px) {
     .mode-group {
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 1024px) {
+    .mode-group {
+      grid-template-columns: repeat(4, 1fr);
     }
   }
 

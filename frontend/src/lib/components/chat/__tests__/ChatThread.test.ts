@@ -4,6 +4,17 @@ import ChatThread from "../ChatThread.svelte";
 import { streamChat, getChatHistory, ApiError } from "$lib/api";
 import type { ChatStreamEvent } from "$lib/api";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
+import { page } from "$app/state";
+import {
+  ANALYST_ACTION_NOT_HERE,
+  ANALYST_ACTION_NOT_HERE_LINK,
+  ANALYST_BILLING_HREF,
+  ANALYST_ENTITLEMENT_UNAVAILABLE_NOTICE,
+  ANALYST_LOCKED_LINK,
+  ANALYST_LOCKED_NOTICE,
+  ANALYST_PANEL_TITLE,
+} from "../analystSurface";
+import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
 
 // Chat agent tools v1.1 — ChatThread renders tool-call receipts (small muted mono ledger
 // sub-entries) both LIVE while a turn streams (SSE `tool` events, backend chat.ts) and once
@@ -18,6 +29,16 @@ vi.mock("$lib/api", async (importOriginal) => {
     streamChat: vi.fn(),
   };
 });
+
+/**
+ * Matches one element by its FULL flattened text. `getByText`'s default matcher
+ * reads only an element's direct text children, and the analyst notices now wrap
+ * their destination in a real link, so the sentence spans several nodes.
+ */
+function flatText(expected: string) {
+  return (_content: string, element: Element | null) =>
+    element?.textContent?.replace(/\s+/g, " ").trim() === expected;
+}
 
 async function submitMessage(getByLabelText: (t: string) => HTMLElement, text: string) {
   const textarea = getByLabelText("Message the analyst") as HTMLTextAreaElement;
@@ -541,6 +562,74 @@ function seedMessage(id: string) {
 }
 const SEED_MESSAGE = seedMessage("asst-seed-base");
 
+function synthesisMessage(id: string) {
+  return {
+    id,
+    gateStage: 5,
+    role: "assistant" as const,
+    content: "Here is one variant to consider.",
+    patchJson: {
+      kind: "idea_synthesis" as const,
+      operation: "combine" as const,
+      proposedTitle: "Agency signal desk",
+      proposedBrief: "Combines change alerts with a client-ready briefing.",
+      changeSummary: "Joins two workflows for the same agency buyer.",
+      rationale: "The sources solve adjacent parts of one recurring job.",
+      parents: [
+        { ideaId: "idea-1", ideaRevision: 1, solutionName: "Change monitor", contribution: "Keep the alerting." },
+      ],
+      evidence: {
+        sourceAnchors: [{ ideaId: "idea-1", ideaRevision: 1, candidateSnapshotSha256: "a".repeat(64) }],
+        requiresValidation: ["Validate that one buyer needs both capabilities."],
+      },
+      newAssumptions: ["Agencies own both workflows."],
+    },
+    truncated: false,
+    createdAt: "2026-07-16T00:00:00.000Z",
+  };
+}
+
+/** A durable `seed_settled` receipt, shaped exactly like `buildSeedEnvelope`
+ *  (backend/src/utils/ledgerEvents.ts:168-253) writes it.
+ *
+ *  Two identity carriers, and they are NOT interchangeable:
+ *  - `evaluationId` on the ENVELOPE is the dispatch id. Every settled receipt the
+ *    server writes today passes one (workers.ts:2354/2532, dispatchService.ts:256,
+ *    jobService.ts:675, paidPoolRecoveryService.ts:218/523), so this is the
+ *    production carrier for BOTH plain seeds and synthesis.
+ *  - `idea.evaluation_id` on the RESULT is stamped only by exact synthesis
+ *    (`stampSynthesizedIdeaIdentity`, ideaIdentity.ts:108-121). A plain user seed
+ *    goes through `stampNewIdeaIdentities` -> `withIdentity` (ideaIdentity.ts:39-45),
+ *    which adds ONLY `idea_id`/`idea_revision`.
+ *  The builder never copies `dispatch_id` onto the result summary at all, so no
+ *  fixture may hand-write one. */
+function seedSettledReceipt(
+  sourceMessageId: string,
+  outcome: "accepted" | "demoted",
+  idea?: Record<string, unknown>,
+  evaluationId?: string,
+) {
+  return {
+    id: `${sourceMessageId}-receipt`,
+    gateStage: 5,
+    role: "receipt" as const,
+    content: "",
+    patchJson: {
+      kind: "ledger_event" as const,
+      version: 1,
+      event: "seed_settled" as const,
+      outcome,
+      patch: {},
+      rows: [],
+      sourceMessageId,
+      ...(evaluationId ? { evaluationId } : {}),
+      ...(idea ? { idea } : {}),
+    },
+    truncated: false,
+    createdAt: "2026-07-13T00:00:01.000Z",
+  };
+}
+
 describe("ChatThread — priced idea-seed card", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -597,7 +686,12 @@ describe("ChatThread — priced idea-seed card", () => {
   it("disables Evaluate and explains when the price hasn't loaded", async () => {
     vi.mocked(getChatHistory).mockResolvedValue({ messages: [SEED_MESSAGE], weakPool: false } as never);
 
-    const { findByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: null } });
+    // `onSeedSubmit` is what makes "the price is still loading" the true explanation:
+    // only a host that can evaluate ever waits for a price. Without it the card says
+    // which screen owns the action instead (see the D15 case at the end of this file).
+    const { findByText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", seedCost: null, onSeedSubmit: vi.fn() },
+    });
 
     const evaluateBtn = (await findByText("Evaluate my idea")).closest("button") as HTMLButtonElement;
     expect(evaluateBtn.disabled).toBe(true);
@@ -720,7 +814,8 @@ describe("ChatThread — priced idea-seed card", () => {
     await findByText("Evaluation complete. Added to ranked ideas.");
     expect(queryByText("PatchZero")).not.toBeNull();
     expect(queryByText("Market fit 45%")).not.toBeNull();
-    expect(getByRole("link", { name: /view full candidate details/i })).toHaveAttribute("href", "#solution-selector");
+    expect(getByRole("link", { name: /view full candidate details/i }))
+      .toHaveAttribute("href", rankedIdeasHref("job-1"));
     expect(queryByText("Evaluate my idea")).toBeNull();
   });
 
@@ -1101,5 +1196,418 @@ describe("ChatThread — chips prefill the composer, drafts persist (never auto-
     await waitFor(() =>
       expect(onDraftChange).toHaveBeenLastCalledWith("half a thought, finished"),
     );
+  });
+});
+
+// ── One analyst, one set of rules (audit D15 / D16 / D10) ─────────────────────
+//
+// The analyst has three entry points — the ranked-ideas workbench, the decision-tool
+// routes, and the completed report — reached through EIGHT `ChatThread` mounts
+// (selection `+layout.svelte`, `SelectionWorkbench`, `CompletedAnalyst`,
+// `GateWorkbench`, and four `SegmentedLedger` slots). An earlier note here said
+// "three entry points" as though that were the mount count; it is not, and the
+// (mount x card x handler) matrix below has to hold for every one of the eight.
+// They used to disagree about three things:
+//
+//   D16  Entitlement. Only the report page consulted the grant, so on the other two a
+//        user without it was handed a composer, wrote a message, spent the send, and
+//        met a 402. Entitlement rides on `page.data.featureAccess`, which every (app)
+//        navigation already loads, so the surface can say so before the first keystroke.
+//
+//   D15  Action wiring. The proposal cards are persisted ledger rows and render on
+//        EVERY entry point, but only the workbench passes the handlers that carry them
+//        out. Elsewhere the same button was enabled and swallowed the click, or sat
+//        disabled under "Price hasn't loaded yet" for a price that never arrives.
+//
+//   D10  Destinations. A result link or a named next step must go to the screen that
+//        owns it. Bare fragments (`#solution-selector`, `#examined-ruled-out`) resolve
+//        only inside the hub components; from the /selection/* mount the click closed
+//        the panel and navigated nowhere. And `#examined-ruled-out` is not enough even
+//        ON the hub — it sits inside the appendix's `hidden` body, so the target has no
+//        box and the jump is a no-op. Settled results carry an identity (evaluation /
+//        idea), so the link uses the query params the workbench's deep-link effect and
+//        the detail overlay consume, with the anchor kept only as the identity-less floor.
+//
+// These assert the rendered surface, not a helper: the defect was what the user saw.
+describe("ChatThread — one analyst across every entry point", () => {
+  const withAnalystAccess = (granted: boolean) => {
+    (page as unknown as { data: Record<string, unknown> }).data = {
+      ...page.data,
+      featureAccess: { analyst: granted, decisionTools: true },
+      featureAccessUnavailable: false,
+    };
+  };
+
+  /** The entitlement request failed. Not the same thing as a revoked grant. */
+  const withEntitlementUnavailable = () => {
+    (page as unknown as { data: Record<string, unknown> }).data = {
+      ...page.data,
+      featureAccess: { analyst: false, decisionTools: false },
+      featureAccessUnavailable: true,
+    };
+  };
+
+  /** No (app) layout data at all — a shared/visitor mount. Must fail closed. */
+  const withoutLayoutData = () => {
+    const data = { ...page.data } as Record<string, unknown>;
+    delete data.featureAccess;
+    delete data.featureAccessUnavailable;
+    (page as unknown as { data: Record<string, unknown> }).data = data;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatLedger.reset();
+    vi.mocked(getChatHistory).mockResolvedValue({ messages: [], weakPool: false } as never);
+    withAnalystAccess(true);
+  });
+
+  afterEach(() => {
+    cleanup();
+    withAnalystAccess(true);
+  });
+
+  it("D16: withholds the composer and says why when the analyst grant is absent", async () => {
+    withAnalystAccess(false);
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    expect(await view.findByText(flatText(ANALYST_LOCKED_NOTICE))).toBeInTheDocument();
+    // Nothing to type into — the refusal arrives before the message is composed,
+    // not as a 402 after it was sent.
+    expect(view.queryByLabelText("Message the analyst")).not.toBeInTheDocument();
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it("D16: offers the composer as soon as the grant is present", async () => {
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    const textarea = (await view.findByLabelText("Message the analyst")) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.disabled).toBe(false));
+    expect(view.queryByText(flatText(ANALYST_LOCKED_NOTICE))).not.toBeInTheDocument();
+  });
+
+  it("D15: calls itself the same thing in both docks", async () => {
+    const rail = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+    expect(await rail.findByText(ANALYST_PANEL_TITLE)).toBeInTheDocument();
+    cleanup();
+    chatLedger.reset();
+
+    const main = render(ChatThread, { props: { jobId: "job-1", dock: "main" } });
+    expect(await main.findByText(ANALYST_PANEL_TITLE)).toBeInTheDocument();
+    expect(main.queryByText("Conversation")).not.toBeInTheDocument();
+  });
+
+  it("D15: an idea-focus proposal cannot be applied from a host that has no apply handler", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "asst-focus-unwired",
+        gateStage: 5,
+        role: "assistant",
+        content: "Here is a steer for the next batch.",
+        patchJson: {
+          idea_focus: "novelty",
+          rationale: "The pool is crowded around the same distribution play.",
+        },
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    const apply = (await view.findByText("Apply changes")).closest("button") as HTMLButtonElement;
+    expect(apply.disabled).toBe(true);
+    expect(view.getByText(flatText(ANALYST_ACTION_NOT_HERE))).toBeInTheDocument();
+  });
+
+  it("D15: an unwired seed card names the screen that owns it instead of promising a price", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [seedMessage("asst-seed-unwired")],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    const evaluate = (await view.findByText("Evaluate my idea")).closest("button") as HTMLButtonElement;
+    expect(evaluate.disabled).toBe(true);
+    expect(view.getByText(flatText(ANALYST_ACTION_NOT_HERE))).toBeInTheDocument();
+    expect(view.queryByText("Price hasn't loaded yet. Try again in a moment.")).not.toBeInTheDocument();
+  });
+
+  it("D15: an unwired copilot card explains its disabled action", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "copilot-unwired",
+        gateStage: 5,
+        role: "assistant",
+        content: "I prepared a draft for review.",
+        patchJson: {
+          kind: "selection_copilot_action",
+          action: "prefill",
+          target: "decision_profile",
+          ideas: [],
+          values: { weeklyTime: "HOURS_10_20" },
+          rationale: "Your stated availability should be reviewed in the decision context.",
+          caveats: [],
+        },
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    const review = (await view.findByRole("button", { name: "Review draft" })) as HTMLButtonElement;
+    expect(review.disabled).toBe(true);
+    expect(view.getByText(flatText(ANALYST_ACTION_NOT_HERE))).toBeInTheDocument();
+  });
+
+  // The other half of the matrix. Three cards were asserted for the UNWIRED host;
+  // the wired host was only covered incidentally (copilot) or by omission (seed),
+  // so nothing guarded against the note appearing next to a live button.
+  it("D15: a WIRED host applies an idea-focus proposal and never names another screen", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "asst-focus-wired",
+        gateStage: 5,
+        role: "assistant",
+        content: "Here is a steer for the next batch.",
+        patchJson: {
+          idea_focus: "novelty",
+          rationale: "The pool is crowded around the same distribution play.",
+        },
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+    const onApplyPatch = vi.fn();
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail", onApplyPatch } });
+
+    const apply = (await view.findByText("Apply changes")).closest("button") as HTMLButtonElement;
+    expect(apply.disabled).toBe(false);
+    expect(view.queryByText(flatText(ANALYST_ACTION_NOT_HERE))).not.toBeInTheDocument();
+    await fireEvent.click(apply);
+    expect(onApplyPatch).toHaveBeenCalledWith("novelty");
+  });
+
+  it("D10: the unwired card's named destination is a real link to ranked ideas", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [seedMessage("asst-seed-note-link")],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    // The instruction and the link are the same act: "Open ranked ideas" navigates.
+    const link = await view.findByRole("link", { name: ANALYST_ACTION_NOT_HERE_LINK });
+    expect(link).toHaveAttribute("href", rankedIdeasHref("job-42"));
+    expect(view.getByText(flatText(ANALYST_ACTION_NOT_HERE))).toBeInTheDocument();
+  });
+
+  // `#examined-ruled-out` is mounted by RuledOutList INSIDE the appendix body,
+  // which ships `hidden` (display:none) until the reader expands it. A target with
+  // no box makes fragment navigation a no-op, so the fragment alone drops the
+  // reader at the top of the hub with the list still shut. `?evaluationId=` is the
+  // actual mechanism: SelectionWorkbench's deep-link $effect consumes it and opens
+  // the ruled-out record — the same idiom EvaluationActivity already ships.
+  // THE PRODUCTION PATH. A plain user seed is stamped by `withIdentity`
+  // (ideaIdentity.ts:39-45), which adds `idea_id`/`idea_revision` and NOTHING else —
+  // the result summary carries no `evaluation_id` and the builder never emits a
+  // `dispatch_id` on it. Reading the id off the result therefore found nothing and
+  // every demoted "Evaluate my idea" card fell to the dead bare fragment. The id
+  // lives on the ENVELOPE (`evaluationId`), which chatLedger already reduces to
+  // `SeedActivity.evaluationId`.
+  it("D10: a demoted PLAIN SEED result deep-links the envelope's evaluation id", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        seedMessage("asst-seed-demoted-link"),
+        seedSettledReceipt(
+          "asst-seed-demoted-link",
+          "demoted",
+          // Exactly what `withIdentity` stamps — no evaluation_id, no dispatch_id.
+          { solution_name: "Invoice reconciler", idea_id: "idea_9f3c", idea_revision: 1 },
+          "cmdispatch77",
+        ),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const link = await view.findByRole("link", { name: /view why it was ruled out/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/jobs/job-42?evaluationId=cmdispatch77#examined-ruled-out",
+    );
+  });
+
+  // Exact synthesis is the ONE flow that stamps `evaluation_id` onto the result
+  // (`stampSynthesizedIdeaIdentity`, ideaIdentity.ts:108-121). Its operationKey IS the
+  // dispatch id (workers.ts:2283-2292), so a genuine receipt carries the same value in
+  // both places — this pins that the synthesis link did not regress.
+  it("D10: a demoted EXACT SYNTHESIS result deep-links its stamped evaluation id", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        synthesisMessage("asst-synth-demoted-link"),
+        seedSettledReceipt(
+          "asst-synth-demoted-link",
+          "demoted",
+          {
+            solution_name: "Agency signal desk",
+            idea_id: "idea_7b21",
+            idea_revision: 1,
+            evaluation_id: "cmdispatch9",
+            synthesis_operation: "combine",
+          },
+          "cmdispatch9",
+        ),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const link = await view.findByRole("link", { name: /view why it was ruled out/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/jobs/job-42?evaluationId=cmdispatch9#examined-ruled-out",
+    );
+  });
+
+  // A LEGACY row, written before the envelope carried `evaluationId`: the only identity
+  // left is the synthesis stamp on the result. chatLedger's compat chain
+  // (`...?? idea.evaluation_id ?? idea.dispatch_id`, chatLedger.svelte.ts:256-259) still
+  // resolves it, so history keeps its deep link instead of degrading to the fragment.
+  // The "legacy op 4" value is a URL-ENCODING probe, not a historical row — a real
+  // legacy synthesis operationKey was `dispatch.sourceMessageId`, a cuid with no spaces.
+  // It is here to pin that whatever identity the chain resolves is encoded into the href.
+  it("D10: a legacy receipt with no envelope id still deep-links via the stamped result", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        synthesisMessage("asst-synth-demoted-legacy"),
+        seedSettledReceipt("asst-synth-demoted-legacy", "demoted", {
+          solution_name: "Agency signal desk",
+          idea_id: "idea_7b21",
+          idea_revision: 1,
+          evaluation_id: "legacy op 4",
+        }),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const link = await view.findByRole("link", { name: /view why it was ruled out/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/jobs/job-42?evaluationId=legacy%20op%204#examined-ruled-out",
+    );
+  });
+
+  // A receipt with no operation identity still has to land SOMEWHERE real, so the
+  // bare fragment stays as the floor — never a dead `#` or a link to nothing.
+  it("D10: a demoted result with no evaluation identity falls back to the hub fragment", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        seedMessage("asst-seed-demoted-bare"),
+        seedSettledReceipt("asst-seed-demoted-bare", "demoted"),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const link = await view.findByRole("link", { name: /view why it was ruled out/i });
+    expect(link).toHaveAttribute("href", "/jobs/job-42#examined-ruled-out");
+  });
+
+  // "View full candidate details" pointed at the FIRST ranked row, so the link and
+  // its label disagreed for every result but the top one.
+  it("D10: an accepted seed result links to its own candidate, not the first ranked row", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        seedMessage("asst-seed-accepted-link"),
+        seedSettledReceipt("asst-seed-accepted-link", "accepted", {
+          solution_name: "Invoice reconciler",
+          idea_id: "idea a7",
+          idea_revision: 3,
+        }),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const link = await view.findByRole("link", { name: /view full candidate details/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/jobs/job-42?detailTab=overview&ideaId=idea%20a7&ideaRevision=3",
+    );
+  });
+
+  it("D10: an accepted synthesis result defaults the revision and falls back to ranked ideas", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        synthesisMessage("asst-synth-accepted-link"),
+        seedSettledReceipt("asst-synth-accepted-link", "accepted", {
+          solution_name: "Agency signal desk",
+          idea_id: "idea-b2",
+        }),
+        synthesisMessage("asst-synth-accepted-bare"),
+        seedSettledReceipt("asst-synth-accepted-bare", "accepted", {
+          solution_name: "Agency signal desk II",
+        }),
+      ],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, { props: { jobId: "job-42", dock: "rail" } });
+
+    const links = await view.findAllByRole("link", { name: /view evaluated candidate/i });
+    expect(links[0]).toHaveAttribute(
+      "href",
+      "/jobs/job-42?detailTab=overview&ideaId=idea-b2&ideaRevision=1",
+    );
+    expect(links[1]).toHaveAttribute("href", rankedIdeasHref("job-42"));
+  });
+
+  it("D16: the locked notice links to billing instead of naming an action with no route", async () => {
+    withAnalystAccess(false);
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    expect(await view.findByText(flatText(ANALYST_LOCKED_NOTICE))).toBeInTheDocument();
+    expect(view.getByRole("link", { name: ANALYST_LOCKED_LINK }))
+      .toHaveAttribute("href", ANALYST_BILLING_HREF);
+  });
+
+  it("D16: an unreadable entitlement keeps the composer and never claims the user is unsubscribed", async () => {
+    withEntitlementUnavailable();
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    // A transient fetch failure must not tell a paying subscriber to subscribe.
+    expect(await view.findByText(ANALYST_ENTITLEMENT_UNAVAILABLE_NOTICE)).toBeInTheDocument();
+    expect(view.queryByText(flatText(ANALYST_LOCKED_NOTICE))).not.toBeInTheDocument();
+    const textarea = (await view.findByLabelText("Message the analyst")) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.disabled).toBe(false));
+  });
+
+  it("D16: still fails closed when there is no layout data at all", async () => {
+    withoutLayoutData();
+
+    const view = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+
+    expect(await view.findByText(flatText(ANALYST_LOCKED_NOTICE))).toBeInTheDocument();
+    expect(view.queryByText(ANALYST_ENTITLEMENT_UNAVAILABLE_NOTICE)).not.toBeInTheDocument();
+    expect(view.queryByLabelText("Message the analyst")).not.toBeInTheDocument();
   });
 });

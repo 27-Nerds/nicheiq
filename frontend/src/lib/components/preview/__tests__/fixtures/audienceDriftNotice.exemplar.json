@@ -1,0 +1,8 @@
+{
+  "requested_audience": "independent veterinary clinics managing multi-location inventory and controlled-substance compliance",
+  "dossier_primary_segment": "Independent Single-Location General Practices with Manual Drug Logs",
+  "recommended_source_segments": [
+    "Specialty, Emergency, and Referral Hospitals with High-Volume Controlled-Drug Workflows"
+  ],
+  "message": "You asked to reach “independent veterinary clinics managing multi-location inventory and controlled-substance compliance”. This run's research settled on “Independent Single-Location General Practices with Manual Drug Logs”, and the recommendation is built for “Specialty, Emergency, and Referral Hospitals with High-Volume Controlled-Drug Workflows”. This run's research settled on a different operating scale than you asked for. The recommendation is built for a different type of practice than the research settled on. Confirm that buyer change before you fund or build the recommendation."
+}

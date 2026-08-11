@@ -97,7 +97,7 @@ describe("DecisionRail", () => {
       },
     });
 
-    expect(view.getByText("Select 1–3 ideas to continue.")).toBeInTheDocument();
+    expect(view.getByText("Select 1 to 3 ideas to continue.")).toBeInTheDocument();
     expect(view.getByText("100 credits total")).toBeInTheDocument();
     expect(view.getByText("Select at least one idea to review the research scope.")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Review and start" })).toBeDisabled();

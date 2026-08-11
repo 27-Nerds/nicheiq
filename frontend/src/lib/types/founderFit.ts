@@ -18,6 +18,7 @@ export type FounderFitProfileField =
   | 'weeklyTime'
   | 'budget'
   | 'team'
+  | 'buildModel'
   | 'revenueHorizon'
   | 'distributionAdvantages'
   | 'strengths'

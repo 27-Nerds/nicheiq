@@ -28,6 +28,7 @@ export const FounderFitProfileFieldSchema = z.enum([
   'weeklyTime',
   'budget',
   'team',
+  'buildModel',
   'revenueHorizon',
   'distributionAdvantages',
   'strengths',

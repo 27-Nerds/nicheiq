@@ -45,7 +45,8 @@ _AXIS_IDENTITY_FIELDS = {
 }
 
 
-def _content_tokens(text: str) -> set[str]:
+def content_tokens(text: str) -> set[str]:
+    """Distinctive stemmed tokens of `text` (public: report layer + crew share it)."""
     from .text_stemmer import stem_tokens
     from .validation.dedup import STOPWORDS, normalize_text
 
@@ -54,6 +55,9 @@ def _content_tokens(text: str) -> set[str]:
         for token in normalize_text(text or "").split()
         if len(token) > 2 and token not in STOPWORDS
     })
+
+
+_content_tokens = content_tokens
 
 
 def _flatten(value: Any) -> str:
@@ -165,3 +169,137 @@ def structured_synthesis_fidelity_failures(
                 axis_tokens,
             )
     return failures
+
+
+# ── per-clause drift detection for "Check my idea" seeds (quality pass Q4/Q6) ──
+
+_DRIFT_CLAUSES = ("mechanism", "audience", "problem", "delivery")
+
+_DRIFT_AXIS_BY_CLAUSE = {
+    "mechanism": "mechanism",
+    "audience": "buyer",  # the buyer axis is what pulls in target_personas
+    "problem": "job",
+    "delivery": "channel",
+}
+
+# Contrast cues that repudiate a term occurring later in the SAME sentence. Token
+# overlap alone is negation-blind: a seed can argue AGAINST the pitch using the
+# pitch's own vocabulary ("instead of ... another AI reply writer") and still pass
+# a shared-token check.
+_REPUDIATION_CUES = (
+    "instead of", "rather than", "unlike", "avoid", "is not", "are not",
+    "do not", "does not", "isn't", "aren't", "don't", "doesn't", "without",
+    "never", "no longer", "versus", "not just", "not another",
+)
+
+
+def _sentence_segments(value: Any) -> list[str]:
+    """Sentence-scoped segments of one identity field. List items are their own
+    segments — concatenating fields (or items) lets a cue at the end of one text
+    poison a term at the start of the next."""
+    import re
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = value
+    elif isinstance(value, dict):
+        return [seg for item in value.items()
+                for seg in _sentence_segments(f"{item[0]} {item[1]}")]
+    elif isinstance(value, Iterable):
+        return [seg for item in value for seg in _sentence_segments(item)]
+    else:
+        parts = str(value)
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", parts) if s.strip()]
+
+
+def _stem_occurrences(stem: str, sentence: str) -> tuple[int, int]:
+    """(clean, repudiated) occurrence counts of `stem` in one sentence.
+
+    A sentence-INITIAL cue ("Rather than X, the product does Y") introduces the
+    rejected alternative and then asserts — its scope ends at the first comma, so
+    the asserted half stays clean. Mid-sentence cues scope to the end of the
+    sentence ("... an escalation request rather than a draft").
+    """
+    import re
+
+    from .text_stemmer import stem_word
+
+    lower = sentence.lower()
+    cue_scopes: list[tuple[int, int]] = []
+    for cue in _REPUDIATION_CUES:
+        for pos in _find_all(lower, cue):
+            if pos == 0:
+                comma = lower.find(",", pos)
+                end = comma if comma != -1 else len(lower)
+            else:
+                end = len(lower)
+            cue_scopes.append((pos, end))
+    clean = repudiated = 0
+    for match in re.finditer(r"\w+", lower):
+        if stem_word(match.group()) != stem:
+            continue
+        if any(start < match.start() < end for start, end in cue_scopes):
+            repudiated += 1
+        else:
+            clean += 1
+    return clean, repudiated
+
+
+def _find_all(haystack: str, needle: str) -> list[int]:
+    positions = []
+    start = 0
+    while (pos := haystack.find(needle, start)) != -1:
+        positions.append(pos)
+        start = pos + 1
+    return positions
+
+
+def seed_clause_drift(
+    identity_terms: dict | None,
+    candidate: Any,
+    inferred_fields: list[str] | None = None,
+) -> list[str]:
+    """Clauses of the user's pitch the evaluated seed no longer embodies.
+
+    Per STATED clause (inferred or term-less clauses are skipped), the clause
+    drifted when:
+      (a) at least one clause term appears ONLY in repudiated positions (a
+          contrast cue earlier in the same sentence of an axis-scoped identity
+          field), or
+      (b) no clause term appears in the axis-scoped identity fields at all.
+
+    Deliberately NOT "≥1 shared token" (passes a seed that repositioned against
+    the pitched mechanism while reusing its vocabulary) and NOT "all terms must
+    survive" (a merely-absent term is not repudiation). Warning-only telemetry —
+    consumers disclose, they never reject.
+    """
+    inferred = set(inferred_fields or [])
+    drifted: list[str] = []
+    for clause in _DRIFT_CLAUSES:
+        if clause in inferred:
+            continue
+        terms = (identity_terms or {}).get(clause) or []
+        stems = content_tokens(" ".join(t for t in terms if isinstance(t, str)))
+        if not stems:
+            continue
+        segments = [
+            segment
+            for field in _AXIS_IDENTITY_FIELDS[_DRIFT_AXIS_BY_CLAUSE[clause]]
+            for segment in _sentence_segments(getattr(candidate, field, None))
+        ]
+        any_present = False
+        fully_repudiated = False
+        for stem in stems:
+            clean = repudiated = 0
+            for segment in segments:
+                c, r = _stem_occurrences(stem, segment)
+                clean += c
+                repudiated += r
+            if clean or repudiated:
+                any_present = True
+            if repudiated and not clean:
+                fully_repudiated = True
+        if fully_repudiated or not any_present:
+            drifted.append(clause)
+    return drifted

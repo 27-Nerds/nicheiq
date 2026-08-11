@@ -13,7 +13,6 @@
   import {
     COMPARE_VIEW_MARKET_LABEL,
     COMPARE_VIEW_FOUNDER_LABEL,
-    RANKED_LIST_HEADING,
   } from "$lib/selection/labels";
   import type {
     FounderFitArtifact,
@@ -41,7 +40,8 @@
     isPremiseUnproven,
     PREMISE_UNPROVEN_LABEL,
   } from "$lib/utils/adversarialReview";
-  import { humanizeInternalJargon } from "$lib/utils/format";
+  import { buyerFacingIdeaProse } from "$lib/selection/buyerFacingResearchProse";
+  import { rankedIdeasHref as rankedIdeasUrl } from "$lib/selection/rankedIdeas";
   import {
     SELECTION_LIFECYCLE_CONTEXT,
     type SelectionWorkspaceLifecycle,
@@ -53,6 +53,7 @@
   const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
   const currentStatus = $derived(lifecycle?.status || data.job.status);
   const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
+  const rankedIdeasHref = $derived(rankedIdeasUrl(data.job.id));
   const poolOperationPending = $derived(
     data.job.activeDispatchKind === "SEED_IDEA"
       ? ["QUEUED", "RUNNING"].includes(currentStatus)
@@ -111,6 +112,7 @@
   let fitRunning = $state(false);
   let fitError = $state("");
   let fitNotice = $state("");
+  let openFitDetails = $state<Record<string, boolean>>({});
   // Plain write-only dedupe guard: making this reactive would retrigger the
   // effect when it synchronizes a newly loaded server artifact.
   let synchronizedFitScope = "";
@@ -171,6 +173,21 @@
   function founderFitFor(ideaId: string | undefined, ideaRevision: number | undefined) {
     const reference = ideaReference(ideaId, ideaRevision);
     return reference ? founderFitResultFor(fitArtifact, reference) : null;
+  }
+
+  const hasBlockingConflict = $derived(data.workspace.ideas.some((idea) => (
+    Boolean(founderFitFor(idea.idea_id, idea.idea_revision)?.blockingConflict?.trim())
+  )));
+
+  function setFitDetailOpen(key: string, event: Event): void {
+    const details = event.currentTarget;
+    if (!(details instanceof HTMLDetailsElement)) return;
+    openFitDetails = { ...openFitDetails, [key]: details.open };
+  }
+
+  function fitDetailBodyId(ideaId: string, ideaRevision: number): string {
+    const stableIdeaId = ideaId.replace(/[^a-zA-Z0-9_-]+/g, "-");
+    return `fit-reasoning-body-${stableIdeaId}-${ideaRevision}`;
   }
 
   function profileSummary(): string {
@@ -283,11 +300,17 @@
   function evidenceNote(idea: (typeof data.workspace.ideas)[number]): string {
     const adversarial = adversarialReviewFinding(idea);
     if (adversarial && idea.red_team_verdict?.trim().toLowerCase() !== "survives") {
-      return [adversarial.label, ...adversarial.details].join(" — ");
+      return [adversarial.label, ...adversarial.details].join(". ");
     }
-    // Pipeline prose carries internal gate names and raw field names; strip
-    // those before they reach the comparison table.
-    return humanizeInternalJargon(
+    // Pipeline prose carries internal gate names, raw field names and a research
+    // vocabulary of its own. This used to be a hand-rolled chain that ended in a blind
+    // `\s*[—–]\s*` -> ". " replace — the SAME line `buyerFacingIdeaProse` was extracted to
+    // replace after it produced 990 degraded instances on the idea cards (see that
+    // module's note). Measured on the 730 distinct values this row actually reads, the
+    // chain left 81 residual jargon instances and invented 99 lower-cased sentence starts
+    // ("…mechanism. using AI…"); the shared authority leaves 0 of each, keeps parenthetical
+    // dash PAIRS intact, and knows the cold-start and corpus vocabulary the chain never had.
+    return buyerFacingIdeaProse(
       idea.critic_concern ?? idea.incumbent_parity ?? idea.data_acquisition_notes,
     ) || "No additional evidence note is recorded.";
   }
@@ -375,7 +398,7 @@
 
   {#if viewOnly}
     <p class="selection-page__view-only" role="status">
-      View only — idea selection has ended. You can inspect this comparison and saved fit reasoning, but cannot change the shortlist or run another fit analysis here.
+      View only. Idea selection has ended. You can inspect this comparison and saved fit reasoning, but cannot change the shortlist or run another fit analysis here.
     </p>
   {/if}
 
@@ -398,9 +421,9 @@
             : "Comparing trade-offs needs at least two ideas. Add a second idea to your shortlist, then compare them side by side."}
       >
         <Button
-          href={`/jobs/${data.job.id}`}
+          href={rankedIdeasHref}
           class="btn-ghost"
-          label={viewOnly ? "View run" : `Review ${RANKED_LIST_HEADING.toLowerCase()}`}
+          label="Back to ranked ideas"
         />
       </EmptyState>
     </div>
@@ -478,8 +501,10 @@
         {#each data.workspace.ideas as idea}<div class="comparison-value narrative" role="group" aria-label={`${solutionDisplayTitle(idea)}, fit summary: ${founderFitFor(idea.idea_id, idea.idea_revision)?.summary ?? "Analyze fit against your saved build limits first."}`}>{founderFitFor(idea.idea_id, idea.idea_revision)?.summary ?? "Analyze fit against your saved build limits first."}</div>{/each}
         <div class="comparison-label">Strongest advantage</div>
         {#each data.workspace.ideas as idea}<div class="comparison-value narrative" role="group" aria-label={`${solutionDisplayTitle(idea)}, strongest advantage: ${founderFitFor(idea.idea_id, idea.idea_revision)?.strongestAdvantage ?? "Not available"}`}>{founderFitFor(idea.idea_id, idea.idea_revision)?.strongestAdvantage ?? "Not available"}</div>{/each}
-        <div class="comparison-label">Blocking conflict</div>
-        {#each data.workspace.ideas as idea}<div class="comparison-value narrative" role="group" aria-label={`${solutionDisplayTitle(idea)}, blocking conflict: ${founderFitFor(idea.idea_id, idea.idea_revision)?.blockingConflict ?? "No blocking conflict recorded."}`}>{founderFitFor(idea.idea_id, idea.idea_revision)?.blockingConflict ?? "No blocking conflict recorded."}</div>{/each}
+        {#if hasBlockingConflict}
+          <div class="comparison-label">Blocking conflict</div>
+          {#each data.workspace.ideas as idea}<div class="comparison-value narrative" role="group" aria-label={`${solutionDisplayTitle(idea)}, blocking conflict: ${founderFitFor(idea.idea_id, idea.idea_revision)?.blockingConflict ?? "No blocking conflict recorded."}`}>{founderFitFor(idea.idea_id, idea.idea_revision)?.blockingConflict ?? "No blocking conflict recorded."}</div>{/each}
+        {/if}
         <div class="comparison-label">Decision-changing unknown</div>
         {#each data.workspace.ideas as idea}<div class="comparison-value narrative" role="group" aria-label={`${solutionDisplayTitle(idea)}, decision-changing unknown: ${founderFitFor(idea.idea_id, idea.idea_revision)?.decisionChangingUnknown ?? "This candidate still needs a fit analysis."}`}>{founderFitFor(idea.idea_id, idea.idea_revision)?.decisionChangingUnknown ?? "This candidate still needs a fit analysis."}</div>{/each}
       {/if}
@@ -558,10 +583,19 @@
 
           <div class="fit-reasoning__list">
             {#each data.workspace.ideas as idea, index (`${idea.idea_id}:${idea.idea_revision ?? 1}`)}
-              {@const result = founderFitFor(idea.idea_id, idea.idea_revision)}
+                {@const result = founderFitFor(idea.idea_id, idea.idea_revision)}
               {#if result}
-                <details class="fit-detail">
-                  <summary>
+                {@const detailKey = `${idea.idea_id}:${idea.idea_revision ?? 1}`}
+                {@const detailBodyId = fitDetailBodyId(result.ideaId, result.ideaRevision)}
+                <details
+                  class="fit-detail"
+                  open={Boolean(openFitDetails[detailKey])}
+                  ontoggle={(event) => setFitDetailOpen(detailKey, event)}
+                >
+                  <summary
+                    aria-expanded={Boolean(openFitDetails[detailKey])}
+                    aria-controls={detailBodyId}
+                  >
                     <span class="fit-detail__identity">
                       <small>Candidate {index + 1} · revision {idea.idea_revision ?? 1}</small>
                       <strong>{solutionDisplayTitle(idea)}</strong>
@@ -569,7 +603,7 @@
                     <span class="fit-detail__summary-status">{verdictLabel(result.verdict)}</span>
                     <ChevronDown class="fit-detail__chevron" aria-hidden="true" />
                   </summary>
-                  <div class="fit-detail__body">
+                  <div class="fit-detail__body" id={detailBodyId}>
                     <div class="fit-detail__callout">
                       <div>
                         <h4>What could change this call</h4>

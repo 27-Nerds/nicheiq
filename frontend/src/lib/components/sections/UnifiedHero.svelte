@@ -284,7 +284,7 @@
       "How crowded the market is. Low = blue ocean, High = intense competition.",
     risk: "Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.",
     researchDepth:
-      "Based on pain point quality — severity scores, buying-signal strength, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence. The tier uses distinct source posts, not total mentions, so one heavily-discussed thread cannot inflate it. It describes how much evidence we gathered. It does not measure how attractive the opportunity is — a Premium tier can sit under a weak opportunity, and the reverse.",
+      "Based on pain point quality: severity scores, buying-signal strength, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence. The tier uses distinct source posts, not total mentions, so one heavily-discussed thread cannot inflate it. It describes how much evidence we gathered. It does not measure how attractive the opportunity is. A Premium tier can sit under a weak opportunity, and the reverse.",
     pipelineScanned:
       "Reddit discussion URLs found via search. These are the raw results before relevance filtering.",
     pipelineRelevant:
@@ -292,11 +292,11 @@
     pipelineAnalyzed:
       "Posts that underwent deep AI analysis for pain points, sentiment, and market signals.",
     pipelineProblems:
-      "Unique pain points extracted. The entire report is built on these — more problems = richer analysis.",
+      "Unique pain points extracted. The entire report is built on these. More problems = richer analysis.",
     painSeverity:
       "How much this problem blocks users' workflows or business goals. 80%+ means a critical blocker causing measurable losses. Based on functional impact, not emotional volume.",
     footerSearches:
-      "Monthly Google searches for niche keywords — shows how many people are actively looking for solutions. 10K+ indicates solid demand.",
+      "Monthly Google searches for niche keywords, showing how many people are actively looking for solutions. 10K+ indicates solid demand.",
     footerKeywords:
       "Unique keywords analyzed for SEO. More keywords = more pages you can rank for. Check quality in the SEO section.",
     footerCompetitors:

@@ -27,6 +27,7 @@
     validatedStrengthKeys,
   } from "$lib/utils/solution-utils";
   import { normalizePainSignal } from "$lib/utils/painSignal";
+  import { buyerFacingSolutionPreview } from "$lib/selection/buyerFacingResearchProse";
 
   interface Props {
     solution: SolutionPreview;
@@ -47,7 +48,7 @@
   }
 
   let {
-    solution,
+    solution: rawSolution,
     view = "overview",
     onViewFull,
     overlapGroup = null,
@@ -57,6 +58,18 @@
     evidenceLinks = [],
     onOpenEvidence,
   }: Props = $props();
+
+  // THE PIPELINE VOCABULARY IS SANITISED HERE, NOT AT THE CALLER. This component prints
+  // `angle_rationale`, `data_acquisition_notes`, `critic_concern` and
+  // `refine_binding_constraint`, and it is mounted (through SolutionDetail) from four
+  // places — SelectionWorkbench, /selection/review, and SelectedSolutionsSummary on both
+  // the job page and the research-progress screen. Only the first of those sanitised, so
+  // "cold-start corpus", "paid wedge" and "build_feas" printed verbatim on the other three.
+  // Shadowing the prop makes every reference below — including the `scoreRationale` calls,
+  // which read `data_acquisition_notes` — read the buyer-facing text by construction.
+  // `buyerFacingSolutionPreview` returns the SAME object when nothing changed and is
+  // idempotent, so a caller that already sanitised loses nothing.
+  const solution = $derived(buyerFacingSolutionPreview(rawSolution));
 
   function handleEvidenceClick(event: MouseEvent, href: string) {
     if (!onOpenEvidence) return;
@@ -153,7 +166,7 @@
       );
     if (t.usage_cadence) items.push(chip(t.usage_cadence));
     const frameLabel = sourceFrameLabel(solution.source_frame);
-    if (frameLabel) items.push({ label: frameLabel, description: "How this idea's generation cell was framed." });
+    if (frameLabel) items.push({ label: frameLabel, description: "Where this idea came from." });
     return items;
   });
   // Growth channels — a distribution facet, so it lives in the Full-detail economics card.

@@ -1,17 +1,12 @@
-import { getDiscoveryDataForJob, getPreviewReportForJob } from './assetService.js';
+import { getDiscoveryDataForJob } from './assetService.js';
 import { prisma } from './db.js';
+import { loadCurrentSelectionContext } from './currentSelectionContext.js';
 import { buildSelectionDecisionState } from './selectionDecisionStateService.js';
 import type { SelectionDecisionState } from '../types/selectionDecisionState.js';
-
-interface SelectionDecisionStateAssets {
-  previewReport: unknown;
-  discoveryData: unknown;
-}
 
 export async function loadOwnedSelectionDecisionState(
   jobId: string,
   userId: string,
-  assets: SelectionDecisionStateAssets | undefined,
   decisionTools: boolean,
 ): Promise<SelectionDecisionState | null> {
   const job = await prisma.job.findFirst({
@@ -19,7 +14,6 @@ export async function loadOwnedSelectionDecisionState(
     select: {
       id: true,
       status: true,
-      solutionIdeas: true,
       selectionDraft: true,
       selectionDraftVersion: true,
       selectionDecisionProfile: true,
@@ -99,26 +93,26 @@ export async function loadOwnedSelectionDecisionState(
             },
           },
         },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          { conclusion: { createdAt: 'desc' } },
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
       },
     },
   });
   if (!job) return null;
 
-  let resolvedAssets: SelectionDecisionStateAssets;
-  if (assets) {
-    resolvedAssets = assets;
-  } else {
-    const [previewReport, discoveryData] = await Promise.all([
-      getPreviewReportForJob(job.id).catch(() => null),
-      getDiscoveryDataForJob(job.id).catch(() => null),
-    ]);
-    resolvedAssets = { previewReport, discoveryData };
-  }
+  const [selection, discoveryData] = await Promise.all([
+    loadCurrentSelectionContext(prisma, job.id),
+    getDiscoveryDataForJob(job.id).catch(() => null),
+  ]);
+  if (!selection) return null;
+
   return buildSelectionDecisionState({
     jobId: job.id,
     status: job.status,
-    solutionIdeas: job.solutionIdeas,
+    solutionIdeas: selection.canonical.candidates,
     selectionDraft: job.selectionDraft,
     selectionDraftVersion: job.selectionDraftVersion,
     selectionDecisionProfile: job.selectionDecisionProfile,
@@ -127,8 +121,10 @@ export async function loadOwnedSelectionDecisionState(
     ownerEvidence: job.selectionOwnerEvidence,
     assumptions: job.selectionAssumptions,
     experiments: job.selectionExperiments,
-    previewReport: resolvedAssets.previewReport,
-    discoveryData: resolvedAssets.discoveryData,
+    previewReport: selection.runArtifacts.verification === 'verified'
+      ? selection.runArtifacts.previewReport
+      : null,
+    discoveryData,
     decisionTools,
   });
 }

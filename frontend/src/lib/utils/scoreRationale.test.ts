@@ -49,6 +49,41 @@ describe("scoreRationale", () => {
     ).toBe("Est. build: 6 weeks");
   });
 
+  /**
+   * `scoreRationale` reads whatever prose its CALLER hands it and does not own the pipeline
+   * vocabulary. Round 7 justified that by naming SelectionWorkbench as the sanitising
+   * caller, which was true of ONE of the four mounts; SolutionDetail and
+   * SolutionDetailContent now each call `buyerFacingSolutionPreview` on their own prop, so
+   * the premise holds by construction on every render path instead of by convention. This
+   * function is still a pass-through, not a second sanitizer — which is why the case above
+   * still reads "cold-start" unchanged when a test hands it a raw idea directly.
+   *
+   * The consequence is that the DETECTOR here must recognise BOTH wordings. Widening it to
+   * "up-front data" restores the burden line on 75 of the 1,207 distinct
+   * `data_acquisition_notes` values under `output/` that the raw-only form dropped.
+   *
+   * THREE notes still lose it, and not for the reason round 7 gave. They are not "all
+   * steamcommunity.com": one names "QuickBooks Community Forum", one the Steam Web API URL,
+   * and one says the product "relies on community-submitted harness patterns" — a real
+   * community-ops burden, not an incidental hostname. All three open with "Data route
+   * UNVERIFIED —", so `buyerFacingIdeaProse` replaces the WHOLE paragraph with its fixed
+   * stanza and the word the detector keys on is in the discarded tail. Two of the three lose
+   * nothing real; the third loses a genuine burden line, and no widening of this regex can
+   * recover it — the text is gone before it arrives.
+   */
+  it("still flags the solo-dev ops burden after the workbench has glossed the note", () => {
+    // The exact sanitised form of a real note: "First-party user submissions; cold-start
+    // corpus required — no bulk route confirmed" as `buyerFacingIdeaProse` rewrites it.
+    const glossed = "First-party user submissions; up-front dataset required. No bulk route confirmed";
+    expect(
+      scoreRationale(base({ estimated_development_time: "6 weeks", data_acquisition_notes: glossed }), "solo_dev"),
+    ).toBe(`Est. build: 6 weeks. ${glossed}`);
+    // The neutral note stays neutral — the widened detector did not become a catch-all.
+    expect(
+      scoreRationale(base({ estimated_development_time: "6 weeks", data_acquisition_notes: "official public API, bulk download" }), "solo_dev"),
+    ).toBe("Est. build: 6 weeks");
+  });
+
   it("market_fit appends the unverified-data-route cap clause when the cap bound", () => {
     expect(
       scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted", market_fit_score: 0.4 }), "market_fit"),

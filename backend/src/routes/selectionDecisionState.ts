@@ -25,7 +25,6 @@ selectionDecisionStateRouter.get(
       const state = await loadOwnedSelectionDecisionState(
         params.data.jobId,
         req.user!.id,
-        undefined,
         await hasDecisionToolsAccess(req.user!.id),
       );
       if (!state) {

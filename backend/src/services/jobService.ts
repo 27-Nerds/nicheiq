@@ -16,6 +16,11 @@ import {
   buildSeedEnvelope,
   buildSeedReceiptContent,
 } from '../utils/ledgerEvents.js';
+import {
+  COMMERCIAL_COPY_CONTRACT_VERSION,
+  hashRegisteredAsset,
+  needsCommercialCopyFence,
+} from './assetPublicationFence.js';
 
 /**
  * Create a new research job
@@ -244,9 +249,10 @@ export async function addJobAsset(
   jobId: string,
   assetType: AssetType,
   filePath: string,
-  fileSizeBytes?: number
+  fileSizeBytes?: number,
+  commercialCopyContractVersion?: string,
 ) {
-  return prisma.jobAsset.upsert({
+  const asset = await prisma.jobAsset.upsert({
     where: {
       jobId_assetType: {
         jobId,
@@ -264,6 +270,41 @@ export async function addJobAsset(
       fileSizeBytes,
     },
   });
+
+  if (commercialCopyContractVersion) {
+    const stamped = await stampJobAssetCommercialCopy(
+      jobId, assetType, filePath, commercialCopyContractVersion,
+    );
+    if (stamped) return stamped;
+  }
+  return asset;
+}
+
+export async function stampJobAssetCommercialCopy(
+  jobId: string,
+  assetType: AssetType,
+  filePath: string,
+  commercialCopyContractVersion?: string,
+) {
+  if (
+    !needsCommercialCopyFence(assetType)
+    || commercialCopyContractVersion !== COMMERCIAL_COPY_CONTRACT_VERSION
+  ) return null;
+
+  try {
+    const fingerprint = await hashRegisteredAsset(filePath);
+    return await prisma.jobAsset.updateMany({
+      where: { jobId, assetType, filePath },
+      data: {
+        commercialCopyStatus: 'GENERATED_CONTRACT',
+        commercialCopySha256: fingerprint.sha256,
+        commercialCopyCheckedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error(`[JobService] Could not stamp commercial-copy fence for ${jobId}/${assetType}:`, error);
+    return null;
+  }
 }
 
 /**

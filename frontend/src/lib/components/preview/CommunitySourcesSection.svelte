@@ -1,6 +1,31 @@
+<script lang="ts" module>
+  function normalizeCommunityName(name: string): string {
+    return name.trim().replace(/^r\//i, "").toLowerCase();
+  }
+
+  export function orderCommunitiesByPostCount(
+    names: string[],
+    postCounts?: Record<string, number>,
+  ): string[] {
+    if (!postCounts || Object.keys(postCounts).length === 0) return names;
+
+    const namesByKey = new Map(names.map((name) => [normalizeCommunityName(name), name]));
+    const weighted = Object.entries(postCounts)
+      .map(([name, count], index) => ({ name: namesByKey.get(normalizeCommunityName(name)), count, index }))
+      .filter((entry): entry is { name: string; count: number; index: number } => Boolean(entry.name))
+      .sort((a, b) => b.count - a.count || a.index - b.index)
+      .map(({ name }) => name);
+    if (weighted.length === 0) return names;
+
+    const weightedKeys = new Set(weighted.map(normalizeCommunityName));
+    return [...weighted, ...names.filter((name) => !weightedKeys.has(normalizeCommunityName(name)))];
+  }
+</script>
+
 <script lang="ts">
   interface Props {
     subredditNames?: string[];
+    subredditPostCounts?: Record<string, number>;
     communityHubs?: string[];
     postsAnalyzed?: number;
     sourcesSearched?: Record<string, { enabled: boolean; posts_found: number }>;
@@ -8,10 +33,12 @@
 
   let {
     subredditNames = [],
+    subredditPostCounts,
     communityHubs = [],
     postsAnalyzed = 0,
     sourcesSearched,
   }: Props = $props();
+  let showAllCommunities = $state(false);
 
   const PLATFORM_LABELS: Record<string, string> = {
     reddit: "Reddit",
@@ -41,11 +68,13 @@
 
   const displaySources = $derived(
     subredditNames.length > 0
-      ? subredditNames
+      ? orderCommunitiesByPostCount(subredditNames, subredditPostCounts)
       : communityHubs
   );
-  const visibleSources = $derived(displaySources.slice(0, 8));
-  const hiddenSourceCount = $derived(Math.max(0, displaySources.length - visibleSources.length));
+  const visibleSources = $derived(
+    showAllCommunities ? displaySources : displaySources.slice(0, 8),
+  );
+  const hiddenSourceCount = $derived(Math.max(0, displaySources.length - 8));
 </script>
 
 <div class="community">
@@ -58,12 +87,20 @@
   {/if}
 
   {#if visibleSources.length > 0}
-    <div class="source-grid" aria-label="Captured communities">
+    <div class="source-grid" id="captured-community-list" aria-label="Captured communities">
       {#each visibleSources as source}
         <span class="source-pill" title={source}>{source}</span>
       {/each}
       {#if hiddenSourceCount > 0}
-        <span class="source-pill">+{hiddenSourceCount} more</span>
+        <button
+          type="button"
+          class="source-more"
+          onclick={() => (showAllCommunities = !showAllCommunities)}
+          aria-expanded={showAllCommunities}
+          aria-controls="captured-community-list"
+        >
+          {showAllCommunities ? "Show fewer communities" : `Show ${hiddenSourceCount} more communities`}
+        </button>
       {/if}
     </div>
   {:else if postsAnalyzed === 0}
@@ -115,6 +152,39 @@
     font-weight: 500;
     color: var(--color-text-secondary);
     overflow-wrap: anywhere;
+  }
+
+  .source-more {
+    max-width: 100%;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-accent-dark);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      color 180ms ease,
+      border-color 180ms ease,
+      background-color 180ms ease,
+      transform 180ms ease;
+  }
+
+  .source-more:hover {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+  }
+
+  .source-more:active {
+    transform: scale(0.98);
+  }
+
+  .source-more:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
   }
 
   .source-gap {

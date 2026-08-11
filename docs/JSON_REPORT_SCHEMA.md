@@ -2161,3 +2161,38 @@ report (computed once, read from state). Null when there are no pains and no ide
   - Added comprehensive nested structure documentation
   - Included actual JSON examples from report files
   - Added complete type reference with enum values and score ranges
+
+---
+
+## idea_validation (preview reports of "Check my idea" runs only)
+
+Present only in the PREVIEW report of `entry_mode='validate_idea'` runs (never in final
+Deep-Research reports). Built by `src/nicheiq/report/idea_validation_block.py` as a pure
+reshape of checkpoint state; rebuilt on every preview materialization. Enum-driven —
+consumers must branch on the enums, never on prose.
+
+Key fields (full field list + rationale: `docs/VALIDATION_METHODOLOGY.md`; TS mirror:
+`frontend/src/lib/types/report.ts` `IdeaValidation`):
+
+- `provisional: true` — always; the paid report's `go_no_go_verdict` stays authoritative.
+- `outcome`: `worth_testing | occupied | premise_unproven | ruled_out | not_evaluated`.
+- `parts[]`: fixed keys `problem_real` (`supported|thin|not_found`), `space_occupied`
+  (`shipped|partial|adjacent|none_found|not_checked`), `demand` (constant
+  `not_measured` — Phase 2 measures it), each with `answer` + `detail` strings.
+- `evidence_confidence` (`Low|Moderate|High`) + `evidence_confidence_reason` — rates the
+  ANALYSIS, computed deterministically from `breadth` (posts / distinct_authors /
+  distinct_communities / months_spanned) with an upward-only parity adjustment.
+- `user_idea_text` / `user_idea_brief` / `assumed_fields[]` / `derived_market` /
+  `derived_buyer` / `idea_name` — the parsed-idea echo.
+- `competitors[]` (`name`, `what_they_ship`, `price_note` + `price_caveat`
+  "snippet-derived, ±1 tier", `gap`), `incumbent_parity`, `existing_equivalent`,
+  `duplicate_of` (`{idea_id, name}` — a DEMAND signal).
+- `pivot` — the wedge-pivot attempt record (`attempted`, `outcome:
+  accepted|rejected|not_attempted`, `trigger_finding`, `keeps/changes/because`,
+  `reason_not_shown`, `ries_label`, idea refs). Written regardless of outcome.
+- `alternatives` (`count`, `same_buyer_count`, `top[]`), `kill_risks[]`,
+  `red_team_verdict`, `anchored_pains[]`, `unanchored_hypothesis`.
+- `seed_candidate_status` / `seed_idea_id` / `seed_idea_revision` / `seed_purchasable`
+  (computed backend-side; gates the continue CTA) / `demotion_reason`.
+- `desk_limits[]`, `experiment_ladder[]` (rung/action/kill_number/cost_note),
+  `next_experiment_index` — fixed honesty copy.

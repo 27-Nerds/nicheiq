@@ -69,7 +69,7 @@ export function evaluationProgress(
 }
 
 export function phaseHeadline(phase: EvaluationPhase, title: string): string {
-  if (phase === "queued") return `Waiting for a free worker — ${title}`;
+  if (phase === "queued") return `Waiting for a free worker to score ${title}`;
   if (phase === "running") return `Scoring ${title}`;
   return `Still scoring ${title}`;
 }
@@ -82,8 +82,8 @@ export function phaseNote(phase: EvaluationPhase): string {
     return "Your candidates and other directions stay unchanged until this direction qualifies.";
   }
   // Never promises a duration; states the guarantee the durable-receipt work made true.
-  return "This is taking longer than usual. It will finish or refund on its own — "
-    + "you can leave this page and the result will be here when you return.";
+  return "This is taking longer than usual. It will finish or refund on its own. "
+    + "You can leave this page and the result will be here when you return.";
 }
 
 /**

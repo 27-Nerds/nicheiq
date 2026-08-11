@@ -10,6 +10,9 @@ import {
 // vocabulary it is handed. Present stored verdicts and parity findings the way the product
 // does before either is read. See utils/selectionVocabulary.ts.
 import { adversarialReviewLabel, presentableRecord } from '../utils/selectionVocabulary.js';
+// `quality_caveats` is producer prose, not copy. Read it the way the product reads it —
+// see utils/buyerFacingCaveat.ts, a held-by-test port of the frontend authority.
+import { buyerFacingCoverageNote } from '../utils/buyerFacingCaveat.js';
 
 type FollowupKind = 'seed' | 'regeneration' | 'report';
 
@@ -233,7 +236,15 @@ export async function createReportAnalystFollowup(args: {
   const redTeamVerdict = adversarialReviewLabel(solution.red_team_verdict);
   const redTeamCaveat = textList(solution.red_team_caveats)[0]
     ?? text(verdictBlock.red_team_context);
-  const qualityCaveat = textList(quality.quality_caveats)[0];
+  // SANITISE BEFORE `conciseSentence`, NOT AFTER. That clip lands at 280 characters, and 43 of
+  // the 163 distinct `quality_caveats` values under `output/` are longer than that — clipping
+  // first cuts the calibration and coverage sentences in half, so the stanza rules keyed to the
+  // whole sentence stop matching and the producer prose ships anyway. Falls back to the raw
+  // entry: a rule that emptied a caveat would lose the buyer's content.
+  const storedQualityCaveat = textList(quality.quality_caveats)[0];
+  const qualityCaveat = storedQualityCaveat
+    ? buyerFacingCoverageNote(storedQualityCaveat) || storedQualityCaveat
+    : storedQualityCaveat;
 
   const decision = `The final report is ready${selected ? ` for **${selected}**` : ''}. The stored decision is **${verdict}**${riskLevel ? ` with **${riskLevel} risk**` : ''}.`;
   const concern = primaryConcern

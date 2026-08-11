@@ -201,7 +201,7 @@
                     <ChevronRight size={16} class="text-text-muted" />
                   {/if}
                 </td>
-                <td class="cell-primary max-w-48 truncate">{job.niche}</td>
+                <td class="cell-primary max-w-48 truncate">{job.nicheDisplay ?? job.niche}</td>
                 <td>{job.user?.email || "N/A"}</td>
                 <td>
                   <Badge variant={statusVariant(job.status)} size="sm"

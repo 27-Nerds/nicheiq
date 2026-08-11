@@ -3,6 +3,7 @@ import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 import SegmentedLedger from "../SegmentedLedger.svelte";
 import { getChatHistory } from "$lib/api";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
+import { ANALYST_PANEL_TITLE } from "../analystSurface";
 
 vi.mock("$lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("$lib/api")>();
@@ -111,7 +112,9 @@ describe("SegmentedLedger", () => {
       },
     });
 
-    await findByText("Conversation");
+    // The panel is named the same thing here as it is in the selection rail and on
+    // the completed report — it used to call itself "Conversation" in this dock only.
+    await findByText(ANALYST_PANEL_TITLE);
     await findByText("Audience research");
     await findByText(/Stage 3 of 15 · 38%/);
     // The thread remains visible, but the composer is replaced rather than left

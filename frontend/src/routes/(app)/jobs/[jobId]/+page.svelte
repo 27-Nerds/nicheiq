@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { page } from "$app/state";
-  import { goto, invalidateAll } from "$app/navigation";
+  import { goto, invalidateAll, replaceState } from "$app/navigation";
+  import ValidationVerdict from "$lib/components/sections/ValidationVerdict.svelte";
+  import { saveSelectionDraft } from "$lib/api";
   import {
     subscribeToProgress,
     shouldKeepSSEOpen,
@@ -26,10 +28,13 @@
     Share2,
     BarChart3,
     Copy,
+    ChevronDown,
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import { chatLedger } from "$lib/stores/chatLedger.svelte";
+  import { chatPanel } from "$lib/stores/chatPanel.svelte";
   import { getAdjustedStageCounts } from "$lib/utils/stages";
+  import { displayCompositeScore } from "$lib/utils/solution-utils";
   import type { Job, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
@@ -50,7 +55,15 @@
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
   import SelectionDecisionRecord from "$lib/components/selection/SelectionDecisionRecord.svelte";
   import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
-  import { SHORTLIST_TITLE } from "$lib/selection/labels";
+  import {
+    CANDIDATES_UNAVAILABLE_DETAIL,
+    CANDIDATES_UNAVAILABLE_TITLE,
+    EVIDENCE_WITHHELD_DETAIL,
+    EVIDENCE_WITHHELD_TITLE,
+    SHORTLIST_TITLE,
+  } from "$lib/selection/labels";
+  import { buyerFacingNicheDifficultyVerdict } from "$lib/selection/buyerFacingResearchProse";
+  import { rankedIdeasHref } from "$lib/selection/rankedIdeas";
   import GateWorkbench from "$lib/components/gate/GateWorkbench.svelte";
   import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
@@ -100,7 +113,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   const serverSolutionVotes = $derived((data.solutionVotes ?? {}) as Record<string, number>);
   const serverSolutionVotesById = $derived((data.solutionVotesById ?? {}) as Record<string, number>);
   const serverVoteRationales = $derived((data.voteRationales ?? []) as DiscoveryVoteRationale[]);
-  const serverPreviewReport = $derived((data.previewReport ?? null) as PreviewReport | null);
+  const serverPreviewReport = $derived(
+    data.selectionArtifactVerification === 'untrusted'
+      ? null
+      : (data.previewReport ?? null) as PreviewReport | null,
+  );
+  const serverArtifactVerification = $derived(
+    (data.selectionArtifactVerification ?? null) as 'verified' | 'untrusted' | null,
+  );
+  const serverArtifactReason = $derived((data.selectionArtifactReason ?? null) as string | null);
 
   // ── Client overrides (SSE updates, async fetches) ──
   let clientJob = $state<Job | null>(null);
@@ -112,7 +133,11 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   let clientReportSummary = $state<ReportSummary | null>(null);
   let clientDiscoveryData = $state<DiscoveryData | null>(null);
   let clientSolutionVotes = $state<Record<string, number> | null>(null);
-  let clientPreviewReport = $state<PreviewReport | null>(null);
+  // undefined means "use fresh SSR data"; null is an intentional trust-boundary
+  // result and must not fall back to an older server preview.
+  let clientPreviewReport = $state<PreviewReport | null | undefined>(undefined);
+  let clientArtifactVerification = $state<'verified' | 'untrusted' | null | undefined>(undefined);
+  let clientArtifactReason = $state<string | null | undefined>(undefined);
   let clientSolutionVotesById = $state<Record<string, number> | null>(null);
   let clientVoteRationales = $state<DiscoveryVoteRationale[] | null>(null);
   let clientInvalidSolutionCount = $state<number | null>(null);
@@ -166,7 +191,17 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   const reportSummary = $derived(clientReportSummary ?? serverReportSummary);
   const discoveryData = $derived(clientDiscoveryData ?? serverDiscoveryData);
   const solutionVotes = $derived(clientSolutionVotes ?? serverSolutionVotes);
-  const previewReport = $derived(clientPreviewReport ?? serverPreviewReport);
+  const previewReport = $derived(
+    clientPreviewReport !== undefined ? clientPreviewReport : serverPreviewReport,
+  );
+  const selectionArtifactVerification = $derived(
+    clientArtifactVerification !== undefined
+      ? clientArtifactVerification
+      : serverArtifactVerification,
+  );
+  const selectionArtifactReason = $derived(
+    clientArtifactReason !== undefined ? clientArtifactReason : serverArtifactReason,
+  );
   const completedEvidenceLimited = $derived.by(() => {
     const quality = previewReport?.data_quality_summary?.overall_data_quality?.trim().toLowerCase();
     return quality === "low" || (previewReport?.data_quality_summary?.quality_caveats?.length ?? 0) > 0;
@@ -333,10 +368,10 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     (gateApplyPending && ['QUEUED', 'RUNNING'].includes(job?.status ?? ''))
   );
 
-  // Use local solutions (updated via SSE) or fall back to job data
-  const displaySolutions = $derived(
-    localSolutions ?? job?.solutionIdeas ?? [],
-  );
+  // Candidate rendering has one authority: the serialized CurrentSelectionContext.
+  // Generic job/SSE payloads may carry solutionIdeas for lifecycle compatibility,
+  // but they are never a selection-screen fallback.
+  const displaySolutions = $derived(localSolutions ?? []);
 
   function stopFallbackPolling(): void {
     if (fallbackPoll) clearInterval(fallbackPoll);
@@ -347,7 +382,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     if (!jobId) return;
     try {
       const refreshed = await getJob(jobId);
-      clientJob = { ...(clientJob ?? serverJob), ...refreshed } as Job;
+      const current = (clientJob ?? serverJob) as Job;
+      clientJob = {
+        ...current,
+        ...refreshed,
+        solutionIdeas: current.solutionIdeas ?? [],
+      } as Job;
+      if (['AWAITING_SELECTION', 'REGENERATING'].includes(refreshed.status)) {
+        void fetchSolutions();
+      }
       if (!shouldKeepSSEOpen(refreshed)) {
         stopFallbackPolling();
         void invalidateAll();
@@ -388,15 +431,14 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
           // Progress events are intentionally partial. Replacing the job here drops
           // the saved shortlist, dossier metadata, and other selection-only fields
           // for the duration of a seed evaluation.
+          const current = (clientJob ?? serverJob) as Job;
+          const poolChanged = Object.prototype.hasOwnProperty.call(sseData, 'solutionIdeas');
           clientJob = {
-            ...(clientJob ?? serverJob),
+            ...current,
             ...sseData,
+            solutionIdeas: poolChanged ? [] : current.solutionIdeas ?? [],
           } as Job;
-          if (sseData.solutionIdeas) {
-            const normalized = normalizeSolutionPreviews(sseData.solutionIdeas);
-            clientSolutions = normalized.solutions;
-            clientInvalidSolutionCount = normalized.invalidCount;
-          }
+          if (poolChanged) void fetchSolutions();
         }
       },
       (err) => console.warn("SSE error:", err.message),
@@ -455,14 +497,29 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     if (!jobId || solutionsLoading) return;
     solutionsLoading = true;
     solutionsFetchFailed = false;
+    // Withhold both sides of the snapshot while the verified context refreshes.
+    clientSolutions = [];
+    clientPreviewReport = null;
+    clientArtifactVerification = null;
+    clientArtifactReason = null;
     try {
       const d = await getSolutions(jobId);
       const normalized = normalizeSolutionPreviews(d.solutionIdeas);
       clientSolutions = normalized.solutions;
       clientInvalidSolutionCount = normalized.invalidCount;
+      clientPreviewReport = d.artifactVerification === 'verified' ? d.previewReport : null;
+      clientArtifactVerification = d.artifactVerification;
+      clientArtifactReason = d.artifactReason;
       if (job) {
         clientJob = {
           ...job,
+          solutionIdeas: normalized.solutions,
+          selectedSolution: d.selectedSolution,
+          selectedSolutions: d.selectedSolutions,
+          selectedSolutionIds: d.selectedSolutionIds,
+          selectedSolutionRefs: d.selectedSolutionRefs,
+          selectionRationale: d.selectionRationale,
+          selectionDecisionProfile: d.selectionDecisionProfile,
           selectionDraft: d.selectionDraft,
           canRegenerate: d.canRegenerate,
           ideaBatchCompletedCount: d.ideaBatchCompletedCount,
@@ -471,13 +528,6 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
       }
     } catch {
       solutionsFetchFailed = true;
-      // Fall back to whatever the job object already carries (e.g. from SSE)
-      // rather than leaving clientSolutions stuck on a stale null.
-      const normalized = normalizeSolutionPreviews(job?.solutionIdeas);
-      clientSolutions = normalized.solutions.length > 0
-        ? normalized.solutions
-        : clientSolutions;
-      clientInvalidSolutionCount = normalized.invalidCount;
     } finally {
       solutionsLoading = false;
       solutionsFetchAttempted = true;
@@ -568,7 +618,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
       }
       const data = await res.json();
       if (data.status === "AWAITING_SELECTION") {
-        await goto(`/jobs/${jobId}#opportunities`, {
+        await goto(rankedIdeasHref(job.id), {
           replaceState: true,
           invalidateAll: true,
         });
@@ -690,7 +740,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     clientReportSummary = null;
     clientDiscoveryData = null;
     clientSolutionVotes = null;
-    clientPreviewReport = null;
+    clientPreviewReport = undefined;
+    clientArtifactVerification = undefined;
+    clientArtifactReason = undefined;
 
     clientSolutionVotesById = null;
     clientVoteRationales = null;
@@ -755,12 +807,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     }
 
     if (statusChanged && ['AWAITING_SELECTION', 'REGENERATING'].includes(status)) {
-      if (!localSolutions || localSolutions.length === 0) {
-        void fetchSolutions();
-      }
+      void fetchSolutions();
       pollVotes(jobId);
       loadDiscoveryData(jobId);
-      loadPreviewReport(jobId);
     }
 
     if (statusChanged && ['COMPLETED', 'FAILED', 'CANCELLED', 'RUNNING_PHASE2'].includes(status)) {
@@ -854,6 +903,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   }
 
+  // prefill /new with the niche + entry mode so "start new research" round-trips both.
+  function prefillHref(job: Job): string {
+    const validModes = ['idea', 'audience', 'discovery', 'validate_idea'];
+    const mode = job.entryMode && validModes.includes(job.entryMode)
+      ? `&mode=${encodeURIComponent(job.entryMode)}`
+      : '';
+    return `/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}${mode}`;
+  }
+
   const showSelectedSummary = $derived(
     (job?.selectedSolutions?.length ?? 0) > 0 &&
     (job?.solutionIdeas?.length ?? 0) > 0
@@ -943,22 +1001,109 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     : 'deep_research'
   );
 
+  // ── "Check my idea" (validate_idea): the idea's report page ──
+  // The workbench NEVER mounts on first paint for these runs — its DecisionRail portals
+  // a fixed commit dock over the verdict; alternatives live behind the disclosure below.
+  const isValidation = $derived(job?.entryMode === 'validate_idea');
+  const ideaValidation = $derived(previewReport?.idea_validation ?? null);
+  const validationSeedRow = $derived.by(() => {
+    if (!isValidation) return null;
+    return displaySolutions.find(
+      (s) => s.source_frame === 'user_seed' && s.generation_operation_id === 'validate',
+    ) ?? null;
+  });
+  const validationPivotRow = $derived.by(() => {
+    if (!isValidation) return null;
+    return displaySolutions.find(
+      (s) => s.source_frame === 'user_seed' && s.generation_operation_id === 'validate_pivot',
+    ) ?? null;
+  });
+  // Where the user's idea placed among everything this evidence supports — the one
+  // number that changes the 100-credit decision, previously hidden behind the fold.
+  const validationSeedRank = $derived.by(() => {
+    const seed = validationSeedRow;
+    if (!seed) return null;
+    const seedScore = displayCompositeScore(seed);
+    if (seedScore == null) return null;
+    const others = displaySolutions
+      .filter((s) => s !== seed)
+      .map((s) => displayCompositeScore(s))
+      .filter((s): s is number => s != null);
+    return { rank: others.filter((s) => s > seedScore).length + 1, total: others.length + 1 };
+  });
+  // Same key format as the workbench's internal ideaKey().
+  const validationPinnedKeys = $derived.by(() => {
+    const keys: string[] = [];
+    for (const row of [validationSeedRow, validationPivotRow]) {
+      if (!row) continue;
+      keys.push(row.idea_id ? `${row.idea_id}:${row.idea_revision ?? 1}` : `legacy:${row.solution_name}`);
+    }
+    return keys;
+  });
+  let showAlternatives = $state(false);
+  let alternativesAnnounce = $state('');
+  let alternativesHeadingEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (isValidation && page.url.searchParams.get('compare') === '1') showAlternatives = true;
+  });
+  async function expandAlternatives() {
+    showAlternatives = true;
+    alternativesAnnounce = 'Alternatives expanded below.';
+    try {
+      const url = new URL(page.url);
+      url.searchParams.set('compare', '1');
+      replaceState(url, page.state);
+    } catch { /* pre-router-init replaceState throws — the URL sync is non-essential */ }
+    await tick();
+    // Instant focus move — no smooth scroll for keyboard users (UI-rules pass).
+    alternativesHeadingEl?.focus();
+    alternativesHeadingEl?.scrollIntoView({ block: 'start' });
+  }
+  const validateRerunHref = $derived(job ? prefillHref(job) : '/new');
+  const validateReviewHref = $derived(`/jobs/${jobId}/selection/review`);
+  async function handleValidateContinue(e: MouseEvent) {
+    e.preventDefault();
+    const seed = validationSeedRow;
+    try {
+      if (seed?.idea_id && jobId) {
+        await saveSelectionDraft(jobId, job?.selectionDraft?.version ?? 0, [
+          { ideaId: seed.idea_id, ideaRevision: seed.idea_revision ?? 1 },
+        ]);
+      }
+    } catch {
+      // The selection workspace's validate-mode fallback scopes the seed anyway.
+    }
+    void goto(validateReviewHref);
+  }
+
   // Preview report derived values
   const nicheName = $derived(
     previewReport?.niche_context?.niche_input ??
     previewReport?.niche ??
-    job?.niche ??
+    job?.nicheDisplay ?? job?.niche ??
     ''
   );
   const pageTitle = $derived(
-    isSelectionPhase
-      ? sentenceHeading(nicheName)
-      : isGatePhase
-        ? (job?.gateStage === 1 ? 'Niche checkpoint' : 'Audience checkpoint')
-        : titleCase(nicheName) || 'Research Progress',
+    isSelectionPhase && isValidation
+      // A report about your idea is titled with the idea's NAME, never the pitch.
+      ? (ideaValidation?.idea_name
+          ?? validationSeedRow?.solution_name
+          ?? sentenceHeading(job?.nicheDisplay ?? nicheName))
+      : isSelectionPhase
+        ? sentenceHeading(nicheName)
+        : isGatePhase
+          ? (job?.gateStage === 1 ? 'Niche checkpoint' : 'Audience checkpoint')
+          : isValidation
+            // A pitch is a sentence — Title-Casing Every Word Of It reads wrong.
+            ? sentenceHeading(job?.nicheDisplay ?? nicheName) || 'Research Progress'
+            : titleCase(nicheName) || 'Research Progress',
   );
 
-  const selectionSubtitle = 'Discovery is complete. Review the strongest opportunities before moving to Deep Research.';
+  const selectionSubtitle = $derived(
+    isValidation
+      ? "The working name we gave your idea, written up as a full product spec and checked against this market's evidence."
+      : 'Discovery is complete. Review the strongest opportunities before moving to Deep Research.',
+  );
 
   const gateSubtitle = $derived(
     job?.gateStage === 1
@@ -974,6 +1119,26 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   // Portfolio-funnel: findings examined but not carried forward (demoted winners, rejected
   // backfill candidates) + groups of surviving ideas that are variants of one product.
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
+  const selectionWorkbenchVisible = $derived(
+    isSelectionPhase && (
+      (isValidation && Boolean(ideaValidation) && showAlternatives)
+      || (!isValidation && (
+        displaySolutions.length > 0
+        || examinedRuledOut.length > 0
+        || seedPending
+        || hasBatchActivity
+      ))
+    ),
+  );
+  // "Check my idea": the demoted seed is the page hero — suppress its duplicate row in
+  // the workbench's "Screened out" list (its finding carries dispatch_id 'validate').
+  const validationRuledOut = $derived(
+    isValidation
+      ? examinedRuledOut.filter(
+          (f) => !(f.source_frame === 'user_seed' && f.dispatch_id === 'validate'),
+        )
+      : examinedRuledOut,
+  );
   const overlapGroups = $derived(previewReport?.overlap_groups ?? []);
   // Buyer-job partition over the visible pool. Read defensively: reports generated
   // before the contract shipped simply have no partition, and the workbench falls
@@ -1030,6 +1195,52 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 
   // One stable severity order is shared with the public dossier.
   const topPainPoints = $derived(dossier.painPoints);
+  const selectionBriefPainPoints = $derived(topPainPoints.slice(0, 2));
+  const selectionBriefAudience = $derived(
+    previewReport?.audience_mapping?.primary_target_segment?.trim() || null
+  );
+  const selectionNicheDifficultyVerdict = $derived(
+    buyerFacingNicheDifficultyVerdict(previewReport?.niche_difficulty_verdict),
+  );
+  const selectionBriefSoftwareFit = $derived.by(() => {
+    const verdict = selectionNicheDifficultyVerdict;
+    if (!verdict) return null;
+
+    const headline = verdict.headline?.trim();
+    if (headline) {
+      return headline
+        .replace(/^software\s+fit:\s*/i, '')
+        .replace(/\s+[\u2013\u2014-]\s+/, ': ');
+    }
+
+    const addressability = verdict.software_addressability ?? 0;
+    if (addressability >= 0.7) return 'Strong software fit';
+    if (addressability >= 0.45) return 'Moderate software fit';
+    if (addressability >= 0.25) return 'Limited software fit';
+    return 'Hard to address with software';
+  });
+  let selectionSoftwareFitOpen = $state(false);
+  const selectionSoftwareFitStrengths = $derived(
+    (selectionNicheDifficultyVerdict?.key_strengths ?? [])
+      .filter((point) => point.trim())
+  );
+  const selectionSoftwareFitChallenges = $derived(
+    (selectionNicheDifficultyVerdict?.key_challenges ?? [])
+      .filter((point) => point.trim())
+  );
+  const selectionSoftwareFitReasoningAvailable = $derived.by(() => {
+    const verdict = selectionNicheDifficultyVerdict;
+    return Boolean(
+      verdict?.narrative_summary?.trim()
+      || selectionSoftwareFitStrengths.length
+      || selectionSoftwareFitChallenges.length
+    );
+  });
+  const showSelectionMarketRead = $derived(Boolean(
+    selectionBriefSoftwareFit
+    || selectionBriefPainPoints.length > 0
+    || selectionBriefAudience
+  ));
   const visiblePainPoints = $derived(
     isSelectionPhase ? topPainPoints.slice(0, 8) : topPainPoints
   );
@@ -1039,6 +1250,14 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   // Dossier chrome (header + ledger + open-by-default) is about whether there IS a dossier
   // to read, not about whether the job is still live.
   const showDossierChrome = $derived(isSelectionPhase || isStoppedWorkbench);
+  const phaseNavSectionIds = $derived(
+    showDossierChrome
+      ? [
+          ...(isSelectionPhase && showSelectionMarketRead ? ['market-read'] : []),
+          ...dossier.availableSectionIds,
+        ]
+      : undefined,
+  );
   // Section open state driven by lifecycle (passes to ExpandableSection defaultOpen)
   const discoveryOpen = $derived(showDossierChrome);
 
@@ -1201,7 +1420,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 </script>
 
 <svelte:head>
-  <title>{job ? `${pageTitle || job.niche} - ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
+  <title>{job ? `${pageTitle || job.nicheDisplay || job.niche} - ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
 </svelte:head>
 
   <div class="job-page-shell">
@@ -1225,10 +1444,10 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
         : stopRecoverLabel}
       recoverOnclick={job.status === 'FAILED' ? resumeJob : undefined}
       recoverHref={job.status === 'CANCELLED'
-        ? `/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`
+        ? prefillHref(job)
         : undefined}
       recoverDisabled={isResuming || (failedCatalogDeepResearch && costsUnavailable)}
-      availableSectionIds={showDossierChrome ? dossier.availableSectionIds : undefined}
+      availableSectionIds={phaseNavSectionIds}
       chatMode={job.chatMode ?? false}
       gateStage={job.gateStage ?? null}
       {decisionTools}
@@ -1240,6 +1459,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   <div
     class="job-page-content"
     class:job-page-content--selection={isWorkbenchPhase}
+    class:job-page-content--analyst-docked={selectionWorkbenchVisible && chatPanel.isOpen && !chatPanel.isExpanded}
     class:job-page-content--completed={isCompleted}
   >
     <AnnotationProvider
@@ -1271,7 +1491,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
           jobId={jobId ?? undefined}
           phase={isGeneratingP1 ? 'discovery' : 'deep_research'}
           jobStatus={job.status}
-          niche={job.niche}
+          niche={job.nicheDisplay ?? job.niche}
           entryMode={job.entryMode}
           userEmail={data.userEmail}
           progressPercent={job.progressPercent}
@@ -1325,15 +1545,18 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
             class={isWorkbenchPhase ? 'job-selection-header' : ''}
             icon={isWorkbenchPhase ? undefined : Telescope}
             breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-            breadcrumbCurrent={isSelectionPhase ? SHORTLIST_TITLE : isGatePhase ? 'Checkpoint' : isStoppedWorkbench ? 'Stopped run' : titleCase(nicheName) || 'Research'}
+            breadcrumbCurrent={isSelectionPhase ? (isValidation ? 'Idea check' : SHORTLIST_TITLE) : isGatePhase ? 'Checkpoint' : isStoppedWorkbench ? 'Stopped run' : isValidation ? sentenceHeading(job?.nicheDisplay ?? nicheName) || 'Research' : titleCase(nicheName) || 'Research'}
             title={pageTitle}
             titleVariant={isSelectionPhase || isStoppedWorkbench ? 'research-topic' : 'default'}
             subtitle={isSelectionPhase ? selectionSubtitle : isGatePhase ? gateSubtitle : isStoppedWorkbench ? stopSubtitle : undefined}
           >
             {#snippet metadata()}
-              {#if job && nicheName !== job.niche}
+              {#if job && nicheName !== job.niche
+                && (job.nicheDisplay ?? job.niche).toLowerCase() !== (pageTitle ?? '').toLowerCase()}
+                <!-- Echo the niche only when the title isn't already it (a stopped
+                     validate run titles the page WITH the pitch — no double line). -->
                 <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
-                  {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
+                  {job.nicheDisplay ?? job.niche}
                 </p>
               {/if}
               {#if cancelError}
@@ -1462,12 +1685,27 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               {/if}
             </div>
             <p id="stop-handoff-copy" class="stop-handoff__copy">{stopHandoffCopy}</p>
+            {#if job.status === 'FAILED'}
+              <!-- The guidance says "contact support" — give it an actual door. -->
+              <a
+                class="stop-handoff__support"
+                href={`mailto:hello@nicheiq.dev?subject=${encodeURIComponent(`Failed run ${jobId ?? ''}`)}`}
+              >Contact support →</a>
+            {/if}
             {#if hasPhase1Work}
               <p class="stop-handoff__retained">
-                <strong>Your discovery work is intact.</strong>
-                The evidence below — and the {displaySolutions.length}
-                {displaySolutions.length === 1 ? 'idea' : 'ideas'} it produced — came from the
-                completed part of this run and is unaffected.
+                {#if isValidation}
+                  <strong>Your idea's check is intact.</strong>
+                  Everything the completed part of this run learned about your idea (and
+                  the {displaySolutions.length}
+                  {displaySolutions.length === 1 ? 'approach' : 'approaches'} it was graded
+                  against) is saved and unaffected.
+                {:else}
+                  <strong>Your discovery work is intact.</strong>
+                  The evidence below (and the {displaySolutions.length}
+                  {displaySolutions.length === 1 ? 'idea' : 'ideas'} it produced) came from the
+                  completed part of this run and is unaffected.
+                {/if}
               </p>
             {/if}
             {#if resumeError}
@@ -1500,7 +1738,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               />
             {/if}
             <Button
-              href={`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`}
+              href={prefillHref(job)}
               label="Start new research"
               class={job.status === 'FAILED' ? 'btn-secondary' : 'btn-primary'}
             />
@@ -1530,12 +1768,246 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
           </div>
         {/if}
 
-        {#if isSelectionPhase && (
+        <!-- Discovery runs only. The validate_idea view below renders its own purpose-built
+             "Idea check snapshot unavailable" card for this same state, and its ranked list
+             never mounts on first paint, so this banner would both duplicate that card and
+             claim "the ideas themselves are current" about ideas nobody can see. -->
+        {#if isSelectionPhase && !isValidation && selectionArtifactVerification === 'untrusted'}
+          <div
+            class="candidate-data-warning"
+            role="status"
+            data-artifact-reason={selectionArtifactReason ?? undefined}
+          >
+            <div>
+              <strong>{EVIDENCE_WITHHELD_TITLE}</strong>
+              <p>{EVIDENCE_WITHHELD_DETAIL}</p>
+            </div>
+          </div>
+        {/if}
+
+        {#if isValidation && isSelectionPhase}
+          <!-- ═══ "Check my idea": the idea's report page. The SelectionWorkbench never
+               mounts on first paint (its DecisionRail portals a fixed commit dock over
+               the verdict) — alternatives appear only behind the disclosure below. A
+               missing block renders an explicit failure card, NEVER the discovery
+               workbench (silently swapping the subject is the worst failure mode). ═══ -->
+          <span aria-live="polite" class="sr-only">{alternativesAnnounce}</span>
+          {#if selectionArtifactVerification === 'untrusted'}
+            <div class="card p-8 text-center mb-6">
+              <AlertTriangle class="w-8 h-8 text-text-muted mx-auto" />
+              <h2 class="mt-4 text-xl font-semibold text-text-primary">Idea check snapshot unavailable</h2>
+              <p class="mt-2 text-text-secondary">
+                We could not verify this check against the current candidate version. Refresh to try again.
+              </p>
+              <SubmitButton
+                onclick={fetchSolutions}
+                loading={solutionsLoading}
+                loadingText="Refreshing..."
+                icon={RotateCw}
+                keepIconOnLoad
+                label="Refresh check"
+                class="btn-primary mt-6 inline-flex items-center gap-2"
+              />
+            </div>
+          {:else if ideaValidation}
+            <ValidationVerdict
+              data={ideaValidation}
+              deepResearchCost={page.data.stageCosts?.deep_research ?? null}
+              rerunHref={validateRerunHref}
+              reviewHref={validateReviewHref}
+              onContinue={handleValidateContinue}
+              onShowAlternatives={expandAlternatives}
+            />
+            <section class="mt-6 mb-6" id="validate-alternatives" aria-label="How your idea was graded">
+              {#if !showAlternatives}
+                <div class="card p-6 validate-disclosure">
+                  <button
+                    type="button"
+                    class="w-full text-left flex items-start justify-between gap-4"
+                    style="min-height: 2rem"
+                    aria-expanded={showAlternatives}
+                    aria-controls="validate-alternatives"
+                    data-tour="validate-disclosure"
+                    onclick={expandAlternatives}
+                  >
+                    <span>
+                      <span class="block text-base font-semibold text-text-primary">How your idea was graded</span>
+                      <span class="block mt-1 text-sm text-text-secondary">
+                        {ideaValidation.alternatives.count} other approaches to the same evidence{#if validationSeedRank}
+                          {' '}· yours ranked #{validationSeedRank.rank} of {validationSeedRank.total}{/if}
+                      </span>
+                    </span>
+                    <ChevronDown class="w-4 h-4 mt-1 shrink-0 text-text-muted" aria-hidden="true" />
+                  </button>
+                  <p class="mt-3 text-xs text-text-muted max-w-[76ch]">
+                    To grade your idea we generated and scored every other approach this
+                    evidence supports. That pool is the benchmark your idea was ranked
+                    against.{#if (ideaValidation.alternatives.named_buyer_count ?? 0) > 0}{' '}
+                      {ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.{/if}
+                  </p>
+                </div>
+              {:else}
+                <h2 class="sr-only" tabindex="-1" bind:this={alternativesHeadingEl}>
+                  How your idea was graded
+                </h2>
+                <SelectionWorkbench
+                  jobId={jobId ?? ''}
+                  solutions={displaySolutions}
+                  selectionDraft={job.selectionDraft ?? null}
+                  coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
+                  examinedRuledOut={validationRuledOut}
+                  {overlapGroups}
+                  {ideaTheses}
+                  {uncoveredFamilies}
+                  {marketReality}
+                  nicheDifficultyVerdict={previewReport?.niche_difficulty_verdict ?? null}
+                  ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
+                  ideaPortfolioSummaryFingerprint={previewReport?.idea_portfolio_summary_fingerprint ?? null}
+                  userAdjustments={previewReport?.user_adjustments ?? []}
+                  {discussionCount}
+                  painPointCount={previewPainPointCount}
+                  {segmentCount}
+                  creditBalance={page.data.creditBalance ?? 0}
+                  stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
+                  canRegenerate={job.canRegenerate ?? false}
+                  ideaBatchCompletedCount={job.ideaBatchCompletedCount ?? null}
+                  maxIdeaBatches={job.maxIdeaBatches ?? null}
+                  isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
+                  poolMutationLocked={seedRunning}
+                  selectedSolutions={job.selectedSolutions ?? undefined}
+                  selectedSolutionIds={job.selectedSolutionIds ?? undefined}
+                  decisionProfile={job.selectionDecisionProfile ?? null}
+                  {solutionVotes}
+                  onComplete={handleSelectionComplete}
+                  onRegenerateStart={() => {
+                    clientJob = { ...job!, status: 'QUEUED', activeDispatchKind: 'REGENERATE' };
+                    void invalidateAll();
+                  }}
+                  onBatchSettled={handleSeedSettled}
+                  onJourneyTasks={(tasks) => selectionToolTasks = tasks}
+                  onShortlistChange={(count) => liveShortlist = { jobId: jobId ?? '', count }}
+                  onShortlistVersionChange={(version) => draftRefreshGuard.reportLocalVersion(version)}
+                  onSeedSettled={handleSeedSettled}
+                  onSeedStart={() => void invalidateAll()}
+                  {solutionVotesById}
+                  {voteRationales}
+                  {decisionTools}
+                  groupByThesis={false}
+                  pinnedIdeaKeys={validationPinnedKeys}
+                  headerTitle="Your idea, ranked with the alternatives"
+                  headerSub={validationSeedRow
+                    ? 'Your idea is first in this list. Add any of these to the Deep Research scope.'
+                    : [
+                        ideaValidation.seed_display_composite_score != null
+                          ? `Your idea scored ${ideaValidation.seed_display_composite_score}/100 on this scale. It was ruled out, so it isn't in this list.`
+                          : "Your idea was ruled out, so it isn't in this list.",
+                        (ideaValidation.alternatives.named_buyer_count ?? 0) > 0
+                          ? `${ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.`
+                          : '',
+                        'Add any of these to the Deep Research scope.',
+                      ].filter(Boolean).join(' ')}
+                />
+              {/if}
+            </section>
+          {:else if previewFetchFailed}
+            <div class="card p-8 text-center mb-6">
+              <div class="err-icon-box p-3 rounded-xl w-fit mx-auto">
+                <AlertTriangle class="w-8 h-8" />
+              </div>
+              <h2 class="mt-4 text-xl font-semibold text-text-primary">We couldn't load your idea's check</h2>
+              <p class="mt-2 text-text-secondary">The report exists but didn't load. Try again.</p>
+              <SubmitButton
+                onclick={() => void invalidateAll()}
+                loading={false}
+                loadingText="Retrying..."
+                icon={RotateCw}
+                keepIconOnLoad
+                label="Retry"
+                class="btn-primary mt-6 inline-flex items-center gap-2"
+              />
+            </div>
+          {:else}
+            <div class="card p-8 text-center mb-6">
+              <Loader2 class="w-8 h-8 text-accent mx-auto animate-spin" />
+              <p class="mt-4 text-text-secondary">Loading your idea's check&hellip;</p>
+            </div>
+          {/if}
+        {:else if isSelectionPhase && (
           displaySolutions.length > 0
           || examinedRuledOut.length > 0
           || seedPending
           || hasBatchActivity
         )}
+          {#if showSelectionMarketRead}
+            <section id="market-read" class="selection-market-read" aria-labelledby="selection-market-read-title">
+              <header class="selection-market-read__header">
+                <p class="selection-market-read__eyebrow">Market read</p>
+                <h2 id="selection-market-read-title">What the evidence says before you choose</h2>
+              </header>
+              <dl class="selection-market-read__facts">
+                {#if selectionBriefSoftwareFit}
+                  <div>
+                    <dt>Software fit</dt>
+                    <dd>{selectionBriefSoftwareFit}</dd>
+                  </div>
+                {/if}
+                {#if selectionBriefPainPoints.length > 0}
+                  <div>
+                    <dt>Top pains</dt>
+                    <dd>
+                      <ul>
+                        {#each selectionBriefPainPoints as painPoint}
+                          <li>{painPoint.title}</li>
+                        {/each}
+                      </ul>
+                    </dd>
+                  </div>
+                {/if}
+                {#if selectionBriefAudience}
+                  <div>
+                    <dt>Target audience</dt>
+                    <dd>{selectionBriefAudience}</dd>
+                  </div>
+                {/if}
+              </dl>
+              {#if selectionSoftwareFitReasoningAvailable && selectionNicheDifficultyVerdict}
+                <details
+                  class="selection-market-read__disclosure"
+                  ontoggle={(event) => (selectionSoftwareFitOpen = event.currentTarget.open)}
+                >
+                  <summary>Read full software fit analysis</summary>
+                  <div
+                    class="selection-market-read__reasoning"
+                    inert={!selectionSoftwareFitOpen ? true : undefined}
+                  >
+                    {#if selectionNicheDifficultyVerdict.narrative_summary?.trim()}
+                      <p>{selectionNicheDifficultyVerdict.narrative_summary}</p>
+                    {/if}
+                    {#if selectionSoftwareFitStrengths.length}
+                      <section aria-labelledby="software-fit-strengths-title">
+                        <h3 id="software-fit-strengths-title">What makes software a fit</h3>
+                        <ul>
+                          {#each selectionSoftwareFitStrengths as point}
+                            <li>{point}</li>
+                          {/each}
+                        </ul>
+                      </section>
+                    {/if}
+                    {#if selectionSoftwareFitChallenges.length}
+                      <section aria-labelledby="software-fit-challenges-title">
+                        <h3 id="software-fit-challenges-title">What makes it hard</h3>
+                        <ul>
+                          {#each selectionSoftwareFitChallenges as point}
+                            <li>{point}</li>
+                          {/each}
+                        </ul>
+                      </section>
+                    {/if}
+                  </div>
+                </details>
+              {/if}
+            </section>
+          {/if}
           <SelectionWorkbench
             jobId={jobId ?? ''}
             solutions={displaySolutions}
@@ -1548,6 +2020,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
             {marketReality}
             nicheDifficultyVerdict={previewReport?.niche_difficulty_verdict ?? null}
             ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
+            ideaPortfolioSummaryFingerprint={previewReport?.idea_portfolio_summary_fingerprint ?? null}
             userAdjustments={previewReport?.user_adjustments ?? []}
             {discussionCount}
             painPointCount={previewPainPointCount}
@@ -1577,6 +2050,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
             {solutionVotesById}
             {voteRationales}
             {decisionTools}
+            showNicheReality={false}
           />
         {:else if isSelectionPhase}
           <!-- ═══ ZERO-CANDIDATE STATES ═══ Selection reached but nothing to show:
@@ -1590,8 +2064,8 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               <div class="err-icon-box p-3 rounded-xl w-fit mx-auto">
                 <AlertTriangle class="w-8 h-8" />
               </div>
-              <h2 class="mt-4 text-xl font-semibold text-text-primary">Couldn't load candidates</h2>
-              <p class="mt-2 text-text-secondary">Something went wrong fetching the shortlist for this run.</p>
+              <h2 class="mt-4 text-xl font-semibold text-text-primary">{CANDIDATES_UNAVAILABLE_TITLE}</h2>
+              <p class="mt-2 text-text-secondary">{CANDIDATES_UNAVAILABLE_DETAIL}</p>
               <SubmitButton
                 onclick={fetchSolutions}
                 loading={solutionsLoading}
@@ -1642,7 +2116,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                     class="btn-primary mt-6 inline-block"
                   />
                 {/if}
-                <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent-dark hover:text-accent-hover transition-colors">
+                <button onclick={() => goto(prefillHref(job))} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent-dark hover:text-accent-hover transition-colors">
                   Start new research <ArrowRight class="w-4 h-4" />
                 </button>
               {/if}
@@ -1728,6 +2202,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                 resetKey={sectionResetKey}
                 id="overview"
               >
+                {#if isValidation}
+                  <!-- The niche verdict below can read "You should build…" — that GO
+                       grades the MARKET; without this scope line it whiplashes against
+                       a ruled-out idea verdict one screen up. -->
+                  <p class="text-xs text-text-muted mb-3 max-w-[76ch]">
+                    This section grades the market your idea sits in, not your idea.
+                    Your idea's own verdict is above.
+                  </p>
+                {/if}
                 <PreviewOverview
                   nicheDescription={previewReport.niche_context?.niche_description}
                   {discussionCount}
@@ -1737,7 +2220,13 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   showFacts={!isSelectionPhase}
                 />
                 {#if previewReport.niche_difficulty_verdict}
-                  <NicheRealityCheck verdict={previewReport.niche_difficulty_verdict} context="discovery" />
+                  {#if isSelectionPhase && !isValidation}
+                    <p class="overview-market-read-reference">
+                      <a href="#market-read">Market read</a> summarizes software fit. Full pain and audience evidence stays in the dossier sections below.
+                    </p>
+                  {:else}
+                    <NicheRealityCheck verdict={previewReport.niche_difficulty_verdict} context="discovery" />
+                  {/if}
                 {/if}
               </ExpandableSection>
             {/if}
@@ -1842,6 +2331,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               >
                 <CommunitySourcesSection
                   subredditNames={discoveryData?.subreddit_names}
+                  subredditPostCounts={discoveryData?.subreddit_post_counts}
                   communityHubs={previewReport?.audience_mapping?.community_hubs}
                   postsAnalyzed={discussionCount || undefined}
                   sourcesSearched={discoveryData?.sources_searched}
@@ -1997,19 +2487,36 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
      CLIENT-side decision-state fetch landed: until it does, the shortlist dock has not
      mounted and the guide card still reads "Updating your next useful step…", so two of
      the seven steps would have nothing to point at. -->
-{#if isSelectionPhase}
+<!-- "Check my idea" runs get their own chapter: the shortlist chapter's anchors all live
+     inside the unmounted workbench — running it here would dead-poll every anchor and
+     persist `dismissed` against the user's real discovery runs. The host only mounts once
+     its chapter's content exists (block loaded / solutions loaded) so the restart button —
+     which bypasses every readiness gate — can never fire against a bare page. -->
+{#if isSelectionPhase && (!isValidation || ideaValidation)}
   <TourHost
-    chapter="job-shortlist"
+    chapter={isValidation ? 'validate-report' : 'job-shortlist'}
     enabled={decisionTools}
-    ready={displaySolutions.length > 0
-      && !solutionsLoading
-      && selectionToolTasks !== undefined}
-    deferred={seedRunning || isRegenQueued || invalidSolutionCount > 0}
-    reflowKey={selectionToolTasks}
+    ready={isValidation
+      ? Boolean(ideaValidation)
+      : displaySolutions.length > 0
+        && !solutionsLoading
+        && selectionToolTasks !== undefined}
+    deferred={seedRunning || isRegenQueued || (!isValidation && invalidSolutionCount > 0)}
+    reflowKey={isValidation ? showAlternatives : selectionToolTasks}
   />
 {/if}
 
 <style>
+  /* The validate disclosure card is a static container whose only control is the
+     button inside — the global .card hover border (and its transition: all) read
+     the WHOLE card as clickable. */
+  .validate-disclosure {
+    transition: none;
+  }
+  .validate-disclosure:hover {
+    border-color: var(--color-border);
+  }
+
   /* Error-state icon box (zero-candidate fetch failure) — status tokens
      instead of Tailwind opacity slicing on the raw `error` color. */
   .err-icon-box {
@@ -2125,6 +2632,154 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     width: min(76rem, 100%);
   }
 
+  .job-page-content--analyst-docked {
+    container: analyst-workspace / inline-size;
+  }
+
+  @media (min-width: 1400px) {
+    .job-page-content--selection.job-page-content--analyst-docked {
+      margin-right: var(--analyst-dock-clearance);
+    }
+  }
+
+  /* At the bottom of the desktop-dock range the reserved content box is much
+     narrower than the viewport (614px at 1426px). Descendant viewport queries
+     therefore never fire. Mirror the workbench's compact layout against the
+     space it actually owns so its grids cannot grow back under the dock. */
+  @container analyst-workspace (max-width: 60rem) {
+    :global(.workbench .decision-guide),
+    :global(.workbench .copilot-shortlist-review),
+    :global(.workbench .cmd),
+    :global(.workbench .variant-note) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    :global(.workbench .idea-expansion-row),
+    :global(.workbench .detail-link-error) {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    :global(.workbench .idea-expansion-row > div),
+    :global(.workbench .detail-link-error p) {
+      min-width: 0;
+    }
+
+    :global(.workbench .opp-row) {
+      grid-template-columns: 2rem minmax(0, 1fr) 4.5rem;
+      grid-template-areas:
+        "rank title score"
+        "pick pick pick";
+      gap: 0.7rem 0.75rem;
+    }
+
+    :global(.workbench .opp-list--grouped .opp-row) {
+      grid-template-columns: minmax(0, 1fr) 4.5rem;
+      grid-template-areas:
+        "title score"
+        "pick pick";
+    }
+
+    :global(.workbench .opp-row-head) { display: none; }
+    :global(.workbench .cell-rank) { grid-area: rank; }
+    :global(.workbench .cell-select),
+    :global(.workbench .cell-action) { grid-area: pick; }
+    :global(.workbench .cell-title) { grid-area: title; }
+    :global(.workbench .metric-score) { grid-area: score; }
+    :global(.workbench .cell-metric.metric-fit),
+    :global(.workbench .cell-metric:not(.metric-score):not(.metric-fit)),
+    :global(.workbench .cell-metric.metric-build) {
+      display: none;
+    }
+    :global(.workbench .mobile-metrics) {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    :global(.workbench .select-control),
+    :global(.workbench .cell-action > div),
+    :global(.workbench .cell-action button) {
+      width: 100%;
+    }
+
+    .job-page-content--analyst-docked :global(.workbench .brief-head) {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .job-page-content--analyst-docked :global(.workbench .brief-copy),
+    .job-page-content--analyst-docked :global(.workbench .profile-summary),
+    .job-page-content--analyst-docked :global(.workbench .empty-copy) {
+      min-width: 0;
+    }
+    .job-page-content--analyst-docked :global(.workbench .profile-summary),
+    .job-page-content--analyst-docked :global(.workbench .empty-copy) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .job-page-content--analyst-docked :global(.workbench .profile-summary) {
+      padding-top: var(--space-3);
+      border-top: 1px solid var(--color-border);
+    }
+    .job-page-content--analyst-docked :global(.workbench .profile-summary > div:first-child) {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    :global(.workbench .context-notes) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    :global(.workbench .shape-line) { grid-template-columns: minmax(0, 1fr); }
+    :global(.workbench .context-disclosures),
+    :global(.workbench .coverage-disclosure),
+    :global(.workbench .market-reality-disclosure),
+    :global(.workbench .coverage-disclosure ul),
+    :global(.workbench .market-reality-panel) {
+      width: 100%;
+      min-width: 0;
+    }
+    :global(.workbench .market-reality-table) { min-width: 0; }
+
+    .job-page-content--analyst-docked :global(.audience-snapshot__hero),
+    .job-page-content--analyst-docked :global(.audience-snapshot__segments) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .job-page-content--analyst-docked :global(.audience-snapshot__stats) {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .job-page-content--analyst-docked .selection-market-read__facts,
+    .job-page-content--analyst-docked .selection-market-read__reasoning {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .job-page-content--analyst-docked :global(.pp-card__grid) {
+      grid-template-columns: 1.95rem minmax(0, 1fr);
+    }
+    .job-page-content--analyst-docked .selection-market-read__facts > div,
+    .job-page-content--analyst-docked .selection-market-read__facts > div:first-child {
+      padding-inline: 0;
+      border-left: 0;
+    }
+    .job-page-content--analyst-docked .selection-market-read__reasoning > p {
+      grid-column: auto;
+    }
+    .job-page-content--analyst-docked :global(.pp-main),
+    .job-page-content--analyst-docked :global(.pp-meta-row) {
+      min-width: 0;
+    }
+    .job-page-content--analyst-docked :global(.pp-meta-row) {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .job-page-content--analyst-docked :global(.pp-action) {
+      grid-column: 2;
+      justify-self: start;
+    }
+    .job-page-content--analyst-docked :global(.pp-pills span) {
+      max-width: 100%;
+      white-space: normal;
+    }
+  }
+
   .job-page-content--completed {
     width: min(76rem, 100%);
   }
@@ -2135,6 +2790,257 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 
   :global(.job-selection-header) {
     margin-bottom: 0;
+  }
+
+  .selection-market-read {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    margin: var(--space-2) 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-bg-surface) 72%, var(--color-bg-elevated));
+  }
+
+  .selection-market-read__header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .selection-market-read__eyebrow {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .selection-market-read__header h2 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    line-height: var(--leading-normal);
+    letter-spacing: 0;
+    text-wrap: balance;
+  }
+
+  .selection-market-read__facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .selection-market-read__facts > div {
+    min-width: 0;
+    padding: 0 var(--space-2);
+    border-left: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
+  }
+
+  .selection-market-read__facts > div:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .selection-market-read__facts dt {
+    margin: 0 0 0.125rem;
+    color: var(--color-text-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: var(--leading-normal);
+  }
+
+  .selection-market-read__facts dd {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .selection-market-read__facts ul {
+    display: grid;
+    gap: 0.125rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .selection-market-read__facts li::before {
+    content: '•';
+    margin-right: var(--space-1);
+    color: var(--color-text-muted);
+  }
+
+  @media (min-width: 900px) {
+    .selection-market-read__facts {
+      grid-template-columns: minmax(11rem, 0.75fr) minmax(25rem, 1.75fr) minmax(15rem, 1fr);
+    }
+
+    .selection-market-read__facts ul {
+      display: block;
+    }
+
+    .selection-market-read__facts li {
+      display: inline;
+    }
+
+    .selection-market-read__facts li::before {
+      content: none;
+    }
+
+    .selection-market-read__facts li:not(:last-child)::after {
+      content: '; ';
+      color: var(--color-text-muted);
+    }
+  }
+
+  .selection-market-read__disclosure {
+    min-width: 0;
+    padding-top: var(--space-1);
+    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
+  }
+
+  .selection-market-read__disclosure summary {
+    width: fit-content;
+    color: var(--color-accent-dark);
+    font-size: var(--text-13);
+    font-weight: 600;
+    line-height: var(--leading-normal);
+    cursor: pointer;
+  }
+
+  .selection-market-read__disclosure summary:hover {
+    color: var(--color-text-primary);
+  }
+
+  .selection-market-read__disclosure summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+  }
+
+  .selection-market-read__reasoning {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-6);
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+
+  .selection-market-read__reasoning > p {
+    grid-column: 1 / -1;
+    max-width: 76ch;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    text-wrap: pretty;
+  }
+
+  .selection-market-read__reasoning section {
+    min-width: 0;
+  }
+
+  .selection-market-read__reasoning h3 {
+    margin: 0 0 var(--space-2);
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-normal);
+  }
+
+  .selection-market-read__reasoning ul {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-left: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  .overview-market-read-reference {
+    max-width: 76ch;
+    margin: var(--space-3) 0 0;
+    padding-top: var(--space-3);
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    text-wrap: pretty;
+  }
+
+  .overview-market-read-reference a {
+    color: var(--color-accent-dark);
+    font-weight: 600;
+    text-underline-offset: 0.16em;
+  }
+
+  .overview-market-read-reference a:hover {
+    color: var(--color-text-primary);
+  }
+
+  .overview-market-read-reference a:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+  }
+
+  @media (max-width: 899px) {
+    .selection-market-read__facts {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 639px) {
+    .selection-market-read {
+      gap: var(--space-1);
+      padding: var(--space-2);
+    }
+
+    .selection-market-read__header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+
+    .selection-market-read__facts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .selection-market-read__facts > div,
+    .selection-market-read__facts > div:first-child {
+      display: grid;
+      grid-template-columns: 4.75rem minmax(0, 1fr);
+      gap: var(--space-2);
+      padding: var(--space-1) 0;
+      border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
+      border-left: 0;
+    }
+
+    .selection-market-read__facts dt {
+      margin: 0;
+    }
+
+    .selection-market-read__reasoning {
+      grid-template-columns: minmax(0, 1fr);
+      padding: var(--space-3) 0 0;
+      background: transparent;
+    }
+
+    .selection-market-read__reasoning > p {
+      grid-column: auto;
+    }
   }
 
   .candidate-data-warning,
@@ -2183,13 +3089,30 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   }
 
   :global(.job-selection-header .page-header-title-row > div:first-child) {
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
+    padding: 0;
+    border-radius: 0;
   }
 
   :global(.job-selection-header .page-header-title-row svg) {
     width: 1.25rem;
     height: 1.25rem;
+  }
+
+  :global(.job-selection-header .page-header-top ol),
+  :global(.job-selection-header .page-header-top nav > a) {
+    margin-bottom: var(--space-3);
+  }
+
+  :global(.job-selection-header .page-header-title--research-topic) {
+    font-size: clamp(1.25rem, 1.8vw, 1.5rem);
+    line-height: 1.12;
+  }
+
+  :global(.job-selection-header .page-header-subtitle) {
+    max-width: 72ch;
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
+    line-height: 1.35;
   }
 
   @media (max-width: 639px) {
@@ -2420,6 +3343,20 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
     line-height: var(--leading-relaxed);
+  }
+
+  /* Meta-link recipe: mono + arrow, muted — and a 2rem hit target. */
+  .stop-handoff__support {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+  .stop-handoff__support:hover {
+    color: var(--color-text-secondary);
   }
 
   .stop-handoff__retained {

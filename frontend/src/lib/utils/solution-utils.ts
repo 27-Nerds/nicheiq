@@ -90,7 +90,18 @@ export function displayCompositeScore(solution: SolutionPreview): number | null 
   return hasScoreInput ? _computeComposite(sanitized, SOLUTION_PREVIEW_KEYS) : null;
 }
 
-export function solutionDisplayTitle(s: { headline?: string | null; solution_name: string }): string {
+export function solutionDisplayTitle(s: {
+  headline?: string | null;
+  solution_name: string;
+  source_frame?: string | null;
+  generation_operation_id?: string | null;
+}): string {
+  // "Check my idea": the report page, its verdict prose, and the dashboard all name
+  // the user's seed by solution_name. A second display name for the same idea reads
+  // as a DIFFERENT idea in the compare table — the user must find theirs by name.
+  if (s.source_frame === "user_seed" && s.generation_operation_id === "validate") {
+    return s.solution_name;
+  }
   return s.headline?.trim() || s.solution_name;
 }
 

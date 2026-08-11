@@ -44,30 +44,60 @@ def _exact_title_match(ref: str, pain_points: list) -> Optional[object]:
 
 
 _SEED_MIN_SHARED_TOKENS = 3
+# With focus terms present, a pain may co-anchor only when it shares at least this many
+# MECHANISM/PROBLEM stems — audience/context words (coach, parent, game) never qualify a
+# pain on their own. This is the same head-term discipline the report's quote re-ranker
+# uses, applied at the source: the live failure was a check-in pain out-scoring the
+# playing-time pains because the whole-brief overlap counted context vocabulary.
+_SEED_MIN_FOCUS_TOKENS = 2
+_SEED_MAX_ANCHORS = 3
 
 
-def _compatible_pains(seed_text: str, tool_ref: str, pain_points: list) -> list[tuple[object, tuple[str, ...]]]:
+def _compatible_pains(
+    seed_text: str,
+    tool_ref: str,
+    pain_points: list,
+    focus_terms: list[str] | None = None,
+) -> list[tuple[object, tuple[str, ...]]]:
     """Rank product-compatible pains using identity text only (title + description).
 
-    Quotes are deliberately evidence-only. Returning at most one primary pain prevents a single
-    submitted product from being force-stamped with several loosely related research problems.
+    Quotes are deliberately evidence-only. Without `focus_terms` (chat seeds, legacy
+    states) at most ONE primary pain returns — a single submitted product must not be
+    force-stamped with several loosely related research problems. With `focus_terms`
+    (the Stage-1 mechanism/problem keyword lists of a "Check my idea" pitch) up to
+    _SEED_MAX_ANCHORS pains may anchor, each individually clearing BOTH the full-text
+    floor and the focus floor, ranked by focus overlap first.
     """
     from .frames import _content_tokens
 
     seed_tokens = _content_tokens(f"{seed_text or ''} {tool_ref or ''}")
     if not seed_tokens:
         return []
-    scored: list[tuple[int, str, object, tuple[str, ...]]] = []
+    focus_tokens = _content_tokens(" ".join(
+        t for t in (focus_terms or []) if isinstance(t, str)))
+    scored: list[tuple[int, int, str, object, tuple[str, ...]]] = []
     for pain in pain_points or []:
         title = (getattr(pain, "title", "") or "").strip()
         if not title:
             continue
         description = getattr(pain, "description", "") or ""
-        shared = tuple(sorted(seed_tokens & _content_tokens(f"{title} {description}")))
-        if len(shared) >= _SEED_MIN_SHARED_TOKENS:
-            scored.append((len(shared), title.lower(), pain, shared))
-    scored.sort(key=lambda item: (-item[0], item[1]))
-    return [(pain, shared) for _, _, pain, shared in scored[:1]]
+        pain_tokens = _content_tokens(f"{title} {description}")
+        shared = tuple(sorted(seed_tokens & pain_tokens))
+        if len(shared) < _SEED_MIN_SHARED_TOKENS:
+            continue
+        focus_shared = len(focus_tokens & pain_tokens) if focus_tokens else 0
+        scored.append((focus_shared, len(shared), title.lower(), pain, shared))
+    if not focus_tokens:
+        scored.sort(key=lambda item: (-item[1], item[2]))
+        return [(pain, shared) for _, _, _, pain, shared in scored[:1]]
+    qualified = [row for row in scored if row[0] >= _SEED_MIN_FOCUS_TOKENS]
+    if not qualified:
+        # No pain reaches the mechanism/problem bar — fall back to the single best
+        # full-text match rather than anchoring on context vocabulary alone.
+        scored.sort(key=lambda item: (-item[1], item[2]))
+        return [(pain, shared) for _, _, _, pain, shared in scored[:1]]
+    qualified.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    return [(pain, shared) for _, _, _, pain, shared in qualified[:_SEED_MAX_ANCHORS]]
 
 
 def _pick_segment(anchor_pains: list, segments: list):
@@ -97,6 +127,7 @@ def resolve_seed_anchors(
     tool_ref: Optional[str],
     pain_points: list,
     segments: list,
+    focus_terms: Optional[list[str]] = None,
 ) -> SeedAnchorResult:
     """Resolve a user idea seed to exact validated pain title(s) + an audience segment.
 
@@ -130,19 +161,19 @@ def resolve_seed_anchors(
             )
         rejected_ref = getattr(exact, "title", "") or (pain_ref or "")
 
-    inferred = _compatible_pains(seed_text, tool_ref or "", pain_points)
+    inferred = _compatible_pains(seed_text, tool_ref or "", pain_points, focus_terms)
     if not inferred:
         return SeedAnchorResult(
             anchor_pain_titles=[], segment=None,
             rejected_pain_ref=rejected_ref,
         )
 
-    pain, shared = inferred[0]
-    title = getattr(pain, "title", "") or ""
+    pains = [pain for pain, _ in inferred]
+    titles = [t for t in ((getattr(p, "title", "") or "").strip() for p in pains) if t]
     return SeedAnchorResult(
-        anchor_pain_titles=[title],
-        segment=_pick_segment([pain], segments),
+        anchor_pain_titles=titles,
+        segment=_pick_segment(pains, segments),
         match_kind="inferred",
         rejected_pain_ref=rejected_ref,
-        shared_terms=shared,
+        shared_terms=inferred[0][1],
     )

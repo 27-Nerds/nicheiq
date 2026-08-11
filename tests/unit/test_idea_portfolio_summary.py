@@ -2,17 +2,32 @@
 (no LLM/IO) and the name-coverage guardrail around the single grounded LLM call.
 """
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from nicheiq.utils.idea_portfolio_summary import (
     build_idea_portfolio_digest,
     generate_idea_portfolio_summary,
+    idea_portfolio_fingerprint,
 )
+
+# The cross-language fingerprint table lives in ONE file, read by this suite, by
+# backend/src/routes/__tests__/discoveryShares.portfolioSummary.test.ts and by
+# frontend/src/lib/selection/__tests__/ideaPortfolioFingerprint.test.ts. Python WRITES the
+# stored fingerprint and was previously held to none of these cases, so a Python-side rule
+# change could not fail any suite that mattered.
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[2] / "contracts" / "ideaPortfolioFingerprintCases.json"
+)
+_CONTRACT = json.loads(_CONTRACT_PATH.read_text())
 
 
 def _idea(name, *, status="active", source_frame=None, market_fit=0.6, market_fit_raw=None,
           risk_flags=None, pricing_shape_note=None, red_team_verdict=None, red_team_caveats=None,
-          red_team_revised=None):
+          red_team_revised=None, idea_id=None, idea_revision=1):
     return SimpleNamespace(
         solution_name=name,
         candidate_status=status,
@@ -31,7 +46,77 @@ def _idea(name, *, status="active", source_frame=None, market_fit=0.6, market_fi
         red_team_verdict=red_team_verdict,
         red_team_caveats=red_team_caveats,
         red_team_revised=red_team_revised,
+        idea_id=idea_id,
+        idea_revision=idea_revision,
     )
+
+
+class TestPortfolioFingerprintContract:
+    """The shared cross-language table. Same file, same cases, three implementations."""
+
+    @pytest.mark.parametrize(
+        "case", _CONTRACT["shared"], ids=[c["name"] for c in _CONTRACT["shared"]]
+    )
+    def test_shared_case(self, case):
+        assert idea_portfolio_fingerprint(case["candidates"]) == case["fingerprint"]
+
+    @pytest.mark.parametrize(
+        "case",
+        _CONTRACT["divergences"],
+        ids=[c["name"] for c in _CONTRACT["divergences"]],
+    )
+    def test_known_divergence_from_typescript(self, case):
+        """Documented, non-blocking, pinned — see each case's `verdict` in the file."""
+        assert idea_portfolio_fingerprint(case["candidates"]) == case["fingerprint"]["python"]
+
+    def test_the_float_revision_case_is_still_a_float_on_disk(self):
+        """The float divergence only exists because json.load keeps 2.0 a float while
+        JSON.parse collapses it to 2. Reformatting the source literal to `2` would make
+        this suite agree with TypeScript for the wrong reason."""
+        case = next(
+            c for c in _CONTRACT["divergences"] if c["name"] == "a float revision that is integral"
+        )
+        revision = case["candidates"][0]["idea_revision"]
+        assert isinstance(revision, float) and not isinstance(revision, int)
+
+    def test_the_suite_reads_the_whole_table(self):
+        assert len(_CONTRACT["shared"]) >= 11
+        assert len(_CONTRACT["divergences"]) >= 2
+
+
+class TestPortfolioFingerprint:
+    def test_is_order_independent_and_excludes_hidden_ideas(self):
+        alpha = _idea("Alpha", idea_id="idea-a", idea_revision=1)
+        beta = _idea("Beta", idea_id="idea-b", idea_revision=2)
+        hidden = _idea("Hidden", status="demoted", idea_id="idea-hidden")
+
+        expected = '{"version":1,"ideas":[["idea-a",1],["idea-b",2]]}'
+        assert idea_portfolio_fingerprint([alpha, hidden, beta]) == expected
+        assert idea_portfolio_fingerprint([beta, alpha, hidden]) == expected
+
+    def test_addition_and_revision_change_invalidate(self):
+        alpha = _idea("Alpha", idea_id="idea-a", idea_revision=1)
+        beta = _idea("Beta", idea_id="idea-b", idea_revision=1)
+        original = idea_portfolio_fingerprint([alpha, beta])
+
+        assert idea_portfolio_fingerprint([
+            alpha, beta, _idea("Gamma", idea_id="idea-c", idea_revision=1)
+        ]) != original
+        beta.idea_revision = 2
+        assert idea_portfolio_fingerprint([alpha, beta]) != original
+
+    def test_missing_identity_fails_closed_without_job_id(self):
+        assert idea_portfolio_fingerprint([_idea("Legacy")]) is None
+
+    def test_initial_derivation_matches_the_phase1_identity_stamp(self):
+        from nicheiq.utils.idea_identity import stamp_new_idea_identities
+
+        ideas = [_idea("Alpha"), _idea("Hidden", status="absorbed"), _idea("Beta")]
+        derived = idea_portfolio_fingerprint(ideas, job_id="job-1")
+        stamp_new_idea_identities(
+            "job-1", ideas, origin="phase1", operation_key="initial", force=True
+        )
+        assert idea_portfolio_fingerprint(ideas) == derived
 
 
 class TestDigestBuilder:
@@ -180,3 +265,450 @@ class TestGenerateSummary:
         ideas = [_idea("AlphaTool")]
         summary, usage = generate_idea_portfolio_summary(ideas)
         assert summary is None and usage is None
+
+
+class TestCommercialCopyGuard:
+    _EVIDENCE = (
+        "$99-399/mo DaySmart Vet, $299/mo single-vet, $290/mo IDEXX Neo, $300/mo VetSnap"
+    )
+
+    @staticmethod
+    def _paying_brief(evidence=_EVIDENCE):
+        return {"wallet_class": "paying", "evidence": evidence, "free_density": "low"}
+
+    def test_live_vet_contradiction_retries_with_exact_contract_then_passes(
+        self, monkeypatch
+    ):
+        from nicheiq.utils import idea_portfolio_summary as portfolio
+        from nicheiq.utils import llm_service
+        from nicheiq.utils.niche_difficulty import paying_wallet_commercial_contract_copy
+
+        ideas = [_idea("VetMargin Monitor"), _idea("ClinicFlow Audit")]
+        before = (
+            "VetMargin Monitor and ClinicFlow Audit have been restructured away from "
+            "subscription pricing. Validate VetMargin Monitor first."
+        )
+        contract_copy = paying_wallet_commercial_contract_copy("paying", self._EVIDENCE)
+        after = (
+            "VetMargin Monitor and ClinicFlow Audit both warrant deeper validation. "
+            f"{contract_copy} Validate VetMargin Monitor first."
+        )
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=before if len(calls) == 1 else after), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        warnings = []
+        sink_id = portfolio.logger.add(
+            lambda message: warnings.append(str(message)), level="WARNING"
+        )
+        try:
+            summary, _ = generate_idea_portfolio_summary(
+                ideas,
+                niche="independent veterinary clinics managing medication",
+                niche_wallet_brief=self._paying_brief(),
+            )
+        finally:
+            portfolio.logger.remove(sink_id)
+
+        assert summary == after
+        assert len(calls) == 2
+        assert "NICHE SPEND NORM: paying" in calls[0]
+        assert self._EVIDENCE in calls[0]
+        assert before not in summary
+        assert "VIOLATED THE PAYING-WALLET COMMERCIAL COPY CONTRACT" in calls[1]
+        assert contract_copy in calls[1]
+        assert any("commercial invariant rejected" in warning for warning in warnings)
+
+    def test_paraphrase_outside_positive_contract_fails_soft(self, monkeypatch):
+        from nicheiq.utils import idea_portfolio_summary as portfolio
+        from nicheiq.utils import llm_service
+        from nicheiq.utils.niche_difficulty import (
+            _paying_wallet_copy_rule_labels,
+            paying_wallet_commercial_contract_copy,
+            paying_wallet_commercial_copy_violations,
+        )
+
+        paraphrase = (
+            "VetMargin Monitor and ClinicFlow Audit are worth comparing, but monthly recurring "
+            "billing will not work here; give the product away and monetise referrals."
+        )
+        contract_copy = paying_wallet_commercial_contract_copy("paying", self._EVIDENCE)
+        # "give the product away and monetise referrals" is an imperative with a
+        # determiner object naming a zero-price shape — the polarity-blind prescription
+        # rule catches it even though the paraphrase carries no negative word.
+        assert _paying_wallet_copy_rule_labels(paraphrase) == [
+            "zero-price shape prescribed for a paying niche"
+        ]
+        assert paying_wallet_commercial_copy_violations(
+            paraphrase,
+            wallet_class="paying",
+            wallet_evidence=self._EVIDENCE,
+            expected_copy=contract_copy,
+            allow_surrounding_copy=True,
+        ) == [
+            "outside positive paying-wallet contract",
+            "commercial copy outside sanctioned paying-wallet statement",
+            "zero-price shape prescribed for a paying niche",
+        ]
+        assert "commercial copy outside sanctioned paying-wallet statement" in (
+            paying_wallet_commercial_copy_violations(
+                f"{contract_copy} {paraphrase}",
+                wallet_class="paying",
+                wallet_evidence=self._EVIDENCE,
+                expected_copy=contract_copy,
+                allow_surrounding_copy=True,
+            )
+        )
+
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=paraphrase), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        warnings = []
+        sink_id = portfolio.logger.add(
+            lambda message: warnings.append(str(message)), level="WARNING"
+        )
+        try:
+            summary, _ = generate_idea_portfolio_summary(
+                [_idea("VetMargin Monitor"), _idea("ClinicFlow Audit")],
+                niche_wallet_brief=self._paying_brief(),
+            )
+        finally:
+            portfolio.logger.remove(sink_id)
+
+        assert summary is None
+        assert len(calls) == 2
+        assert sum("commercial invariant rejected" in warning for warning in warnings) == 2
+        assert any("dropping summary" in warning for warning in warnings)
+
+    def test_exact_contract_plus_euphemistic_contradiction_fails_soft(self, monkeypatch):
+        from nicheiq.utils import llm_service
+        from nicheiq.utils.niche_difficulty import (
+            paying_wallet_commercial_contract_copy,
+            paying_wallet_commercial_copy_violations,
+        )
+
+        contract_copy = paying_wallet_commercial_contract_copy("paying", self._EVIDENCE)
+        contradiction = "The business should charge nothing and avoid ongoing fees."
+        text = (
+            "VetMargin Monitor and ClinicFlow Audit are worth comparing. "
+            f"{contract_copy} {contradiction}"
+        )
+        assert paying_wallet_commercial_copy_violations(
+            text,
+            wallet_class="paying",
+            wallet_evidence=self._EVIDENCE,
+            expected_copy=contract_copy,
+            allow_surrounding_copy=True,
+        ) == [
+            "commercial copy outside sanctioned paying-wallet statement",
+            "anti-subscription prescription",
+            "zero-price prescription",
+        ]
+
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=text), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        summary, _ = generate_idea_portfolio_summary(
+            [_idea("VetMargin Monitor"), _idea("ClinicFlow Audit")],
+            niche_wallet_brief=self._paying_brief(),
+        )
+
+        assert summary is None
+        assert len(calls) == 2
+
+    @staticmethod
+    def _inactive_wallet_briefs():
+        return [
+            {"wallet_class": "free-culture", "evidence": "buyers favor free tools"},
+            {"wallet_class": "mixed", "evidence": "some buyers pay and some do not"},
+            {"wallet_class": "paying", "evidence": ""},
+            None,
+        ]
+
+    def test_non_paying_free_tool_recommendation_passes_untouched(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        text = (
+            "AlphaTool and BetaTracker fit a free-tool recommendation. Validate AlphaTool first."
+        )
+        for brief in self._inactive_wallet_briefs():
+            calls = []
+
+            def _fake(**kw):
+                calls.append(kw["prompt"])
+                return SimpleNamespace(summary=text), None
+
+            monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+            summary, _ = generate_idea_portfolio_summary(
+                [_idea("AlphaTool"), _idea("BetaTracker")],
+                niche_wallet_brief=brief,
+            )
+
+            assert summary == text
+            assert len(calls) == 1
+            assert "COMMERCIAL COPY CONTRACT" not in calls[0]
+
+
+class TestExclusionGuard:
+    """Codex dual-review fix: describing a RANKED, SELECTABLE idea with exclusion
+    vocabulary is state misinformation — clause-scoped, whole-word, proximity-8 guard
+    with one combined retry."""
+
+    def test_live_phrase_triggers_retry_then_clean_rewrite_passes(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        ideas = [_idea("AlphaTool", red_team_verdict="killed"), _idea("BetaTracker")]
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            if len(calls) == 1:
+                return SimpleNamespace(summary=(
+                    "AlphaTool and BetaTracker were reviewed. AlphaTool was ultimately "
+                    "excluded from further consideration.")), None
+            return SimpleNamespace(summary=(
+                "AlphaTool stays ranked and selectable, but the adversarial review "
+                "refuted its premise; resolve that caveat first. BetaTracker deserves "
+                "validation next.")), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        summary, _ = generate_idea_portfolio_summary(ideas)
+        assert len(calls) == 2
+        assert "MISSTATED THE VISIBILITY" in calls[1]
+        assert "AlphaTool" in calls[1]
+        assert summary is not None and "stays ranked and selectable" in summary
+
+    def test_conflict_on_both_attempts_returns_none(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        ideas = [_idea("AlphaTool"), _idea("BetaTracker")]
+        bad = "AlphaTool and BetaTracker were graded. AlphaTool was removed from the list."
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (SimpleNamespace(summary=bad), None)),
+        )
+        summary, _ = generate_idea_portfolio_summary(ideas)
+        assert summary is None
+
+    def test_exclusion_of_non_idea_subject_in_other_clause_passes(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        ideas = [_idea("AlphaTool"), _idea("BetaTracker")]
+        text = ("We excluded pricing data from consideration. AlphaTool remains "
+                "selectable and BetaTracker leads the pool.")
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (SimpleNamespace(summary=text), None)),
+        )
+        summary, _ = generate_idea_portfolio_summary(ideas)
+        assert summary == text
+
+    def test_exclusion_language_about_ruled_out_idea_passes(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        ideas = [_idea("AlphaTool"), _idea("BetaTracker")]
+        ruled_out = [{"idea_name": "GammaLedger", "reason": "thin wallet"}]
+        text = ("GammaLedger was excluded by the market screen. AlphaTool and "
+                "BetaTracker both merit validation.")
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (SimpleNamespace(summary=text), None)),
+        )
+        summary, _ = generate_idea_portfolio_summary(ideas, ruled_out=ruled_out)
+        assert summary == text
+
+    def test_missing_and_exclusion_share_the_single_retry(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        ideas = [_idea("AlphaTool"), _idea("BetaTracker"), _idea("GammaDesk")]
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            if len(calls) == 1:
+                # misses GammaDesk AND misstates AlphaTool
+                return SimpleNamespace(summary=(
+                    "AlphaTool was dropped from the pool. BetaTracker looks strong.")), None
+            return SimpleNamespace(summary=(
+                "AlphaTool stays listed with an unresolved caveat. BetaTracker looks "
+                "strong. GammaDesk rounds out the pool.")), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        summary, _ = generate_idea_portfolio_summary(ideas)
+        assert len(calls) == 2
+        assert "DID NOT MENTION" in calls[1] and "GammaDesk" in calls[1]
+        assert "MISSTATED THE VISIBILITY" in calls[1] and "AlphaTool" in calls[1]
+        assert summary is not None
+
+    def test_killed_digest_line_names_visibility_state(self):
+        ideas = [_idea("AlphaTool", red_team_verdict="killed",
+                       red_team_caveats=["premise unproven"])]
+        digest = build_idea_portfolio_digest(ideas)
+        assert "killed for nomination only (premise unproven)" in digest
+        assert "remains ranked and selectable" in digest
+        assert "resolve the caveat before choosing" in digest
+
+
+class TestCommercialShapeRemit:
+    """ROUND 14 — the license to prescribe a commercial shape is withdrawn at generation.
+
+    Six successive filters on the OUTPUT text hit a measured ceiling (a blind critic published
+    13 of 14 novel non-paying shapes past the last one), because there is no closed structural
+    property in surface text. The fix is that the generator was never allowed to state the
+    contradiction: monetization is rendered deterministically instead.
+    """
+
+    _PAYING = {"wallet_class": "paying", "evidence": "$99-399/mo DaySmart Vet"}
+    _MIXED_PRICED = {
+        "wallet_class": "mixed",
+        "evidence": "DaySmart Vet $116–$565/mo; quote-based pricing common",
+        "free_density": "VetSoftwareHub free comparison tools",
+    }
+    # The live sentence from output/checkpoints/…0c9b6f29…, a MIXED run that had no contract.
+    _MIXED_LIVE_PRESCRIPTION = (
+        "Given these constraints, the most logical path forward is to pivot away from "
+        "subscription SaaS and toward free, lead-generation tools that seed a data corpus."
+    )
+
+    @staticmethod
+    def _prompt_for(monkeypatch, brief):
+        from nicheiq.utils import llm_service
+
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary="AlphaTool and BetaTracker both look plausible."), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        generate_idea_portfolio_summary(
+            [_idea("AlphaTool"), _idea("BetaTracker")], niche_wallet_brief=brief
+        )
+        return " ".join(calls[0].split())
+
+    @pytest.mark.parametrize(
+        "brief",
+        [
+            None,
+            {"wallet_class": "paying", "evidence": "$99-399/mo DaySmart Vet"},
+            {"wallet_class": "mixed", "evidence": "quote-based pricing common"},
+            {"wallet_class": "free-culture", "evidence": "every route here is free"},
+        ],
+    )
+    def test_remit_paragraph_reaches_every_wallet_class(self, monkeypatch, brief):
+        """The withdrawal is unconditional — a `mixed` or unknown wallet is not a licence."""
+        prompt = self._prompt_for(monkeypatch, brief)
+        assert "OUT OF YOUR REMIT — HOW THE PRODUCT MAKES MONEY" in prompt
+        assert "Reporting is not prescribing" in prompt
+        assert "MUST NOT recommend, select, rule out, or pivot" in prompt
+        assert "MONETIZATION GUIDANCE" in prompt
+
+    @pytest.mark.parametrize(
+        "brief,marker",
+        [
+            ({"wallet_class": "paying", "evidence": "$99/mo"}, "already pay for tooling"),
+            ({"wallet_class": "mixed", "evidence": "$116–$565/mo"}, "part of this niche already pays"),
+            ({"wallet_class": "mixed", "evidence": "quotes only"}, "segment holding budget authority"),
+            # Reports the free routes and what a product competes on; it does not tell the
+            # builder to adopt a free shape (D1 round 15, Priority 1).
+            ({"wallet_class": "free-culture", "evidence": "all free"},
+             "convenience, completeness and trust"),
+            (None, "only monetization guidance the reader gets"),
+        ],
+    )
+    def test_monetization_guidance_is_deterministic_per_wallet_reading(self, brief, marker):
+        from nicheiq.utils.idea_portfolio_summary import monetization_guidance
+
+        line = monetization_guidance(brief)
+        assert marker in line
+        assert monetization_guidance(brief) == line  # no LLM, no randomness
+
+    def test_priced_mixed_wallet_rejects_the_live_prescription_and_fails_soft(self, monkeypatch):
+        """SCOPE GAP: `mixed` had no contract at all, so the identical contradiction shipped."""
+        from nicheiq.utils import idea_portfolio_summary as portfolio
+        from nicheiq.utils import llm_service
+
+        text = (
+            "AlphaTool and BetaTracker both face entrenched incumbents. "
+            f"{self._MIXED_LIVE_PRESCRIPTION}"
+        )
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=text), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        warnings = []
+        sink_id = portfolio.logger.add(
+            lambda message: warnings.append(str(message)), level="WARNING"
+        )
+        try:
+            summary, _ = generate_idea_portfolio_summary(
+                [_idea("AlphaTool"), _idea("BetaTracker")],
+                niche_wallet_brief=self._MIXED_PRICED,
+            )
+        finally:
+            portfolio.logger.remove(sink_id)
+
+        assert summary is None
+        assert len(calls) == 2
+        assert "RECOMMENDED A COMMERCIAL SHAPE" in calls[1]
+        assert "out of your remit entirely" in calls[1]
+        assert any("zero-price shape prescribed for a priced niche" in w for w in warnings)
+
+    def test_priced_mixed_wallet_still_publishes_honest_negative_analysis(self, monkeypatch):
+        """A mixed niche may report that half its buyers will not pay. Only prescribing is out."""
+        from nicheiq.utils import llm_service
+
+        text = (
+            "AlphaTool and BetaTracker face well-defended incumbents, and willingness to pay "
+            "for new standalone tools in these categories is quite low. AlphaTool still "
+            "deserves validation first."
+        )
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=text), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        summary, _ = generate_idea_portfolio_summary(
+            [_idea("AlphaTool"), _idea("BetaTracker")],
+            niche_wallet_brief=self._MIXED_PRICED,
+        )
+        assert summary == text
+        assert len(calls) == 1
+
+    def test_unpriced_mixed_wallet_is_left_alone(self, monkeypatch):
+        """The trigger is the evidence's own prices, not the classifier's bucket."""
+        from nicheiq.utils import llm_service
+
+        text = (
+            "AlphaTool and BetaTracker are worth comparing. "
+            f"{self._MIXED_LIVE_PRESCRIPTION}"
+        )
+        calls = []
+
+        def _fake(**kw):
+            calls.append(kw["prompt"])
+            return SimpleNamespace(summary=text), None
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_fake))
+        summary, _ = generate_idea_portfolio_summary(
+            [_idea("AlphaTool"), _idea("BetaTracker")],
+            niche_wallet_brief={"wallet_class": "mixed", "evidence": "quote-based pricing common"},
+        )
+        assert summary == text
+        assert len(calls) == 1

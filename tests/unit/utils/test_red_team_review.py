@@ -513,3 +513,46 @@ class TestTopKSlotAllocation:
                   build_feasibility_score=0.5, solo_dev_feasibility=0.5)
         reviewed = self._run([a, b, c], monkeypatch)
         assert reviewed == ["A", "B"]
+
+
+class TestSeedRunDataContext:
+    """"Check my idea" seed reviews carry the run's own validated pains, so a kill
+    caveat can never claim demand evidence is absent against the run's own counts."""
+
+    def _seed_idea(self):
+        return _idea(
+            solution_name="FairPlay Ledger",
+            pain_points_addressed=["Cannot prove equal playing time during active games"],
+        )
+
+    def _crew_with_pains(self, dispatch_id):
+        crew = _crew(search_map={"q": "TeamSnap ships lineup tools for coaches"})
+        crew._current_seed_dispatch_id = dispatch_id
+        crew.pain_point_analysis = SimpleNamespace(pain_points=[SimpleNamespace(
+            title="Cannot prove equal playing time during active games",
+            mention_count=16)])
+        return crew
+
+    def _captured_prompt(self, crew, monkeypatch):
+        captured = {}
+
+        def fake_invoke(**kw):
+            captured["prompt"] = kw.get("prompt", "")
+            return _RedTeamVerdict(verdict="survives", caveats=[], uplift=None), None
+
+        from nicheiq.utils import llm_service
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured", staticmethod(fake_invoke))
+        pool = SimpleNamespace(solution_ideas=[self._seed_idea()])
+        run_red_team_review(crew, pool)
+        return captured.get("prompt", "")
+
+    def test_validate_seed_prompt_carries_run_counts(self, monkeypatch):
+        prompt = self._captured_prompt(self._crew_with_pains("validate"), monkeypatch)
+        assert "This run's own discovery already validated these pains" in prompt
+        assert "(16 mentions)" in prompt
+        assert "never claim demand evidence is absent" in prompt
+
+    def test_pool_reviews_get_no_run_data_block(self, monkeypatch):
+        prompt = self._captured_prompt(self._crew_with_pains(None), monkeypatch)
+        assert "This run's own discovery" not in prompt

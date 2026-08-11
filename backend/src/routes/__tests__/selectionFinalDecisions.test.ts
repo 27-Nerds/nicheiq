@@ -18,6 +18,11 @@ const mocks = vi.hoisted(() => ({
   getReportJsonForJob: vi.fn(),
   getPreviewReportForJob: vi.fn(),
   getDiscoveryDataForJob: vi.fn(),
+  parseCurrentFounderFitArtifact: vi.fn(),
+}));
+
+vi.mock('../../services/founderFitService.js', () => ({
+  parseCurrentFounderFitArtifact: (...args: unknown[]) => mocks.parseCurrentFounderFitArtifact(...args),
 }));
 
 vi.mock('../../services/db.js', () => ({
@@ -32,8 +37,10 @@ vi.mock('../../services/db.js', () => ({
 
 vi.mock('../../services/assetService.js', () => ({
   getReportJsonForJob: (...args: unknown[]) => mocks.getReportJsonForJob(...args),
-  getPreviewReportForJob: (...args: unknown[]) => mocks.getPreviewReportForJob(...args),
   getDiscoveryDataForJob: (...args: unknown[]) => mocks.getDiscoveryDataForJob(...args),
+}));
+vi.mock('../../services/selectionBoundary/rawPreviewReport.js', () => ({
+  getPreviewReportForJob: (...args: unknown[]) => mocks.getPreviewReportForJob(...args),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -284,6 +291,7 @@ beforeEach(async () => {
   mocks.getReportJsonForJob.mockResolvedValue(report);
   mocks.getPreviewReportForJob.mockResolvedValue(null);
   mocks.getDiscoveryDataForJob.mockResolvedValue(null);
+  mocks.parseCurrentFounderFitArtifact.mockReturnValue(null);
   mocks.decisionCreate.mockImplementation(async ({ data }) => ({
     id: 'decision-1',
     createdAt: new Date('2026-07-16T12:00:00.000Z'),
@@ -640,6 +648,53 @@ describe('selection final decisions', () => {
     }));
     const changed = await sources();
     expect(changed.sourceFingerprint).not.toBe(first.sourceFingerprint);
+  });
+
+  it('freezes founder fit through the read-time contract, never the raw stored artifact', async () => {
+    // The decision record is permanent and the decision-handoff export carries `evidenceSnapshot`
+    // verbatim, so a raw passthrough freezes an artifact nobody re-validated — including one
+    // whose prose was written under a different delivery model, or one that no longer describes
+    // the current idea revisions.
+    const storedRaw = { version: 1, results: [{ summary: 'You will build the first release yourself.' }] };
+    const contracted = { version: 1, results: [{ summary: 'A contractor will build the software.' }] };
+    mocks.jobFindFirst.mockResolvedValue(job({
+      selectionDecisionProfile: { team: 'solo', buildModel: 'contractor' },
+      selectionFounderFit: storedRaw,
+    }));
+    mocks.parseCurrentFounderFitArtifact.mockReturnValue(contracted);
+
+    const current = await sources();
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/final-decision`)
+      .send(input({ sourceFingerprint: current.sourceFingerprint }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.parseCurrentFounderFitArtifact).toHaveBeenCalledWith(
+      storedRaw,
+      { team: 'solo', buildModel: 'contractor' },
+      expect.arrayContaining([expect.objectContaining({ idea_id: 'idea-signal' })]),
+    );
+    const snapshot = mocks.decisionCreate.mock.calls[0][0].data.evidenceSnapshot;
+    expect(snapshot.founderFit).toEqual(contracted);
+    expect(JSON.stringify(snapshot)).not.toContain('You will build the first release yourself');
+  });
+
+  it('records founder fit as absent when the stored artifact fails the read-time contract', async () => {
+    mocks.jobFindFirst.mockResolvedValue(job({
+      selectionDecisionProfile: { team: 'solo' },
+      selectionFounderFit: { version: 1, results: [{ summary: 'Written before the contract existed.' }] },
+    }));
+    mocks.parseCurrentFounderFitArtifact.mockReturnValue(null);
+
+    const current = await sources();
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/final-decision`)
+      .send(input({ sourceFingerprint: current.sourceFingerprint }));
+
+    expect(response.status).toBe(201);
+    const snapshot = mocks.decisionCreate.mock.calls[0][0].data.evidenceSnapshot;
+    expect(snapshot.founderFit).toBeNull();
+    expect(JSON.stringify(snapshot)).not.toContain('Written before the contract existed');
   });
 
   it('reviews current finalist assumptions and freezes only the selected exact revision', async () => {

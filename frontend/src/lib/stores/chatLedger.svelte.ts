@@ -378,6 +378,15 @@ export const chatLedger = {
     return _seedResults.get(sourceMessageId);
   },
 
+  /** The whole lifecycle record for one seed card. Needed wherever the RESULT alone
+   *  is not enough: the operation's `evaluationId` rides the receipt ENVELOPE, and a
+   *  plain user seed's result summary never carries it (only exact synthesis stamps
+   *  `evaluation_id` onto the idea), so anything deep-linking an evaluation has to
+   *  read it from here. */
+  seedActivity(sourceMessageId: string): SeedActivity | undefined {
+    return _seedActivities.get(sourceMessageId);
+  },
+
   /** Optimistic local mark right after `seedIdea()` succeeds — the durable
    *  `seed_submitted` receipt won't be visible until the next reload, and the
    *  card must flip to "Evaluating…" immediately, not after a round-trip. A

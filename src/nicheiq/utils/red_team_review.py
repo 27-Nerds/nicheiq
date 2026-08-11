@@ -412,13 +412,42 @@ def run_red_team_review(crew, refined_solutions) -> None:
                     "(vocabulary mismatch)")
                 continue
 
+            # "Check my idea" seed only: the reviewer must not contradict the run's own
+            # discovery (live failure: a kill caveat claimed "the only direct evidence
+            # is one App Store result" while this run's own data held 16-mention pains
+            # restating the pitch). Established counts are context, not a muzzle — the
+            # attack should aim at willingness to pay and competition instead.
+            run_data_block = ""
+            if getattr(crew, "_current_seed_dispatch_id", None) == "validate":
+                anchored = {
+                    t.strip().lower()
+                    for t in (getattr(idea, "pain_points_addressed", None) or [])
+                    if t and t.strip()
+                }
+                pain_lines = [
+                    f"- '{(getattr(p, 'title', '') or '').strip()}'"
+                    + (f" ({p.mention_count} mentions)"
+                       if isinstance(getattr(p, "mention_count", None), int) else "")
+                    for p in (getattr(getattr(crew, "pain_point_analysis", None),
+                                      "pain_points", None) or [])
+                    if (getattr(p, "title", "") or "").strip().lower() in anchored
+                ]
+                if pain_lines:
+                    run_data_block = (
+                        "This run's own discovery already validated these pains for the "
+                        "idea:\n" + "\n".join(pain_lines) + "\n"
+                        "Treat those mention counts as established run data — never claim "
+                        "demand evidence is absent where they exist; attack willingness "
+                        "to pay, competition, or the mechanism instead.\n\n")
+
             prompt = (
                 f"Niche: {niche or 'n/a'}\n\n"
                 "IDEA under evaluation:\n"
                 f"- name: {name}\n"
                 f"- value_proposition: {(getattr(idea, 'value_proposition', '') or '')[:220]}\n"
                 f"- mechanism: {(getattr(idea, 'technical_approach', '') or '')[:220]}\n\n"
-                "Search evidence:\n"
+                + run_data_block
+                + "Search evidence:\n"
                 + fence_content(evidence, source="web-search", label="UNTRUSTED WEB RESULTS")
                 + "\n\nYou are trying to KILL this idea. From the search evidence ONLY, answer: "
                   "(1) category incumbents the idea's own vocabulary would miss; (2) free/"

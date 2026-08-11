@@ -503,7 +503,7 @@
           <div class="text-3xl font-bold text-accent tabular-nums">{lastMilestone.total_potential}</div>
           <p class="text-sm text-text-muted mt-2">
             Starting from {trafficData.estimated_monthly_revenue_range}/mo with organic growth alone.
-            These projections assume basic ad networks only — premium networks and diversified revenue add 2-4x.
+            These projections assume basic ad networks only. Premium networks and diversified revenue add 2-4x.
           </p>
         </div>
       </AnimateOnScroll>
