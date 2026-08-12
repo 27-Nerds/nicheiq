@@ -15,6 +15,7 @@
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
+  import ValidationVerdict from "$lib/components/sections/ValidationVerdict.svelte";
 
   import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   import { getDiscoveryVotes, submitDiscoveryVote } from "$lib/api";
@@ -26,6 +27,7 @@
   import type { SolutionPreview } from "$lib/types/job";
   import type { AudienceMapping } from "$lib/types/report";
   import { createDiscoveryDisplayModel } from "$lib/discovery/discoveryDisplay";
+  import { displayCompositeScore } from "$lib/utils/solution-utils";
   import {
     EVIDENCE_WITHHELD_DETAIL,
     EVIDENCE_WITHHELD_TITLE,
@@ -142,6 +144,58 @@
 
   const previewReport = $derived(data.previewReport);
   const discoveryData = $derived(data.discoveryData);
+  const ideaValidation = $derived(previewReport?.idea_validation ?? null);
+  const isIdeaCheckShare = $derived(ideaValidation !== null);
+
+  function ideaKey(solution: SolutionPreview): string {
+    return solution.idea_id
+      ? `${solution.idea_id}:${solution.idea_revision ?? 1}`
+      : `legacy:${solution.solution_name}`;
+  }
+
+  const validationSeedRow = $derived.by(() => {
+    if (!ideaValidation) return null;
+    if (ideaValidation.seed_idea_id) {
+      const exact = data.solutions.find((solution) => (
+        solution.idea_id === ideaValidation.seed_idea_id
+        && (solution.idea_revision ?? 1) === (ideaValidation.seed_idea_revision ?? 1)
+      ));
+      if (exact) return exact;
+    }
+    const strictSeeds = data.solutions.filter((solution) => (
+      solution.source_frame === "user_seed"
+      && solution.generation_operation_id === "validate"
+    ));
+    return strictSeeds.length === 1 ? strictSeeds[0] : null;
+  });
+  const validationPinnedKeys = $derived(
+    validationSeedRow ? [ideaKey(validationSeedRow)] : [],
+  );
+  const researchRankByKey = $derived.by(() => {
+    const scored = data.solutions
+      .map((solution) => ({ solution, score: displayCompositeScore(solution) }))
+      .filter((entry): entry is { solution: SolutionPreview; score: number } => entry.score !== null);
+    return new Map(scored.map(({ solution, score }) => [
+      ideaKey(solution),
+      scored.filter((candidate) => candidate.score > score).length + 1,
+    ]));
+  });
+  const validationSeedRank = $derived(
+    validationSeedRow ? researchRankByKey.get(ideaKey(validationSeedRow)) ?? null : null,
+  );
+  const validationHeaderSub = $derived(
+    validationSeedRow
+      ? validationSeedRank
+        ? `The submitted idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank} marker is its score rank. Vote for the direction you would back.`
+        : "The submitted idea is pinned at the top for comparison. Vote for the direction you would back."
+      : null,
+  );
+
+  function voteRankFor(solution: SolutionPreview, presentationIndex: number): number {
+    return isIdeaCheckShare
+      ? researchRankByKey.get(ideaKey(solution)) ?? presentationIndex + 1
+      : presentationIndex + 1;
+  }
 
   const nicheDescription = $derived(
     previewReport?.niche_context?.niche_description ?? `Analysis of the ${data.niche} market`,
@@ -181,16 +235,18 @@
   const evidenceFramingWithheld = $derived(data.evidenceFramingWithheld === true);
 </script>
 
-<SharedViewBanner variant="discovery" shareToken={shareToken} />
+<SharedViewBanner variant={isIdeaCheckShare ? "idea-check" : "discovery"} shareToken={shareToken} />
 <div class="shared-discovery-root">
 <AnnotationProvider mode="viewer" {shareToken}>
 <div class="shared-discovery-content">
   <!-- Research topic header -->
   <div data-annotation-anchor="research-header">
   <PageHeader
-    title={data.nicheDisplay ?? data.niche}
+    title={ideaValidation?.idea_name?.trim() || data.nicheDisplay || data.niche}
     titleVariant="research-topic"
-    subtitle="Discovery is complete. Review the ranked opportunities and vote for the direction you would back."
+    subtitle={isIdeaCheckShare
+      ? "Review the submitted idea's verdict, supporting evidence, and ranked alternatives from this run."
+      : "Discovery is complete. Review the ranked opportunities and vote for the direction you would back."}
   />
   </div>
 
@@ -199,6 +255,12 @@
       <strong>{EVIDENCE_WITHHELD_TITLE}</strong>
       <p>{EVIDENCE_WITHHELD_DETAIL}</p>
     </div>
+  {/if}
+
+  {#if ideaValidation}
+    <section aria-label="Shared idea check">
+      <ValidationVerdict data={ideaValidation} rerunHref="" readOnly />
+    </section>
   {/if}
 
   <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
@@ -219,10 +281,14 @@
     ideaPortfolioSummaryFingerprint={previewReport?.idea_portfolio_summary_fingerprint ?? null}
     {segmentCount}
     solutionVotes={voteSummary.solutionVotes}
+    groupByThesis={!isIdeaCheckShare}
+    pinnedIdeaKeys={validationPinnedKeys}
+    headerTitle={isIdeaCheckShare ? "Your idea, ranked with the alternatives" : null}
+    headerSub={validationHeaderSub}
   >
     {#snippet actionSlot({ solution, index }: { solution: SolutionPreview; index: number })}
       <VoteButton
-        label={`ranked idea ${index + 1}: ${solution.solution_name}`}
+        label={`ranked idea ${voteRankFor(solution, index)}: ${solution.solution_name}`}
         count={solution.idea_id && voteSummary.solutionVotesById
           ? voteSummary.solutionVotesById[solution.idea_id] ?? 0
           : voteSummary.solutionVotes[solution.solution_name] ?? 0}
@@ -449,7 +515,7 @@
   {/if}
 
   <!-- Visitor CTA: the shared/read-only counterpart to the owner's deep-research upsell -->
-  <SharedViewEndCTA variant="discovery" shareToken={shareToken} />
+  <SharedViewEndCTA variant={isIdeaCheckShare ? "idea-check" : "discovery"} shareToken={shareToken} />
 </div>
 </AnnotationProvider>
 </div>
@@ -487,69 +553,6 @@
     color: var(--color-text-muted);
     margin: 0.75rem 0 0;
     letter-spacing: 0.02em;
-  }
-
-  /* ── Locked teaser subsections (Key Influencers, Source Posts) ──
-   * .locked-header + .locked-pill live in src/lib/styles/preview-capped.css (global). */
-  .locked-subsection {
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .locked-subsection-title {
-    font-family: var(--font-mono);
-    font-size: var(--text-11);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    margin: 0 0 0.625rem;
-  }
-
-  .locked-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .locked-post-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-    gap: 0.75rem;
-    align-items: baseline;
-    padding: 0.625rem 0.875rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-elevated);
-    font-family: var(--font-mono);
-    font-size: var(--text-13);
-  }
-
-  .locked-post-title {
-    color: var(--color-text-primary);
-    font-family: var(--font-body);
-    font-size: var(--text-base);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .locked-post-sub,
-  .locked-post-score,
-  .locked-post-age {
-    color: var(--color-text-muted);
-    white-space: nowrap;
-  }
-
-  @media (max-width: 640px) {
-    .locked-post-row {
-      grid-template-columns: 1fr auto;
-      row-gap: 0.25rem;
-    }
-    .locked-post-sub { grid-column: 1; }
-    .locked-post-score { grid-column: 2; grid-row: 1; }
-    .locked-post-age { grid-column: 2; }
   }
 
   .evidence-withheld {

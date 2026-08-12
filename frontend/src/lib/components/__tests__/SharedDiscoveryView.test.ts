@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import SharedDiscoveryView from "../SharedDiscoveryView.svelte";
 import type { DiscoveryShareData } from "$lib/api";
+import type { IdeaValidation } from "$lib/types/report";
 // Asserted through the shared constant, never a copy of the sentence.
 import { EVIDENCE_WITHHELD_DETAIL, EVIDENCE_WITHHELD_TITLE } from "$lib/selection/labels";
 /**
@@ -62,6 +63,75 @@ describe("SharedDiscoveryView research topic header", () => {
     expect(root).toContainElement(surface as HTMLElement);
     expect(surface?.parentElement).toBe(root);
     expect(surface?.querySelector(".shared-discovery-content")).toBeInTheDocument();
+  });
+
+  it("renders the complete idea check as a read-only shared report", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const ideaValidation: IdeaValidation = {
+      provisional: true,
+      outcome: "premise_unproven",
+      idea_name: "Context-aware support reply extension",
+      headline: "The problem is real, but the product premise is unproven.",
+      parts: [
+        { key: "problem_real", state: "supported", answer: "Supported", detail: "Named in captured discussions." },
+        { key: "space_occupied", state: "review_concerns", answer: "Concerns found", detail: "Adjacent tools overlap." },
+        { key: "demand", state: "not_measured", answer: "Not measured", detail: "Requires Deep Research." },
+      ],
+      evidence_confidence: "High",
+      evidence_confidence_reason: "Repeated discussion from distinct accounts.",
+      anchored_pains: [{
+        pain_title: "Agents reconstruct order context",
+        severity_band: "medium",
+        severity_label: "Medium",
+        mention_count: 9,
+        quotes: ["I still handle the edge cases myself."],
+      }],
+      assumed_fields: [],
+      user_idea_text: "A browser extension that drafts context-aware support replies.",
+      user_idea_brief: "A browser extension that drafts context-aware support replies.",
+      derived_market: "Shopify merchant support tools",
+      derived_buyer: "Independent Shopify merchants",
+      competitors: [{ name: "Existing Helpdesk", what_they_ship: "Order-aware reply drafts", price_note: "$50/mo" }],
+      red_team_verdict: "killed",
+      kill_risks: [{ claim: "Existing helpdesks already cover much of the workflow.", source: "adversarial_review" }],
+      pivot: { attempted: false, outcome: "not_attempted" },
+      alternatives: { count: 1, top: [] },
+      seed_idea_id: "idea-seed",
+      seed_idea_revision: 1,
+      seed_purchasable: true,
+      seed_display_composite_score: 55,
+      desk_limits: ["No commitment evidence was collected."],
+      experiment_ladder: [{ rung: 1, action: "Interview five merchants", kill_number: "kill if none name the problem", cost_note: "free" }],
+      next_experiment_index: 0,
+    };
+    const validateShare: DiscoveryShareData = {
+      ...data,
+      nicheDisplay: "Context-aware support reply extension",
+      solutions: [{
+        solution_name: "Context-aware support reply extension",
+        description: "Draft support replies with order context.",
+        value_proposition: "Answer repetitive tickets without switching tabs.",
+        idea_id: "idea-seed",
+        idea_revision: 1,
+        source_frame: "user_seed",
+        generation_operation_id: "validate",
+        adjusted_composite_score: 0.55,
+      }],
+      previewReport: { idea_validation: ideaValidation } as unknown as NonNullable<DiscoveryShareData["previewReport"]>,
+    };
+
+    const view = render(SharedDiscoveryView, {
+      props: { data: validateShare, shareToken: "share-token" },
+    });
+
+    expect(view.getByRole("heading", { level: 1, name: "Context-aware support reply extension" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "How we read your idea" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Evidence for your idea" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Competitors and adjacent tools" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "What would kill it" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Your idea, ranked with the alternatives" })).toBeInTheDocument();
+    expect(view.queryByText(/Edit and rerun/)).not.toBeInTheDocument();
+    expect(view.queryByText("Continue with your idea")).not.toBeInTheDocument();
   });
 
   it("wires checkpoint post counts into the rendered community order", () => {
@@ -259,7 +329,7 @@ describe("SharedDiscoveryView portfolio guidance", () => {
     },
   ] as unknown as DiscoveryShareData["solutions"];
 
-  it("badges the recommended idea when the guidance still names this pool", async () => {
+  it("does not turn stored portfolio prose into a recommendation badge", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     const view = render(SharedDiscoveryView, {
       props: {
@@ -281,10 +351,35 @@ describe("SharedDiscoveryView portfolio guidance", () => {
     await waitFor(() =>
       expect(table.querySelectorAll("[data-solution-name]")).toHaveLength(2));
     expect(table.querySelector('[data-solution-name="Alpha Idea"]'))
-      .toHaveTextContent("Recommended");
+      .not.toHaveTextContent("Recommended");
     expect(table.querySelector('[data-solution-name="Beta Idea"]'))
       .not.toHaveTextContent("Recommended");
     expect(view.queryByText(EVIDENCE_WITHHELD_TITLE)).toBeNull();
+  });
+
+  it("renders delivery format in the visitor's shared candidate detail", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const view = render(SharedDiscoveryView, {
+      props: {
+        data: {
+          ...data,
+          solutions: sharedSolutions.map((solution, index) => (
+            index === 0
+              ? { ...solution, delivery_format: "browser-extension", project_type: "saas" }
+              : solution
+          )),
+        },
+        shareToken: "share-token",
+      },
+    });
+
+    await fireEvent.click(
+      await view.findByRole("button", { name: /Review details for Alpha Idea/ }),
+    );
+
+    expect(await view.findByText("Delivered as")).toBeInTheDocument();
+    expect(view.getByText("Browser extension")).toBeInTheDocument();
+    expect(view.queryByText("Product shape")).not.toBeInTheDocument();
   });
 
   it("says the framing was withheld and badges nothing once the backend strips it", async () => {

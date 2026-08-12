@@ -244,6 +244,7 @@ catalogResearchRouter.post(
         description: idea.description,
         value_proposition: idea.value_proposition,
         project_type: idea.project_type,
+        delivery_format: idea.delivery_format ?? null,
         core_features: idea.core_features,
         target_personas: idea.target_personas,
         differentiation_factors: idea.differentiation_factors,

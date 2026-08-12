@@ -86,7 +86,7 @@ function painRecord(over: Record<string, unknown> = {}) {
 function ideaRecord(over: Record<string, unknown> = {}) {
   return {
     id: 'idea-1', slug: 'invoiceflow', solution_name: 'InvoiceFlow', headline: 'Auto invoicing',
-    description: 'A tool', value_proposition: 'Save time', project_type: 'saas',
+    description: 'A tool', value_proposition: 'Save time', project_type: 'saas', format: 'web-app',
     core_features: ['a'], target_personas: ['Freelancers'], differentiation_factors: null,
     pricing_strategy: null, technical_approach: null, market_fit_score: 0.7,
     technical_feasibility_score: 0.8, seo_scalability_score: null, organic_discovery_queries: null,
@@ -297,6 +297,44 @@ describe('POST /api/catalog/ideas/:slug/deep-research', () => {
       'Manual invoicing',
       'Late payments',
     ]);
+  });
+
+  it('seed carries explicit delivery_format without replacing project_type', async () => {
+    mockGetIdeaBySlug.mockResolvedValueOnce(
+      ideaRecord({
+        format: 'browser-extension',
+        delivery_format: 'browser-extension',
+        project_type: 'saas',
+      }),
+    );
+
+    const res = await request(app)
+      .post('/api/catalog/ideas/invoiceflow/deep-research')
+      .set(AUTH)
+      .send({});
+
+    expect(res.status).toBe(201);
+    expect(mockJobDispatchCreate.mock.calls[0][0].data.workPayload.idea_seed).toMatchObject({
+      delivery_format: 'browser-extension',
+      project_type: 'saas',
+    });
+  });
+
+  it('forwards null delivery_format for a real legacy row', async () => {
+    mockGetIdeaBySlug.mockResolvedValueOnce(
+      ideaRecord({ format: 'saas', delivery_format: null, project_type: 'saas' }),
+    );
+
+    const res = await request(app)
+      .post('/api/catalog/ideas/invoiceflow/deep-research')
+      .set(AUTH)
+      .send({});
+
+    expect(res.status).toBe(201);
+    expect(mockJobDispatchCreate.mock.calls[0][0].data.workPayload.idea_seed).toMatchObject({
+      delivery_format: null,
+      project_type: 'saas',
+    });
   });
 
   it('422 when the solution name is shorter than 3 chars', async () => {

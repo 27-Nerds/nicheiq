@@ -321,11 +321,17 @@ class ResearchFlow(Flow[ResearchState]):
 
         # Store niche description for use in flow methods
         self.niche_description = niche_description
-        self.allowed_project_types = allowed_project_types
+        self.entry_mode = entry_mode
+        # Validate mode evaluates the submitted product as-is; project-shape filters
+        # constrain generated portfolios only.
+        self.allowed_project_types = (
+            None
+            if (self.entry_mode or "").strip().lower() == "validate_idea"
+            else allowed_project_types
+        )
         self.idea_focus = idea_focus or "auto"
         self.job_id = job_id or str(uuid.uuid4())
         self.state.job_id = self.job_id
-        self.entry_mode = entry_mode
 
         # Track Knowledge objects created during the run for cleanup
         self._knowledge_objects: list = []
@@ -358,7 +364,7 @@ class ResearchFlow(Flow[ResearchState]):
         self.checkpoint_mgr = CheckpointManager(
             niche_description=niche_description,
             state=self.state,
-            allowed_project_types=allowed_project_types,
+            allowed_project_types=self.allowed_project_types,
             job_id=self.job_id,
             entry_mode=self.entry_mode,
         )
@@ -528,6 +534,14 @@ class ResearchFlow(Flow[ResearchState]):
             self.allowed_project_types = self.state.allowed_project_types
         if getattr(self.state, "idea_focus", None):
             self.idea_focus = self.state.idea_focus
+
+        # Legacy checkpoints may carry the former five-type filter. Clear every
+        # restored copy before any resumed Validate work constructs a crew.
+        if ((self.entry_mode or "").strip().lower() == "validate_idea"
+                or getattr(self.state, "user_idea_text", None)):
+            self.allowed_project_types = None
+            self.state.allowed_project_types = None
+            self.checkpoint_mgr.allowed_project_types = None
 
         # "Check my idea" resume: rebind the working niche to the derived market. Worker
         # retries rebuild the flow with the raw pitch and Phase-2 with "" — and Stage 1
@@ -2767,6 +2781,7 @@ say so — an honest empty landscape is correct, a foreign one is not.
                             # "For {audience}" split can never fire on the preview surface.
                             "source_segment": getattr(solution, "source_segment", None),
                             "project_type": getattr(solution, "project_type", None),
+                            "delivery_format": getattr(solution, "delivery_format", None),
                             "audience_fit": getattr(solution, "audience_fit", None),
                             # Angle-aware evaluation — so the angle badge + comment (and the novelty
                             # tooltip) render on the Phase-1 locked preview report, not just the

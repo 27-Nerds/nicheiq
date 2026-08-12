@@ -623,6 +623,100 @@ describe('Security Audit: Jobs API', () => {
 
         expect(res.status).toBe(201);
       });
+
+      it('validate_idea ignores legacy client project-type constraints at persistence and dispatch', async () => {
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
+          job: { id: 'new-job-id' },
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
+        });
+        mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
+
+        const res = await request(app)
+          .post('/api/jobs')
+          .set(validUserHeaders)
+          .send({
+            niche: 'A browser extension that drafts support replies for independent shops',
+            expectedCost: 5,
+            entryMode: 'validate_idea',
+            allowedProjectTypes: ['saas', 'directory'],
+          });
+
+        expect(res.status).toBe(201);
+        expect(mockCreateJobAndChargeDiscoveryInTx.mock.calls[0][3]).toBeUndefined();
+        expect(mockJobDispatchCreate.mock.calls[0][0].data.workPayload).toMatchObject({
+          entry_mode: 'validate_idea',
+          allowed_project_types: null,
+        });
+      });
+
+      it.each([
+        ['an empty array', []],
+        ['an off-vocabulary delivery shape', ['browser-extension']],
+        ['a malformed legacy object', { legacy: 'saas' }],
+      ])('validate_idea ignores %s before project-type schema validation', async (_label, allowedProjectTypes) => {
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
+          job: { id: 'new-job-id' },
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
+        });
+        mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
+
+        const res = await request(app)
+          .post('/api/jobs')
+          .set(validUserHeaders)
+          .send({
+            niche: 'A browser extension that drafts support replies for independent shops',
+            expectedCost: 5,
+            entryMode: 'validate_idea',
+            allowedProjectTypes,
+          });
+
+        expect(res.status).toBe(201);
+        expect(mockCreateJobAndChargeDiscoveryInTx.mock.calls[0][3]).toBeUndefined();
+        expect(mockJobDispatchCreate.mock.calls[0][0].data.workPayload).toMatchObject({
+          entry_mode: 'validate_idea',
+          allowed_project_types: null,
+        });
+      });
+
+      it('normal research still rejects an off-vocabulary project type', async () => {
+        const res = await request(app)
+          .post('/api/jobs')
+          .set(validUserHeaders)
+          .send({
+            niche: 'Independent veterinary clinics managing medication inventory',
+            expectedCost: 5,
+            entryMode: 'idea',
+            allowedProjectTypes: ['browser-extension'],
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Validation error');
+      });
+
+      it('normal research preserves an explicit project-type subset at persistence and dispatch', async () => {
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
+          job: { id: 'new-job-id' },
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
+        });
+        mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
+
+        const res = await request(app)
+          .post('/api/jobs')
+          .set(validUserHeaders)
+          .send({
+            niche: 'Independent veterinary clinics managing medication inventory',
+            expectedCost: 5,
+            entryMode: 'idea',
+            allowedProjectTypes: ['saas', 'directory'],
+          });
+
+        expect(res.status).toBe(201);
+        expect(mockCreateJobAndChargeDiscoveryInTx.mock.calls[0][3]).toEqual(['saas', 'directory']);
+        expect(mockJobDispatchCreate.mock.calls[0][0].data.workPayload).toMatchObject({
+          entry_mode: 'idea',
+          allowed_project_types: ['saas', 'directory'],
+        });
+      });
     });
 
     // SECURITY FINDING: The niche field has no pattern validation.

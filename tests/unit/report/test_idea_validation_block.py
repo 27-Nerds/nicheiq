@@ -141,6 +141,66 @@ def test_occupied_outcome_and_parity_raises_confidence():
     assert block["evidence_confidence"] == "Moderate"
 
 
+def test_red_team_kill_reconciles_blank_parity_with_verdict_summary():
+    seed = _idea(
+        incumbent_parity=None,
+        red_team_verdict="killed",
+        red_team_caveats=[
+            "Gorgias and eDesk already cover category-adjacent order-aware drafts."
+        ],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+    parts = {part["key"]: part for part in block["parts"]}
+
+    assert block["outcome"] == "premise_unproven"
+    assert "adversarial review could not confirm the premise" in block["headline"]
+    assert "nothing we found ships" not in block["headline"]
+    assert parts["space_occupied"] == {
+        "key": "space_occupied",
+        "state": "review_concerns",
+        "answer": "Concerns found",
+        "detail": (
+            "The direct-equivalent probe did not produce a result, but adversarial "
+            "review found material concerns. See What would kill it."
+        ),
+    }
+
+
+def test_red_team_weakness_keeps_worth_testing_without_claiming_clear_lane():
+    seed = _idea(
+        incumbent_parity=None,
+        red_team_verdict="weakened",
+        red_team_caveats=["Existing suites may make a standalone layer difficult to sell."],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+    parts = {part["key"]: part for part in block["parts"]}
+
+    assert block["outcome"] == "worth_testing"
+    assert "adversarial review found material concerns" in block["headline"]
+    assert "nothing we found ships" not in block["headline"]
+    assert parts["space_occupied"]["state"] == "review_concerns"
+
+
+def test_direct_parity_remains_authoritative_when_red_team_also_kills():
+    seed = _idea(
+        incumbent_parity="shipped by Gorgias: ships order-aware reply drafts",
+        red_team_verdict="killed",
+        red_team_caveats=["The category is crowded."],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+    parts = {part["key"]: part for part in block["parts"]}
+
+    assert block["outcome"] == "occupied"
+    assert parts["space_occupied"]["state"] == "shipped"
+    assert parts["space_occupied"]["answer"] == "Already shipped"
+
+
 def test_demoted_seed_ruled_out_not_purchasable_with_reason():
     seed = _idea(candidate_status="demoted", **SEED_KW)
     state = _state([seed])

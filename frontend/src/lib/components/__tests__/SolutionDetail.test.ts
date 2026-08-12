@@ -176,6 +176,27 @@ describe("SolutionDetail interaction model", () => {
 });
 
 describe("SolutionDetail lifecycle and provenance", () => {
+  it("shows the delivery shell as Delivered as without relabeling project type", () => {
+    const view = renderDetail({
+      solution: solution({
+        delivery_format: "browser-extension",
+        project_type: "saas",
+      }),
+    });
+
+    expect(view.getByText("Delivered as")).toBeInTheDocument();
+    expect(view.getByText("Browser extension")).toBeInTheDocument();
+    expect(view.queryByText("Product shape")).not.toBeInTheDocument();
+  });
+
+  it("preserves Product shape for legacy candidates without delivery_format", () => {
+    const view = renderDetail({ solution: solution({ project_type: "marketplace" }) });
+
+    expect(view.getByText("Product shape")).toBeInTheDocument();
+    expect(view.getByText("Marketplace")).toBeInTheDocument();
+    expect(view.queryByText("Delivered as")).not.toBeInTheDocument();
+  });
+
   it("labels a legacy candidate without score inputs as not scored", () => {
     const view = renderDetail({ solution: solution() });
 

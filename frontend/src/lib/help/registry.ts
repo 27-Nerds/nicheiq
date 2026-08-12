@@ -9,53 +9,94 @@ export interface HelpTopic {
   subtitle: string;
 }
 
-export const HELP_TOPICS: HelpTopic[] = [
+export interface HelpSection {
+  title: string;
+  subtitle: string;
+  topics: HelpTopic[];
+}
+
+export const HELP_SECTIONS: HelpSection[] = [
   {
-    slug: "choosing-a-niche",
-    title: "How to choose a good niche",
-    subtitle: "Why the niche you type drives everything, and how to write one that produces good results",
+    title: "Start research",
+    subtitle: "Pick the right starting point and know what happens before you spend credits.",
+    topics: [
+      {
+        slug: "starting-research",
+        title: "Choose how to start",
+        subtitle: "Explore a niche, solve for a group, or check a product you already have in mind",
+      },
+      {
+        slug: "choosing-a-niche",
+        title: "Choose a useful niche",
+        subtitle: "Write an Explore-a-niche brief that produces specific, evidence-backed results",
+      },
+      {
+        slug: "credits-and-refunds",
+        title: "Credits, charges, and refunds",
+        subtitle: "When credits are charged, when they return, and what a retry costs",
+      },
+    ],
   },
   {
-    slug: "discovery",
-    title: "How the research works",
-    subtitle: "How public discussion becomes a ranked set of candidate ideas",
+    title: "Use your results",
+    subtitle: "Understand the shortlist, choose what to research, and share the right view.",
+    topics: [
+      {
+        slug: "reading-and-sharing-reports",
+        title: "Read and share a report",
+        subtitle: "Ranks, recommendations, locked sections, voting links, and read-only copies",
+      },
+      {
+        slug: "idea-check",
+        title: "Understand an idea check",
+        subtitle: "What a check of your own idea can and can't tell you, and what to test next",
+      },
+      {
+        slug: "deep-research",
+        title: "Pressure-test selected ideas",
+        subtitle: "What happens after you confirm one to three exact candidates for Deep Research",
+      },
+      {
+        slug: "idea-generation",
+        title: "Understand the ranked ideas",
+        subtitle: "Where candidates come from, what their labels mean, and how the shortlist is organised",
+      },
+    ],
   },
   {
-    slug: "search",
-    title: "How the search finds discussions",
-    subtitle: "Turning your niche into many small searches, and keeping them broad and honest",
-  },
-  {
-    slug: "pain-points",
-    title: "How pain points are gathered",
-    subtitle: "From public discussion to specific, evidence-backed problems",
-  },
-  {
-    slug: "idea-generation",
-    title: "How ideas are generated",
-    subtitle: "From the strongest problems to a varied, vetted shortlist",
-  },
-  {
-    slug: "deep-research",
-    title: "How selected ideas get pressure-tested",
-    subtitle: "What happens after you confirm one to three exact candidates for Deep Research",
-  },
-  {
-    slug: "idea-check",
-    title: "How the idea check works",
-    subtitle: "What a desk check of your own idea can and can't tell you, and the tests only you can run",
-  },
-  {
-    slug: "methodology",
-    title: "How scoring works",
-    subtitle: "What the severity, commercial-intent, opportunity and idea scores mean, and how far to trust them",
-  },
-  {
-    slug: "how-its-built",
-    title: "How it's built and tuned",
-    subtitle: "The staged pipeline, evidence boundaries, model roles, and safeguards behind the research",
+    title: "Understand the method",
+    subtitle: "Go deeper on sources, scoring, safeguards, and the limits of the research.",
+    topics: [
+      {
+        slug: "discovery",
+        title: "How Discovery works",
+        subtitle: "How public discussion becomes a ranked set of candidate ideas",
+      },
+      {
+        slug: "search",
+        title: "How discussions are found",
+        subtitle: "Turning your brief into focused searches without forcing a preferred answer",
+      },
+      {
+        slug: "pain-points",
+        title: "How pain points are gathered",
+        subtitle: "From public discussion to specific, source-linked problems",
+      },
+      {
+        slug: "methodology",
+        title: "How scoring works",
+        subtitle: "What the scores mean, what can cap them, and how far to trust them",
+      },
+      {
+        slug: "how-its-built",
+        title: "How the system is built and checked",
+        subtitle: "The staged pipeline, evidence boundaries, model roles, and safeguards",
+      },
+    ],
   },
 ];
+
+export const HELP_TOPICS: HelpTopic[] = HELP_SECTIONS.flatMap((section) => section.topics);
 
 export function getHelpTopic(slug: string): HelpTopic | undefined {
   return HELP_TOPICS.find((t) => t.slug === slug);

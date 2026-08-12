@@ -36,6 +36,7 @@ def _generator():
                 idea_revision=3,
                 identity_origin="regeneration",
                 identity_operation_id="batch-operation-1",
+                delivery_format="browser-extension",
                 evaluation_id="evaluation-1",
                 evaluation_source_message_id="message-1",
                 proposed_title="Exact proposed direction",
@@ -88,6 +89,7 @@ def test_defaults_when_source_idea_omits_lineage_fields():
     alt = ReportGenerator(state)._generate_alternative_solutions()[0]
     assert alt.candidate_status == "active"
     assert alt.merged_from is None
+    assert alt.delivery_format is None
 
 
 def test_source_frame_passes_through():
@@ -96,6 +98,12 @@ def test_source_frame_passes_through():
     gen = _generator()
     alt = gen._generate_alternative_solutions()[0]
     assert alt.source_frame == "gap"
+
+
+def test_delivery_format_passes_through():
+    alt = _generator()._generate_alternative_solutions()[0]
+
+    assert alt.delivery_format == "browser-extension"
 
 
 def test_user_triggered_operation_provenance_passes_through():

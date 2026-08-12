@@ -67,6 +67,10 @@ class SolutionPreview(BaseModel):
     core_features: list[str] = Field(default_factory=list)
     target_personas: list[str] = Field(default_factory=list)
     project_type: Optional[str] = None
+    delivery_format: Optional[str] = Field(
+        default=None,
+        description="Primary delivery surface or deliverable; absent on legacy previews",
+    )
     differentiation_factors: Optional[list[str]] = None
 
     # Scores

@@ -20,6 +20,34 @@ function slugify(text: string): string {
     .slice(0, 120);
 }
 
+const CATALOG_DELIVERY_FORMATS = new Set([
+  'web-app',
+  'mobile-app',
+  'desktop-app',
+  'browser-extension',
+  'platform-plugin',
+  'api',
+  'bot-assistant',
+  'data-product',
+  'report',
+  'service',
+  'physical-product',
+  'other',
+]);
+
+/** Canonical explicit delivery surface. Missing/malformed values remain unknown. */
+export function catalogIdeaDeliveryFormat(idea: Record<string, unknown>): string | null {
+  if (typeof idea.delivery_format !== 'string' || !idea.delivery_format.trim()) return null;
+  const normalized = slugify(idea.delivery_format);
+  return CATALOG_DELIVERY_FORMATS.has(normalized) ? normalized : null;
+}
+
+/** Slug/legacy format value; current rows prefer delivery, old inputs fall back to project type. */
+export function catalogIdeaFormat(idea: Record<string, unknown>): string {
+  const raw = catalogIdeaDeliveryFormat(idea) ?? idea.project_type;
+  return typeof raw === 'string' ? slugify(raw) || 'saas' : 'saas';
+}
+
 // Idea/pain-point slugs: [descriptor]-[niche]-[format], capped at 8 segments,
 // with numeric collision suffix. Mirrors what scripts/migrateCatalogSlugs.ts
 // uses so backfilled and newly-published content share the same slug shape.
@@ -654,6 +682,8 @@ export async function publishIdea(params: {
 
   const solutionName = (solution.solution_name as string) || 'Unknown Solution';
   const projectType = (solution.project_type as string) ?? null;
+  const deliveryFormat = catalogIdeaDeliveryFormat(solution);
+  const format = catalogIdeaFormat(solution);
   const verdict = report.executive_dashboard?.go_no_go_verdict?.verdict || null;
   const generatedAt = report.generated_at ? new Date(report.generated_at) : null;
 
@@ -662,9 +692,8 @@ export async function publishIdea(params: {
   const slug = await generateIdeaSlug({
     name: solutionName,
     categoryId: params.categoryId,
-    format: projectType,
+    format,
   });
-  const format = projectType ? slugify(projectType) || 'saas' : 'saas';
 
   // Phase 5: ensure CatalogResearchContext row exists BEFORE the idea insert
   // so the FK target is in place. Idempotent — first publish for a sourceJobId
@@ -696,6 +725,7 @@ export async function publishIdea(params: {
           categoryId: params.categoryId,
           slug,
           format,
+          deliveryFormat,
           sourceJobId: params.sourceJobId,
           sourceNiche: report.niche || '',
           sourceVerdict: verdict,
@@ -1153,7 +1183,7 @@ interface BackendPainPointPreview {
   faqJsonMeta: unknown;
 }
 
-function toIdeaPreview(idea: Record<string, any>) {
+export function toIdeaPreview(idea: Record<string, any>) {
   return {
     id: idea.id,
     slug: idea.slug,
@@ -1164,6 +1194,7 @@ function toIdeaPreview(idea: Record<string, any>) {
     value_proposition: idea.valueProposition,
     project_type: idea.projectType,
     format: idea.format,
+    delivery_format: idea.deliveryFormat ?? null,
     core_features: idea.coreFeatures,
     target_personas: idea.targetPersonas,
     differentiation_factors: idea.differentiationFactors,

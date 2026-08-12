@@ -43,6 +43,18 @@ def test_stage_5_3_idea_and_tag_fields_survive():
     assert b.tags.pricing_shape_note.startswith("one-shot usage")
 
 
+def test_delivery_format_survives_checkpoint_and_legacy_missing_stays_none():
+    current = _idea("A")
+    current.delivery_format = "browser-extension"
+    restored = _roundtrip(BaseSolutionIdea, current)
+
+    assert restored.delivery_format == "browser-extension"
+
+    legacy = current.model_dump(mode="json")
+    legacy.pop("delivery_format")
+    assert BaseSolutionIdea.model_validate(legacy).delivery_format is None
+
+
 def test_stage_5_niche_difficulty_buyer_class_survives():
     v = NicheDifficultyVerdict(difficulty_level="high", software_addressability=0.4,
                                headline="h", narrative_summary="n",

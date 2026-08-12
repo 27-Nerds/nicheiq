@@ -654,6 +654,8 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
 
     parity_raw = (getattr(seed, "incumbent_parity", None) or "").strip()
     parity = parity_raw.lower()
+    red_team_verdict = (getattr(seed, "red_team_verdict", None) or "").strip().lower()
+    red_team_raised_concerns = red_team_verdict in ("killed", "weakened")
     unanchored = bool(getattr(seed, "unanchored_hypothesis", False))
     demoted = (getattr(seed, "candidate_status", "active") or "active") != "active"
     breadth = compute_evidence_breadth(
@@ -687,6 +689,16 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         outcome = "premise_unproven"
         headline = (f"{idea_name or 'Your idea'} rests on a problem this run's evidence "
                     "does not name. We graded it as a hypothesis.")
+    elif red_team_verdict == "killed":
+        outcome = "premise_unproven"
+        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
+                    "threads, but adversarial review could not confirm the premise. "
+                    "Demand is still unmeasured.")
+    elif red_team_verdict == "weakened":
+        outcome = "worth_testing"
+        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
+                    "threads, but adversarial review found material concerns. Demand "
+                    "is still unmeasured.")
     elif refinement is not None:
         # One verdict, not three: with a disclosed refinement, "nothing ships your
         # mechanism" would be true of the REFINED mechanism while the PITCHED one may
@@ -711,11 +723,16 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
                     "threads. Tools already ship in your mechanism's category, though "
                     "no direct equivalent of your exact product turned up. Demand is "
                     "still unmeasured.")
-    else:
+    elif parity.startswith("none"):
         outcome = "worth_testing"
         headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
                     "threads, and nothing we found ships your mechanism yet. Demand is "
                     "still unmeasured.")
+    else:
+        outcome = "worth_testing"
+        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
+                    "threads. The direct-equivalent probe did not produce a result, "
+                    "and demand is still unmeasured.")
 
     # ── three parts ──
     if unanchored:
@@ -738,10 +755,21 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         # NOT "None found": the category-incumbents table two cards below lists named
         # tools, and the two truths must not read as a contradiction.
         space_state, space_answer = "none_found", "No direct equivalent"
+    elif red_team_raised_concerns:
+        space_state, space_answer = "review_concerns", "Concerns found"
     else:
         space_state, space_answer = "not_checked", "Not checked"
-    space_detail = _display_parity(parity_raw) if space_state not in ("none_found", "not_checked") else (
-        NONE_FOUND_NOTE if space_state == "none_found" else "The competitor probe did not run for this idea.")
+    if space_state == "none_found":
+        space_detail = NONE_FOUND_NOTE
+    elif space_state == "review_concerns":
+        space_detail = (
+            "The direct-equivalent probe did not produce a result, but adversarial "
+            "review found material concerns. See What would kill it."
+        )
+    elif space_state == "not_checked":
+        space_detail = "The direct-equivalent probe did not produce a result for this idea."
+    else:
+        space_detail = _display_parity(parity_raw)
 
     parts = [
         {"key": "problem_real", "state": problem_state,

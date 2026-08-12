@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ArrowRight } from "lucide-svelte";
 
-  type Variant = "report" | "discovery" | "sample";
+  type Variant = "report" | "discovery" | "idea-check" | "sample";
 
   interface Props {
     variant: Variant;
@@ -12,13 +12,16 @@
 
   const tag = $derived(
     variant === "report" ? "Shared report"
+    : variant === "idea-check" ? "Shared idea check"
     : variant === "discovery" ? "Shared discovery"
     : "Sample report",
   );
 
   const accessState = $derived(
-    variant === "discovery" ? "Voting enabled" : "Read-only copy",
+    variant === "discovery" || variant === "idea-check" ? "Voting enabled" : "Read-only copy",
   );
+
+  const ctaLabel = $derived(variant === "idea-check" ? "Check your own idea" : "Research your own niche");
 
   const registerUrl = $derived.by(() => {
     const params = new URLSearchParams({ ref: `shared-${variant}` });
@@ -35,7 +38,7 @@
       <span class="shared-banner-meta">{accessState}</span>
     </p>
     <a href={registerUrl} class="shared-banner-cta">
-      Research your own niche
+      {ctaLabel}
       <ArrowRight class="shared-banner-icon" aria-hidden="true" />
     </a>
   </div>

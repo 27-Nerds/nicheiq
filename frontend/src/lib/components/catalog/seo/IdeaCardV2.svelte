@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import { solutionDisplayTitle, solutionCardDescription } from "$lib/utils/solution-utils.js";
+  import { deliveryFormatLabel } from "$lib/utils/deliveryFormatLabels";
   import Trifecta from "./Trifecta.svelte";
   import VerdictBadge from "./VerdictBadge.svelte";
   import Chip from "./Chip.svelte";
@@ -33,22 +34,17 @@
   // sections — keeps catalog and report views consistent.
   const title = $derived(solutionDisplayTitle(idea));
   const blurb = $derived(solutionCardDescription(idea));
-  // Dedupe — `format` and `project_type` frequently hold the same value
-  // ("saas", "directory", "aggregator"), which would render as twin chips
-  // on the card. Normalise + collapse case-insensitive duplicates.
-  const tags = $derived.by(() => {
-    const raw = [idea.format, idea.project_type].filter(
-      (t): t is string => typeof t === "string" && t.trim() !== "",
-    );
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const t of raw) {
-      const key = t.trim().toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(t);
-    }
-    return out.slice(0, 2);
+  // Dense cards carry one compact shape fact. Current rows prefer the delivery
+  // surface; legacy rows fall back to their project type. Never show both here.
+  const formatTag = $derived.by(() => {
+    const delivery = typeof idea.delivery_format === "string" && idea.delivery_format.trim()
+      ? idea.delivery_format
+      : null;
+    const projectType = typeof idea.project_type === "string" && idea.project_type.trim()
+      ? idea.project_type
+      : null;
+    const value = delivery ?? projectType;
+    return value ? deliveryFormatLabel(value) : null;
   });
 </script>
 
@@ -64,9 +60,9 @@
   <div class="ic-foot">
     <div class="ic-tags">
       <VerdictBadge verdict={idea.source_verdict} />
-      {#each tags as t}
-        <Chip label={t.replace(/-/g, " ")} />
-      {/each}
+      {#if formatTag}
+        <Chip label={formatTag} />
+      {/if}
     </div>
     <span class="ic-arrow"><ArrowRight size={14} /></span>
   </div>

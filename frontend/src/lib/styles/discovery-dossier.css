@@ -198,6 +198,59 @@
   transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Locked dossier teasers are shared by the owner and public views. The rows use
+   placeholder glyphs only; blur is presentation, never the privacy boundary. */
+.discovery-dossier .locked-subsection {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.discovery-dossier .locked-subsection-title {
+  margin: 0 0 0.625rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.discovery-dossier .locked-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.discovery-dossier .locked-post-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+}
+
+.discovery-dossier .locked-post-title {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discovery-dossier .locked-post-sub,
+.discovery-dossier .locked-post-score,
+.discovery-dossier .locked-post-age {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 @media (max-width: 760px) {
   .discovery-dossier {
     padding: var(--space-2);
@@ -218,5 +271,23 @@
   /* Tracks the mobile `.dossier-header` padding above, so the rail holds here too. */
   .discovery-dossier .section-container.expandable .expandable-trigger {
     padding-inline: var(--space-3);
+  }
+
+  .discovery-dossier .locked-post-row {
+    grid-template-columns: 1fr auto;
+    row-gap: var(--space-1);
+  }
+
+  .discovery-dossier .locked-post-sub {
+    grid-column: 1;
+  }
+
+  .discovery-dossier .locked-post-score {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .discovery-dossier .locked-post-age {
+    grid-column: 2;
   }
 }

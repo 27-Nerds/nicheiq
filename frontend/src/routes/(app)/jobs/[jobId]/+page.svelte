@@ -51,6 +51,7 @@
   import ProgressStepper from "$lib/components/preview/ProgressStepper.svelte";
   import PainPointSummaryCard from "$lib/components/preview/PainPointSummaryCard.svelte";
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
+  import { LOCKED_INFLUENCERS } from "$lib/data/lockedSharedPlaceholders";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
   import SelectionDecisionRecord from "$lib/components/selection/SelectionDecisionRecord.svelte";
@@ -1104,7 +1105,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 
   const selectionSubtitle = $derived(
     isValidation
-      ? "The working name we gave your idea, written up as a full product spec and checked against this market's evidence."
+      ? "Your idea, developed into a product concept and checked against this market's evidence."
       : 'Discovery is complete. Review the strongest opportunities before moving to Deep Research.',
   );
 
@@ -1830,15 +1831,19 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                     class="w-full text-left flex items-start justify-between gap-4"
                     style="min-height: 2rem"
                     aria-expanded={showAlternatives}
-                    aria-controls="validate-alternatives"
+                    aria-controls="validate-alternatives-content"
                     data-tour="validate-disclosure"
                     onclick={expandAlternatives}
                   >
                     <span>
                       <span class="block text-base font-semibold text-text-primary">How your idea was graded</span>
                       <span class="block mt-1 text-sm text-text-secondary">
-                        {ideaValidation.alternatives.count} other approaches to the same evidence{#if validationSeedRank}
-                          {' '}· yours ranked #{validationSeedRank.rank} of {validationSeedRank.total}{/if}
+                        {#if validationSeedRank}
+                          Your idea ranked #{validationSeedRank.rank} of {validationSeedRank.total} against
+                          {ideaValidation.alternatives.count} other approaches.
+                        {:else}
+                          {ideaValidation.alternatives.count} other approaches from the same evidence.
+                        {/if}
                       </span>
                     </span>
                     <ChevronDown class="w-4 h-4 mt-1 shrink-0 text-text-muted" aria-hidden="true" />
@@ -1851,10 +1856,11 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   </p>
                 </div>
               {:else}
-                <h2 class="sr-only" tabindex="-1" bind:this={alternativesHeadingEl}>
-                  How your idea was graded
-                </h2>
-                <SelectionWorkbench
+                <div id="validate-alternatives-content">
+                  <h2 class="sr-only" tabindex="-1" bind:this={alternativesHeadingEl}>
+                    How your idea was graded
+                  </h2>
+                  <SelectionWorkbench
                   jobId={jobId ?? ''}
                   solutions={displaySolutions}
                   selectionDraft={job.selectionDraft ?? null}
@@ -1900,7 +1906,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   pinnedIdeaKeys={validationPinnedKeys}
                   headerTitle="Your idea, ranked with the alternatives"
                   headerSub={validationSeedRow
-                    ? 'Your idea is first in this list. Add any of these to the Deep Research scope.'
+                    ? validationSeedRank
+                      ? `Your idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank.rank} marker is its score rank. Add any of these to the Deep Research scope.`
+                      : 'Your idea is pinned at the top for comparison. Add any of these to the Deep Research scope.'
                     : [
                         ideaValidation.seed_display_composite_score != null
                           ? `Your idea scored ${ideaValidation.seed_display_composite_score}/100 on this scale. It was ruled out, so it isn't in this list.`
@@ -1910,7 +1918,8 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                           : '',
                         'Add any of these to the Deep Research scope.',
                       ].filter(Boolean).join(' ')}
-                />
+                  />
+                </div>
               {/if}
             </section>
           {:else if previewFetchFailed}
@@ -2153,7 +2162,11 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
         {/if}
 
         {#if !isCompleted && (previewReport || discoveryData || discoveryFetchFailed || previewFetchFailed)}
-          <div class="discovery-sections" class:discovery-dossier={showDossierChrome} data-annotation-anchor="research-dossier">
+          <div
+            class="discovery-sections"
+            class:discovery-dossier={showDossierChrome}
+            data-annotation-anchor="research-dossier"
+          >
             {#if discoveryFetchFailed || previewFetchFailed}
               <div class="dossier-load-warning" role="alert">
                 <div>
@@ -2315,7 +2328,22 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   resetKey={sectionResetKey}
                   id="audience"
                 >
-                    <AudienceSnapshot data={previewReport.audience_mapping} />
+                  <AudienceSnapshot data={previewReport.audience_mapping} />
+                  <div class="locked-subsection">
+                    <h4 class="locked-subsection-title">Key Influencers</h4>
+                    <div class="locked-header">
+                      <span class="locked-pill">Unlocks with Deep Research</span>
+                    </div>
+                    <div class="locked-body preview-blur preview-locked" aria-hidden="true">
+                      {#each LOCKED_INFLUENCERS as influencer, i (i)}
+                        <div class="locked-post-row">
+                          <span class="locked-post-title">{influencer.name}</span>
+                          <span class="locked-post-sub">{influencer.platform}</span>
+                          <span class="locked-post-score">{influencer.follower_estimate}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
                 </ExpandableSection>
               {:else}
                 <AudienceSection data={previewReport.audience_mapping} />

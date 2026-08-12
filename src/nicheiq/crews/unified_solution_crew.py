@@ -42,6 +42,10 @@ from ..config.settings import settings
 from ..utils.llm_service import LLMService, LLMSystemicError, build_crew_llm
 from ..utils.content_security import fence_content, sanitize_social_content
 from ..models.competitor import CompetitiveAnalysisResult
+from ..models.delivery_format import (
+    infer_delivery_format,
+    normalize_delivery_format,
+)
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult, NicheContext
 from ..models.social_content import SocialContentCollection
@@ -899,7 +903,9 @@ _FULL_FIELD_SPEC = (
     "Fill EVERY field, grounded in the design and niche (do not leave fields blank):\n"
     "headline (5-12 words), short_description (<180 chars), description (4-6 "
     "sentences on HOW it works for the user), value_proposition, pain_points_addressed, "
-    "core_features, target_personas, technical_approach, "
+    "core_features, target_personas, technical_approach, delivery_format (ONE primary surface: "
+    "web-app, mobile-app, desktop-app, browser-extension, platform-plugin, api, bot-assistant, "
+    "data-product, report, service, physical-product, or other), "
     "differentiation_factors, requires_data_aggregation, data_sources, "
     "estimated_development_time, pricing_strategy, programmatic_seo_opportunity, "
     "content_generation_model, organic_discovery_queries (5-10), estimated_cac_organic, "
@@ -5819,7 +5825,7 @@ class UnifiedSolutionCrew:
             # Backfill project_type + the facet tags from the seed concept (RawConcept always has a
             # project_type; the refiner only sometimes re-emits it, so without this the idea's
             # project_type is often None — losing the UI chip + the angle/skip-gate type signal).
-            for tag in ("project_type", "mechanism_tag", "data_source_tag", "journey_tag"):
+            for tag in ("project_type", "delivery_format", "mechanism_tag", "data_source_tag", "journey_tag"):
                 if not getattr(winner, tag, None) and getattr(top, tag, None):
                     setattr(winner, tag, getattr(top, tag))
             # Carry the critic's feasibility/obviousness (the tournament doesn't recompute them; it DID
@@ -6110,6 +6116,7 @@ class UnifiedSolutionCrew:
             f"CONCEPT NAME: {concept.concept_name}\n"
             f"ONE-LINER: {concept.one_liner}\n"
             f"PROJECT TYPE: {concept.project_type}\n"
+            f"DELIVERY FORMAT: {getattr(concept, 'delivery_format', None) or 'infer the explicit primary surface; otherwise other'}\n"
             f"TARGET KEYWORDS: {', '.join(concept.target_keywords or [])}\n"
             f"WHY NON-OBVIOUS: {concept.why_non_obvious or ''}\n"
         )
@@ -6137,6 +6144,12 @@ class UnifiedSolutionCrew:
                     raise ValueError("refinement replaced the user-submitted product")
             # Carry structural tags + guarantee the two required scores are present.
             idea.solution_name = idea.solution_name or concept.concept_name
+            idea.delivery_format = (
+                normalize_delivery_format(getattr(concept, "delivery_format", None))
+                or normalize_delivery_format(getattr(idea, "delivery_format", None))
+                or infer_delivery_format(getattr(concept, "one_liner", None))
+                or "other"
+            )
             idea.mechanism_tag = concept.mechanism_tag
             idea.data_source_tag = concept.data_source_tag
             idea.journey_tag = concept.journey_tag
@@ -6838,6 +6851,7 @@ class UnifiedSolutionCrew:
             "data_feasibility_score": getattr(c, "data_feasibility_score", None),
             "programmatic_seo_opportunity": ", ".join(getattr(c, "target_keywords", None) or []),
             "project_type": getattr(c, "project_type", None),
+            "delivery_format": getattr(c, "delivery_format", None),
             "idea_tier": tier,
         })
 
@@ -7539,6 +7553,7 @@ class UnifiedSolutionCrew:
                     one_liner=clean_seed or "User-submitted product idea",
                     ideation_technique="atomic_feature",
                     project_type="other",
+                    delivery_format=infer_delivery_format(clean_seed) or "other",
                     target_keywords=[keyword_base, f"{keyword_base} app"],
                     why_non_obvious=(
                         "User-provided product brief; preserve its core mechanism during refinement."),
@@ -7694,6 +7709,7 @@ class UnifiedSolutionCrew:
             one_liner=canonical_brief,
             ideation_technique="atomic_feature",
             project_type="other",
+            delivery_format=infer_delivery_format(canonical_brief) or "other",
             target_keywords=[keyword_base, f"{keyword_base} tool"],
             data_source_hint=mechanism or None,
             why_non_obvious=str(proposal.get("rationale") or assumption_text or brief),
@@ -8951,6 +8967,23 @@ class UnifiedSolutionCrew:
             self._record_divergent_usage(usages)
             return None
 
+        # Canonicalize genuinely off-vocabulary representations before any immutable
+        # identity snapshot. The fallback/exact birth paths intentionally use the valid
+        # project type "other"; it must survive unchanged. Taking the lock before this
+        # shared mapping made a later representation-only change look like semantic drift.
+        # Keep this narrow: the broad pool contract also resets provenance and adjudicates
+        # routes, so it must remain downstream of the birth fidelity gates.
+        self._canonicalize_project_type(idea)
+        fidelity_brief = exact_semantic_brief or seed_text
+        typed_delivery_format = normalize_delivery_format(
+            getattr(idea, "delivery_format", None)
+        )
+        idea.delivery_format = (
+            infer_delivery_format(fidelity_brief)
+            or typed_delivery_format
+            or "other"
+        )
+
         from ..utils.seed_fidelity import (
             changed_seed_identity_fields,
             is_seed_faithful,
@@ -8958,8 +8991,6 @@ class UnifiedSolutionCrew:
             structured_synthesis_fidelity_failures,
             unpitched_core_dependencies,
         )
-        fidelity_brief = exact_semantic_brief or seed_text
-
         def _identity_is_faithful(candidate) -> bool:
             if self._current_seed_evaluation is None:
                 return is_seed_faithful(
@@ -9071,6 +9102,12 @@ class UnifiedSolutionCrew:
         def _assign(sol, c) -> None:
             sol.mechanism_tag, sol.data_source_tag, sol.journey_tag = (
                 c.mechanism_tag, c.data_source_tag, c.journey_tag)
+            sol.delivery_format = (
+                normalize_delivery_format(getattr(c, "delivery_format", None))
+                or normalize_delivery_format(getattr(sol, "delivery_format", None))
+                or infer_delivery_format(getattr(c, "one_liner", None))
+                or "other"
+            )
             obv = getattr(c, "obviousness_score", None)
             if obv is not None and obv >= 0:
                 sol.obviousness_score = obv
@@ -9479,7 +9516,76 @@ class UnifiedSolutionCrew:
         if capped_n:
             logger.info(f"[SEO-REALISM] capped {capped_n}/{len(ideas)} idea SEO scores")
 
-    _PROJECT_TYPE_VOCAB = ("saas", "directory", "aggregator", "comparison-tool", "marketplace")
+    _PROJECT_TYPE_VOCAB = tuple(_ALL_PROJECT_TYPES)
+
+    def _canonicalize_project_type(self, idea) -> bool:
+        """Apply the pool contract's one canonical project-type mapping.
+
+        Returns whether the idea changed. This is intentionally narrower than
+        _finalize_idea_pool so seed identity can lock the normalized representation
+        without resetting provenance or touching route evidence first.
+        """
+        raw_pt = getattr(idea, "project_type", None) or ""
+        pt = raw_pt.strip().lower()
+        if not pt:
+            return False
+        if pt in self._PROJECT_TYPE_VOCAB:
+            if raw_pt == pt:
+                return False
+            logger.info(
+                f"[PoolContract] project_type '{raw_pt[:50]}' -> '{pt}' "
+                f"({getattr(idea, 'solution_name', '?')})"
+            )
+            idea.project_type = pt
+            return True
+
+        if "aggregat" in pt:
+            norm = "aggregator"
+        elif "director" in pt:
+            norm = "directory"
+        elif "comparison" in pt or " vs " in pt:
+            norm = "comparison-tool"
+        elif "marketplace" in pt:
+            norm = "marketplace"
+        else:
+            norm = "saas"
+
+        # Keep informative prose (for example, "Desktop app + local agent") with the
+        # technical description instead of silently discarding it.
+        if len(pt) > len(norm) + 4:
+            technical_approach = getattr(idea, "technical_approach", "") or ""
+            if pt not in technical_approach.lower():
+                idea.technical_approach = (
+                    f"Delivery shape: {getattr(idea, 'project_type')}. "
+                    + technical_approach
+                ).strip()
+        logger.info(
+            f"[PoolContract] project_type '{pt[:50]}' -> '{norm}' "
+            f"({getattr(idea, 'solution_name', '?')})"
+        )
+        idea.project_type = norm
+        return True
+
+    @staticmethod
+    def _canonicalize_delivery_format(idea, *, fallback_text: str = "") -> bool:
+        """Normalize the primary delivery surface without guessing a web app."""
+        raw = getattr(idea, "delivery_format", None)
+        if raw is None and getattr(idea, "identity_origin", None) == "legacy_backfill":
+            return False
+        normalized = (
+            normalize_delivery_format(raw)
+            or infer_delivery_format(
+                fallback_text
+                or " ".join(str(getattr(idea, field, None) or "") for field in (
+                    "description", "value_proposition", "technical_approach",
+                ))
+            )
+            or "other"
+        )
+        if raw == normalized:
+            return False
+        idea.delivery_format = normalized
+        return True
 
     def _finalize_idea_pool(self, ideas: list) -> None:
         """Pool-assembly contract (2026-07-03): the FINAL pool is fed by four birth paths
@@ -9546,29 +9652,9 @@ class UnifiedSolutionCrew:
                                 f"'{sf}' not a known frame — normalized to 'pain'")
                 idea.source_frame = "pain"
             # project_type closed vocab (frontend chips + archetype logic key off it)
-            pt = (getattr(idea, "project_type", None) or "").strip().lower()
-            if pt and pt not in self._PROJECT_TYPE_VOCAB:
-                low = pt
-                if "aggregat" in low:
-                    norm = "aggregator"
-                elif "director" in low:
-                    norm = "directory"
-                elif "comparison" in low or " vs " in low:
-                    norm = "comparison-tool"
-                elif "marketplace" in low:
-                    norm = "marketplace"
-                else:
-                    norm = "saas"
-                # keep the informative prose (e.g. "Desktop app + local agent") with the
-                # technical description instead of silently discarding it
-                if len(pt) > len(norm) + 4:
-                    ta = getattr(idea, "technical_approach", "") or ""
-                    if pt not in ta.lower():
-                        idea.technical_approach = (f"Delivery shape: {getattr(idea, 'project_type')}. "
-                                                   + ta).strip()
-                logger.info(f"[PoolContract] project_type '{pt[:50]}' -> '{norm}' "
-                            f"({getattr(idea, 'solution_name', '?')})")
-                idea.project_type = norm
+            if self._canonicalize_project_type(idea):
+                clamped += 1
+            if self._canonicalize_delivery_format(idea):
                 clamped += 1
             # data_access_model closed vocab (Rule-A SEO gating + facets read the tier).
             # Alias FIRST (none/not-data-dependent/official -> public, licensed -> paywalled),

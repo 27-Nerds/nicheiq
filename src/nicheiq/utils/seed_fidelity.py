@@ -16,6 +16,7 @@ _IDENTITY_FIELDS = (
     "value_proposition",
     "core_features",
     "project_type",
+    "delivery_format",
     "mechanism_tag",
     "why_it_works",
     "innovation_angle",
@@ -83,6 +84,7 @@ _CORE_PROMISE_FIELDS = (
     "core_features",
     "mechanism_tag",
     "project_type",
+    "delivery_format",
     "target_personas",
 )
 

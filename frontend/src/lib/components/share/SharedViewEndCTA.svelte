@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ArrowRight } from "lucide-svelte";
 
-  type Variant = "report" | "discovery" | "sample";
+  type Variant = "report" | "discovery" | "idea-check" | "sample";
 
   interface Props {
     variant: Variant;
@@ -12,14 +12,24 @@
 
   const eyebrow = $derived(
     variant === "report" ? "Shared report · end"
+    : variant === "idea-check" ? "Shared idea check · end"
     : variant === "discovery" ? "Shared discovery · end"
     : "Sample report · end",
   );
 
   const headline = $derived(
-    variant === "discovery"
+    variant === "idea-check"
+      ? { primary: "You saw one idea checked.", secondary: "Now test yours against real evidence." }
+      : variant === "discovery"
       ? { primary: "You saw one niche discovered.", secondary: "Now run the research on yours." }
       : { primary: "You saw one niche analyzed.", secondary: "Now do the same for yours." },
+  );
+
+  const ctaLabel = $derived(variant === "idea-check" ? "Check your own idea" : "Research your own niche");
+  const trustCopy = $derived(
+    variant === "idea-check"
+      ? "Create an account to start a private idea check."
+      : "Create an account to start a private Discovery run.",
   );
 
   const headingId = $derived(`shared-${variant}-end-title`);
@@ -37,11 +47,11 @@
     </h2>
     <div class="end-cta-row">
       <a href={registerUrl} class="end-cta-primary">
-        Research your own niche
+        {ctaLabel}
         <ArrowRight class="end-cta-arrow" aria-hidden="true" />
       </a>
       <p class="end-cta-trust">
-        Create an account to start a private Discovery run.
+        {trustCopy}
       </p>
     </div>
   </div>

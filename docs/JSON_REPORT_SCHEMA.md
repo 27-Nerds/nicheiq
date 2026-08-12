@@ -75,7 +75,8 @@ The executive dashboard provides a quick go/no-go decision framework.
   "name": "string",
   "tagline": "string",
   "core_value_prop": "string",
-  "project_type": "string"
+  "project_type": "string",
+  "delivery_format": "browser-extension"
 }
 ```
 
@@ -85,6 +86,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `tagline` | `string` | One-sentence value proposition |
 | `core_value_prop` | `string` | Core value proposition (2-3 sentences) |
 | `project_type` | `string` | Solution type (e.g., "directory", "aggregator", "saas", "tool") |
+| `delivery_format` | `string \| null` | Primary delivery surface or deliverable. `null`/absent means the pipeline did not record it; legacy reports are not inferred retroactively. |
 
 #### `go_no_go_verdict`
 
@@ -511,7 +513,7 @@ identical field at a top-level `idea_portfolio_summary`.
 | `selection_rationale` | `string` | Why selected over alternatives (carries an appended keyword-validation update when the winner pivoted) |
 | `original_selection_reasoning` | `string \| null` | Original strategic rationale, preserved verbatim when keyword validation pivoted the winner |
 | `recommended_focus` | `string` | Strategic focus recommendation |
-| `selected_solution_details` | `object` | Complete solution details (38 keys) |
+| `selected_solution_details` | `object` | Complete solution details |
 | `solution_user_journey` | `string` | Step-by-step user workflow |
 | `solution_implementation_overview` | `string` | High-level implementation plan |
 | `mvp_scope_definition` | `string` | MVP scope definition |
@@ -521,7 +523,7 @@ identical field at a top-level `idea_portfolio_summary`.
 > **Note:** `selection_criteria_scores` was removed in favor of ScoreAccessor as single source of truth.
 > All diagnostic scores are now served via `key_metrics` in the executive dashboard.
 
-### `selected_solution_details` (38 keys)
+### `selected_solution_details`
 
 ```json
 {
@@ -540,6 +542,7 @@ identical field at a top-level `idea_portfolio_summary`.
   "market_fit_score": 0.88,
   "technical_feasibility_score": 0.72,
   "project_type": "directory",
+  "delivery_format": "web-app",
   "programmatic_seo_opportunity": "string",
   "content_generation_model": "string",
   "organic_discovery_queries": ["string"],
@@ -595,6 +598,7 @@ identical field at a top-level `idea_portfolio_summary`.
 | `market_fit_score` | `number` (0-1) | Market fit |
 | `technical_feasibility_score` | `number` (0-1) | Feasibility |
 | `project_type` | `string` | Project type |
+| `delivery_format` | `string \| null` | Primary delivery surface or deliverable, independent of the business archetype in `project_type`. Missing legacy values remain `null`. |
 | `programmatic_seo_opportunity` | `string` | SEO opportunity description |
 | `content_generation_model` | `string` | Content strategy |
 | `organic_discovery_queries` | `array[string]` | Example search queries |
@@ -1599,6 +1603,7 @@ Array of 7 recommended next steps.
   "core_features": ["string"],
   "target_personas": ["string"],
   "technical_approach": "string",
+  "delivery_format": "browser-extension",
   "novelty_score": 0.6,
   "novelty_rationale": "string",
   "differentiation_locus": "string",
@@ -1646,6 +1651,11 @@ evidence half (verbatim community quotes for the idea's addressed pains, round-r
 pains) and the adversarial half (the independent calibration critic's market_fit reason,
 verbatim). Both are `null` on legacy reports and quote-less pains. Present on Phase-2
 `alternative_solutions` and the Phase-1 preview equivalents.
+
+`delivery_format` is the idea's primary delivery surface or deliverable, separate from its
+business archetype in `project_type`. It is optional for backward compatibility and is carried
+through selected-solution details, Phase-1 alternatives, final-report alternatives, and the
+executive snapshot without inventing values for legacy reports.
 
 `incumbent_parity` levels (2026-07-06): `shipped by …` / `partial by …` / `substitute (…)` /
 `"none found"`. `substitute` means no commercial product ships the mechanism but a free/DIY
@@ -1856,6 +1866,7 @@ report (computed once, read from state). Null when there are no pains and no ide
 | `IntegrationComplexity` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"LOW-MEDIUM"`, `"MEDIUM-HIGH"` |
 | `SourcePriority` | `"HIGH"`, `"MEDIUM"`, `"LOW"` |
 | `WinningAngle` | `"distribution_seo"`, `"novel_differentiation"`, `"vertical_workflow"` — the GTM angle an idea is judged and ranked on |
+| `DeliveryFormat` | `"web-app"`, `"mobile-app"`, `"desktop-app"`, `"browser-extension"`, `"platform-plugin"`, `"api"`, `"bot-assistant"`, `"data-product"`, `"report"`, `"service"`, `"physical-product"`, `"other"` |
 
 ### Score Ranges
 
@@ -1952,6 +1963,13 @@ report (computed once, read from state). Null when there are no pains and no ide
 ---
 
 ## Version History
+
+- **v2.19** - Delivery-format durability (2026-08-12)
+  - New optional `delivery_format` on solution previews, selected solution details, Phase-1 and
+    final-report alternatives, and the executive solution snapshot. It records the primary
+    delivery surface independently of `project_type`; missing legacy values stay `null`.
+  - Catalog idea re-research forwards the stored value into its synthetic seed instead of
+    guessing a replacement.
 
 - **v2.18** - Scoring-version stamp (2026-08-02)
   - New top-level `scoring_version` (`string | null`) — the version of the scoring formulas

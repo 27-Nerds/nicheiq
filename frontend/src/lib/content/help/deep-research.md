@@ -1,6 +1,6 @@
 Discovery ends with a ranked set of candidate ideas. From that set, you can choose one to three exact candidates for a single Deep Research run. The run investigates the saved scope in more depth, compares the selected ideas, and produces a final recommendation. A run started directly from the Idea Catalog begins with one seeded idea.
 
-### Before you start
+## Before you start
 
 Only the shortlist is required. The selection workspace keeps the path short:
 
@@ -13,11 +13,11 @@ Nothing is charged while you choose, compare, or review. The confirmation screen
 
 Build limits, questions to resolve, and test plans are optional supporting work. Planning a test is a contextual follow-up to an unresolved question, not another required step. If none of the ranked ideas fit, branching a different direction is an escape hatch: the branch starts unevaluated, and the original candidate and its scores stay unchanged.
 
-### Why it's a separate phase
+## Why it's a separate phase
 
 Discovery is broad by design: it looks across a niche to find recurring problems, audiences, and plausible products. (See [How the research works](/help/discovery).) Deep Research narrows that breadth to the candidates you chose and spends more effort on the questions that can reverse the decision.
 
-### What it checks
+## What it checks
 
 - **Who the buyer is.** The report narrows the audience and the job the product would serve.
 - **Competition and substitutes.** It looks for direct products, adjacent products, free alternatives, and do-it-yourself routes.
@@ -26,12 +26,12 @@ Discovery is broad by design: it looks across a niche to find recurring problems
 - **Market size and timing.** It separates the initial serviceable slice from a broader market ceiling and labels estimates as estimates. Both are built from the keywords that survived grading, so a market size here can come out well below the size of the niche around it.
 - **Data access and build feasibility.** It checks whether required inputs appear obtainable and whether the implementation assumptions hold up.
 
-### The recommendation
+## The recommendation
 
 The selected candidates continue through the validation stages as one saved scope. The final report records a recommended winner, runner-up context where applicable, and a Go, Conditional, or No-Go verdict with its supporting reasons. That recommendation is research output, not a promise that the business will succeed.
 
 The recommendation is not simply the top of the ranking. A candidate whose core premise the adversarial review could not confirm is marked **premise unproven** and is passed over for the recommendation, so the highest-scoring idea in a report is sometimes not the recommended one. Its scores still stand — they describe how well it would work if the premise holds — and it stays available to you. (See [How scoring works](/help/methodology).)
 
-### What it can't do
+## What it can't do
 
 Deep Research still works from public discussion, search data, and point-in-time web evidence. It cannot observe private buyer behavior or predict the future. Growth, demand, and market-size figures are directional estimates with uncertainty. It also does not evaluate candidates you left outside the confirmed scope; changing the scope requires a new run.

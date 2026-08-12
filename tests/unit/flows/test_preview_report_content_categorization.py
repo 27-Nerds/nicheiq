@@ -163,3 +163,24 @@ class TestAngleFieldsInPreview:
         assert "freshness" in by_name["Cat"]["angle_rationale"]
         assert by_name["Cat"]["novelty_rationale"]
         assert by_name["Tool"]["winning_angle"] == "novel_differentiation"
+
+    def test_delivery_format_appears_on_preview_alternatives(self, tmp_path):
+        from nicheiq.models.solution_idea import IdeaGenerationResult
+
+        flow = ResearchFlow(niche_description=NICHE, job_id="test-job-format")
+        flow.state.idea_generation = IdeaGenerationResult(
+            solution_ideas=[
+                self._idea("Extension", delivery_format="browser-extension"),
+                self._idea("API", delivery_format="api"),
+                self._idea("Legacy"),
+            ]
+        )
+
+        path = flow._materialize_preview_report(str(tmp_path))
+        assert path is not None
+
+        alternatives = _read_preview(tmp_path)["alternative_solutions"]
+        by_name = {alternative["solution_name"]: alternative for alternative in alternatives}
+        assert by_name["Extension"]["delivery_format"] == "browser-extension"
+        assert by_name["API"]["delivery_format"] == "api"
+        assert by_name["Legacy"]["delivery_format"] is None

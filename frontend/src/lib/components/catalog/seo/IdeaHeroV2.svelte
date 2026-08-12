@@ -2,6 +2,8 @@
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import { mapVerdict } from "$lib/types/publicCatalog.js";
   import { solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils.js";
+  import { deliveryFormatLabel } from "$lib/utils/deliveryFormatLabels";
+  import { humanizeTag } from "$lib/utils/ideaTagLabels";
   import { page } from "$app/state";
   import IdeaHeroAside from "./IdeaHeroAside.svelte";
   import Chip from "./Chip.svelte";
@@ -95,21 +97,22 @@
   // through the canonical helper. Null when the report didn't produce a verdict.
   const verdict = $derived(mapVerdict(idea.source_verdict));
 
-  // Dedupe (case-insensitive) — `format` and `project_type` frequently hold
-  // the same value, producing duplicate chips on the hero.
-  const tags = $derived.by(() => {
-    const raw = [idea.format, idea.project_type].filter(
-      (t): t is string => typeof t === "string" && t.trim() !== "",
-    );
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const t of raw) {
-      const key = t.trim().toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(t.replace(/-/g, " "));
-    }
-    return out;
+  // The detail hero may show delivery and model together because each fact is
+  // explicitly labelled. Collapse identical values and preserve legacy model-only rows.
+  const shapeFacts = $derived.by(() => {
+    const delivery = typeof idea.delivery_format === "string" && idea.delivery_format.trim()
+      ? idea.delivery_format.trim()
+      : null;
+    const model = typeof idea.project_type === "string" && idea.project_type.trim()
+      ? idea.project_type.trim()
+      : null;
+    const sameValue = delivery && model
+      ? delivery.toLowerCase() === model.toLowerCase()
+      : false;
+    return [
+      ...(delivery ? [`Delivered as · ${deliveryFormatLabel(delivery)}`] : []),
+      ...(model && !sameValue ? [`Model · ${humanizeTag(model)}`] : []),
+    ];
   });
 </script>
 
@@ -138,10 +141,10 @@
     {#if lede}
       <p class="lede">{lede}</p>
     {/if}
-    {#if tags.length > 0}
+    {#if shapeFacts.length > 0}
       <div class="badges">
-        {#each tags as t}
-          <Chip label={t} />
+        {#each shapeFacts as fact}
+          <Chip label={fact} />
         {/each}
       </div>
     {/if}

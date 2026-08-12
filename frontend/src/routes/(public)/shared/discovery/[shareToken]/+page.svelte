@@ -13,14 +13,22 @@
 
   let { data }: Props = $props();
   const discovery = $derived(data.discovery);
+  const isIdeaCheckShare = $derived(Boolean(discovery?.previewReport?.idea_validation));
+  const sharedTitle = $derived(
+    discovery?.previewReport?.idea_validation?.idea_name?.trim()
+      || discovery?.nicheDisplay
+      || discovery?.niche,
+  );
 </script>
 
 <svelte:head>
   {#if discovery}
-    <title>{discovery.nicheDisplay ?? discovery.niche} - Shared Discovery - NicheIQ</title>
+    <title>{sharedTitle} - {isIdeaCheckShare ? 'Shared Idea Check' : 'Shared Discovery'} - NicheIQ</title>
     <meta
       name="description"
-      content="Vote on solution ideas for: {discovery.nicheDisplay ?? discovery.niche}"
+      content={isIdeaCheckShare
+        ? `Review the shared idea check for: ${sharedTitle}`
+        : `Vote on solution ideas for: ${sharedTitle}`}
     />
   {:else}
     <title>Discovery Unavailable - NicheIQ</title>

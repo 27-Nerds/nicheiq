@@ -15,7 +15,11 @@ import pytest
 
 from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
 from nicheiq.models.solution_idea import BaseSolutionIdea
-from nicheiq.utils.idea_carryover import NEVER_CARRY, carry_forward_idea_fields
+from nicheiq.utils.idea_carryover import (
+    CarryForwardMode,
+    NEVER_CARRY,
+    carry_forward_idea_fields,
+)
 
 # --- Real pre-pivot idea (ShowClose Settlement Desk, run 8ef396eb) ---------------------
 ORIGINAL = {
@@ -203,6 +207,98 @@ class TestRealHouseNutIndexPivot:
 
 
 class TestCarryForwardRules:
+    def test_real_pivot_caller_rederives_delivery_format_from_rebuilt_product(self):
+        original = BaseSolutionIdea.model_validate({
+            **ORIGINAL,
+            "delivery_format": "browser-extension",
+        })
+        mobile_payload = {
+            **PIVOT_PAYLOAD,
+            "description": "A native iOS mobile app for pre-show settlement benchmarks.",
+            "value_proposition": "Put settlement benchmarks in every operator's pocket.",
+            "technical_approach": "Native iOS mobile app with local benchmark caching.",
+        }
+        crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+        crew.cost_tracker = None
+
+        with patch(
+            "nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+            return_value=(_Result(mobile_payload), None),
+        ):
+            revision = UnifiedSolutionCrew._generate_pivot_revision(crew, original, {})
+
+        assert revision is not None
+        assert revision.delivery_format == "mobile-app"
+
+    def test_identity_changing_rebuild_does_not_carry_stale_delivery_format(self):
+        original = BaseSolutionIdea.model_validate({
+            "solution_name": "Extension", "description": "A browser extension.",
+            "value_proposition": "Browser help", "delivery_format": "browser-extension",
+            **_REQUIRED,
+        })
+        revision = BaseSolutionIdea.model_validate({
+            "solution_name": "Mobile", "description": "A native iOS mobile app.",
+            "value_proposition": "Mobile help", **_REQUIRED,
+        })
+
+        carried = carry_forward_idea_fields(original, revision)
+        UnifiedSolutionCrew._canonicalize_delivery_format(revision)
+
+        assert "delivery_format" not in carried
+        assert revision.delivery_format == "mobile-app"
+
+    def test_identity_changing_rebuild_prefers_its_typed_format_over_copy(self):
+        original = BaseSolutionIdea.model_validate({
+            "solution_name": "Extension", "description": "A browser extension.",
+            "value_proposition": "Browser help", "delivery_format": "browser-extension",
+            **_REQUIRED,
+        })
+        revision = BaseSolutionIdea.model_validate({
+            "solution_name": "API", "description": "An iOS mobile app client.",
+            "value_proposition": "Developer access", "delivery_format": "api", **_REQUIRED,
+        })
+
+        carried = carry_forward_idea_fields(original, revision)
+
+        assert "delivery_format" not in carried
+        assert revision.delivery_format == "api"
+
+    def test_identity_changing_rebuild_with_multiple_copy_surfaces_becomes_other(self):
+        original = BaseSolutionIdea.model_validate({
+            "solution_name": "Extension", "description": "A browser extension.",
+            "value_proposition": "Browser help", "delivery_format": "browser-extension",
+            **_REQUIRED,
+        })
+        revision = BaseSolutionIdea.model_validate({
+            "solution_name": "Mixed", "description": "An iOS mobile app and browser extension.",
+            "value_proposition": "Mixed access", **_REQUIRED,
+        })
+
+        carried = carry_forward_idea_fields(original, revision)
+
+        assert "delivery_format" not in carried
+        assert revision.delivery_format == "other"
+
+    def test_same_product_enrichment_preserves_delivery_format_explicitly(self):
+        original = BaseSolutionIdea.model_validate({
+            "solution_name": "Extension", "description": "A browser extension.",
+            "value_proposition": "Browser help", "delivery_format": "browser-extension",
+            **_REQUIRED,
+        })
+        enrichment = BaseSolutionIdea.model_validate({
+            "solution_name": "Extension", "description": "A browser extension with audit logs.",
+            "value_proposition": "Browser help", **_REQUIRED,
+        })
+
+        carried = carry_forward_idea_fields(
+            original,
+            enrichment,
+            mode=CarryForwardMode.SAME_PRODUCT_ENRICHMENT,
+        )
+
+        assert "delivery_format" in carried
+        assert enrichment.delivery_format == "browser-extension"
+
     def test_only_empty_fields_are_filled(self, original):
         rev = BaseSolutionIdea.model_validate({
             "solution_name": "Rev", "description": "d", "value_proposition": "v",

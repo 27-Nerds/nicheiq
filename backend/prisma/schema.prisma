@@ -1450,6 +1450,9 @@ model CatalogIdea {
   // Solution typology (saas | marketplace | tool | app | service | platform | extension | template).
   // Drives the slug suffix; defaults to 'saas' if unset during backfill.
   format                  String?                 @db.VarChar(40)
+  // Explicit primary delivery surface from current pipeline output.
+  // NULL means legacy/unknown; it must never be inferred from `format`.
+  deliveryFormat          String?                 @db.VarChar(40)
   // Source context (plain strings, not FKs)
   sourceJobId             String                  @db.VarChar(100)
   sourceNiche             String                  @db.Text

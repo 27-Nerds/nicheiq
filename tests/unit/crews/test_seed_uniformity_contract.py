@@ -102,12 +102,30 @@ class TestSeedUniformityContract:
     def test_seed_idea_matches_pool_idea_key_set_and_execute_seed_pipeline_returns_it_unstripped(
         self, monkeypatch,
     ):
-        pool_idea = _full_instance(BaseSolutionIdea, solution_name="Pool Idea")
+        # Generic fillers create an invalid project type and claim aggregation without a route;
+        # keep this uniformity fixture production-shaped so it isolates instance/key parity.
+        pool_idea = _full_instance(
+            BaseSolutionIdea,
+            solution_name="Pool Idea",
+            project_type="other",
+            requires_data_aggregation=False,
+            data_sources=[],
+            market_fit_claimed_route=None,
+            data_source_tag=None,
+        )
         seed_idea = _full_instance(
-            BaseSolutionIdea, solution_name="Seed Idea", source_frame="user_seed",
+            BaseSolutionIdea,
+            solution_name="Seed Idea",
+            source_frame="user_seed",
+            project_type="other",
+            requires_data_aggregation=False,
+            data_sources=[],
+            market_fit_claimed_route=None,
+            data_source_tag=None,
         )
 
         crew = _crew()
+        crew._semantic_seed_identity_matches = lambda *_args, **_kwargs: True
         monkeypatch.setattr(UnifiedSolutionCrew, "_run_seed_cell", lambda self, **kw: seed_idea)
         monkeypatch.setattr(UnifiedSolutionCrew, "_score_wave", lambda self, wave, **kw: None)
         monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seed_tail", lambda self, wave: None)

@@ -107,6 +107,7 @@ export interface IdeaPreview {
   value_proposition: string | null;
   project_type: string | null;
   format: string | null;
+  delivery_format: string | null;
   core_features: string[] | null;
   target_personas: string[] | null;
   differentiation_factors: string[] | null;

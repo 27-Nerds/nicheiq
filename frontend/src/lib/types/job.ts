@@ -164,6 +164,7 @@ export interface SolutionPreview {
   core_features?: string[];
   target_personas?: string[];
   project_type?: string | null;
+  delivery_format?: string | null;
   differentiation_factors?: string[] | null;
   market_fit_score?: number | null;
   technical_feasibility_score?: number | null;

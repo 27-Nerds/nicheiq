@@ -493,6 +493,7 @@ def _synthesize_idea_from_concept(concept, pain):
         target_personas=["Primary niche audience"],
         differentiation_factors=[diff] if diff else None,
         project_type=getattr(concept, "project_type", None),
+        delivery_format=getattr(concept, "delivery_format", None),
         organic_discovery_queries=list(getattr(concept, "target_keywords", None) or []) or None,
         # Neutral placeholder scores so the card isn't blank; the description flags it
         # as a re-injected concept to refine. Novelty derived from the concept's

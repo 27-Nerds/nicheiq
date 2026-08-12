@@ -2297,6 +2297,7 @@ It differentiates through {diff_text}.
                     core_features=solution.core_features[:5] if solution.core_features else None,
                     target_personas=solution.target_personas[:3] if solution.target_personas else None,
                     technical_approach=solution.technical_approach,
+                    delivery_format=getattr(solution, 'delivery_format', None),
 
                     # NEW: Additional scores and feasibility
                     novelty_score=getattr(solution, 'novelty_score', None),
@@ -2990,6 +2991,9 @@ It differentiates through {diff_text}.
                     else getattr(selected_solution, "description", None)
                 ),
                 project_type=_clean_text(getattr(selected_solution, "project_type", None)),
+                delivery_format=_clean_text(
+                    getattr(selected_solution, "delivery_format", None)
+                ),
             )
             if solution_snapshot.project_type is None:
                 logger.warning(

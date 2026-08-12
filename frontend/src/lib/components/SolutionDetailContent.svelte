@@ -28,6 +28,7 @@
   } from "$lib/utils/solution-utils";
   import { normalizePainSignal } from "$lib/utils/painSignal";
   import { buyerFacingSolutionPreview } from "$lib/selection/buyerFacingResearchProse";
+  import { deliveryFormatLabel } from "$lib/utils/deliveryFormatLabels";
 
   interface Props {
     solution: SolutionPreview;
@@ -210,11 +211,16 @@
     const pain = provenance?.pain;
     const audience = provenance?.seg || solution.tags?.target_market;
     const productShape = solution.tags?.project_type || solution.project_type;
+    const deliveryFormat = solution.delivery_format;
     const revenue = solution.tags?.monetization;
 
     if (pain) facts.push({ label: "Pain signal", value: pain });
     if (audience) facts.push({ label: "Audience", value: humanizeTag(audience) });
-    if (productShape) facts.push({ label: "Product shape", value: humanizeTag(productShape) });
+    if (deliveryFormat) {
+      facts.push({ label: "Delivered as", value: deliveryFormatLabel(deliveryFormat) });
+    } else if (productShape) {
+      facts.push({ label: "Product shape", value: humanizeTag(productShape) });
+    }
     if (revenue) facts.push({ label: "Revenue model", value: humanizeTag(revenue) });
     if (devTimeShort) facts.push({ label: "Build range", value: devTimeShort });
 

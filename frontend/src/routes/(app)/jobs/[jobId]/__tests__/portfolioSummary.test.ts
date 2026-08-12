@@ -187,8 +187,8 @@ afterEach(() => {
   cleanup();
 });
 
-describe("job page — the analyst portfolio summary survives the server-to-component wiring", () => {
-  it("renders the Discovery take and badges the recommended idea from a verified pool", async () => {
+describe("job page — stored portfolio prose cannot become recommendation authority", () => {
+  it("shows neutral guidance and no recommendation badge even for a matching pool", async () => {
     const data = await loadPageData(verifiedSolutionsResponse());
 
     // Guard the input, not the conclusion: the load must have carried the fingerprint
@@ -199,18 +199,16 @@ describe("job page — the analyst portfolio summary survives the server-to-comp
     const view = render(PageComponent, { props: { data: data as never } });
 
     const take = await view.findByLabelText("Discovery take");
-    // The idea name renders as an openable reference, so its accessible affordance text
-    // sits between the name and the rest of the sentence.
-    expect(take).toHaveTextContent(
-      /Alpha Idea.*most deserves deeper validation because its buyer is named directly in the evidence\./,
+    expect(take).toHaveTextContent("Discovery take unavailable");
+    expect(take).not.toHaveTextContent(
+      "most deserves deeper validation because its buyer is named directly in the evidence",
     );
-    expect(take).not.toHaveTextContent("Discovery take unavailable");
 
     const table = await view.findByRole("table", { name: "Ranked ideas" });
     await waitFor(() =>
       expect(table.querySelectorAll("[data-solution-name]")).toHaveLength(2));
     expect(table.querySelector('[data-solution-name="Alpha Idea"]'))
-      .toHaveTextContent("Recommended");
+      .not.toHaveTextContent("Recommended");
     expect(table.querySelector('[data-solution-name="Beta Idea"]'))
       .not.toHaveTextContent("Recommended");
   });

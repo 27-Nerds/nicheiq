@@ -18,6 +18,8 @@
     /** Ruled-out forward path: expands + scrolls to the alternatives workbench (the
      *  job page owns the announce/focus/scroll choreography). */
     onShowAlternatives?: () => void;
+    /** Public shares show the complete evidence record without owner-only paid actions. */
+    readOnly?: boolean;
   }
 
   let {
@@ -27,6 +29,7 @@
     reviewHref = "",
     onContinue,
     onShowAlternatives,
+    readOnly = false,
   }: Props = $props();
 
   const parts = $derived(data.parts ?? []);
@@ -44,7 +47,9 @@
     }
     if (key === "space_occupied") {
       // Occupied is demand proof AND constraint — neutral-strong, not an error.
-      return state === "shipped" || state === "partial" ? "note" : "muted";
+      return state === "shipped" || state === "partial" || state === "review_concerns"
+        ? "note"
+        : "muted";
     }
     return "muted"; // demand: not measured
   }
@@ -196,10 +201,12 @@
            grammar (Q6). -->
       <div class="iv-pivot" data-tour="validate-evaluated">
         <h3 class="iv-panel-title">What we evaluated</h3>
-        <p class="iv-pivot-name">
-          {data.evaluated_idea.name ?? "—"}
-          <span class="iv-tag">your idea, developed</span>
-        </p>
+        {#if refinement}
+          <p class="iv-pivot-name">
+            {data.evaluated_idea.name ?? "—"}
+            <span class="iv-tag">your idea, developed</span>
+          </p>
+        {/if}
         {#if data.evaluated_idea.value_proposition}
           <p class="iv-body-text">{data.evaluated_idea.value_proposition}</p>
         {/if}
@@ -222,9 +229,8 @@
           </dl>
         {:else}
           <p class="iv-body-text">
-            We developed your pitch into a complete product spec so it could be scored
-            beside the other approaches. The name is ours; nothing you stated was
-            changed.
+            We expanded your pitch for scoring without changing its buyer, problem,
+            mechanism, or delivery form.
           </p>
         {/if}
         {#if refinement && data.original_mechanism_parity}
@@ -235,7 +241,9 @@
       </div>
     {/if}
     <!-- Priced honestly: an unpriced redo link next to a paid receipt reads as a trap. -->
-    <a class="iv-meta-link" href={rerunHref}>Not right? Run it again in your own words {rerunPriceSuffix}&nbsp;→</a>
+    {#if !readOnly}
+      <a class="iv-meta-link" href={rerunHref}>Does this miss your intent? Edit and rerun {rerunPriceSuffix}&nbsp;→</a>
+    {/if}
   </div>
 
   <!-- ── Card: The verdict ── -->
@@ -271,12 +279,12 @@
         <!-- NBSP binds value+unit and each middot to its preceding segment: wrapped
              lines start with a segment, never with "MO" or a stray dot. -->
         <p class="iv-record">
-          EVIDENCE&nbsp;{data.evidence_confidence.toUpperCase()}&nbsp;· {data.breadth.posts}&nbsp;POSTS&nbsp;·
-          {data.breadth.distinct_authors}&nbsp;ACCOUNTS&nbsp;· {data.breadth.distinct_communities}&nbsp;COMMUNITIES&nbsp;·
-          {data.breadth.months_spanned}&nbsp;MO
+          Evidence confidence: {data.evidence_confidence.toLowerCase()} · {data.breadth.posts}&nbsp;posts ·
+          {data.breadth.distinct_authors}&nbsp;accounts · {data.breadth.distinct_communities}&nbsp;communities ·
+          {data.breadth.months_spanned}&nbsp;months
         </p>
       {:else}
-        <p class="iv-record">EVIDENCE&nbsp;{data.evidence_confidence.toUpperCase()}</p>
+        <p class="iv-record">Evidence confidence: {data.evidence_confidence.toLowerCase()}</p>
       {/if}
       <p class="iv-confidence-reason">{data.evidence_confidence_reason}</p>
       {#if data.duplicate_of}
@@ -334,7 +342,7 @@
 
   {#if !isNotEvaluated}
     <!-- ── Card: Evidence for your idea ── -->
-    <div class="iv-card" data-tour="validate-evidence">
+    <div class="iv-card iv-wide-evidence" data-tour="validate-evidence">
       <h2 class="iv-eyebrow">Evidence for your idea</h2>
       {#if data.unanchored_hypothesis}
         <p class="iv-body-text">
@@ -406,13 +414,20 @@
              is dead-field filler (rule 16). A gap is a standalone qualitative fact —
              it rides as a labeled sub-line on the rows that actually have one, the
              same primitive the verdict-trigger evidence uses. -->
-        <div class="iv-table-wrap" id="iv-competitor-rows">
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex (A named overflow region must receive focus for keyboard panning.) -->
+        <div
+          class="iv-table-wrap"
+          id="iv-competitor-rows"
+          role="region"
+          aria-label="Competitors and adjacent tools"
+          tabindex="0"
+        >
           <table class="iv-table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>What they ship</th>
-                {#if showPriceColumn}<th>Price</th>{/if}
+                <th scope="col">Product</th>
+                <th scope="col">What they ship</th>
+                {#if showPriceColumn}<th scope="col" class="iv-price">Price</th>{/if}
               </tr>
             </thead>
             <tbody>
@@ -542,7 +557,7 @@
 
     <!-- ── Card: What would kill it ── -->
     {#if data.kill_risks.length || data.red_team_verdict}
-      <div class="iv-card">
+      <div class="iv-card iv-wide-evidence">
         <h2 class="iv-eyebrow">What would kill it</h2>
         {#if data.red_team_verdict}
           <p class="iv-body-text">
@@ -577,7 +592,7 @@
   <!-- ── Card: cheapest next test (its own card — the page's second-most actionable
        block was buried under three caveats). ── -->
   <div class="iv-card">
-    <h2 class="iv-eyebrow">Your cheapest next test</h2>
+    <h2 class="iv-eyebrow">Lowest-cost next test</h2>
     <ol class="iv-ladder">
       {#each data.experiment_ladder as rung, i}
         <li class:iv-rung-next={i === data.next_experiment_index}>
@@ -588,8 +603,8 @@
     </ol>
   </div>
 
-  <!-- ── Commit panel ── -->
-  {#if isNotEvaluated}
+  <!-- ── Commit panel (owner only) ── -->
+  {#if !readOnly && isNotEvaluated}
     <div class="iv-card iv-commit" data-tour="validate-continue">
       <h2 class="iv-eyebrow">Next</h2>
       <h3 class="iv-commit-title">This run couldn't grade your idea</h3>
@@ -602,21 +617,18 @@
         <p class="iv-record iv-cost">NEW&nbsp;CHECK&nbsp;· {checkCost}&nbsp;CREDITS&nbsp;· BALANCE&nbsp;{creditBalance}</p>
       {/if}
     </div>
-  {:else if data.seed_purchasable}
+  {:else if !readOnly && data.seed_purchasable}
     <div class="iv-card iv-commit" data-tour="validate-continue">
       <h2 class="iv-eyebrow">Next · your idea</h2>
       <h3 class="iv-commit-title">Measure demand for your idea</h3>
       <p class="iv-body-text">
-        Deep Research answers question 3: real search demand, market size, pricing
-        depth, and a build plan for your idea.
-      </p>
-      <p class="iv-body-text">
+        Deep Research answers question 3 with search demand, market size, pricing
+        depth, and a build plan.
         {#if showPivotCard}
-          It runs on your idea as evaluated, or on the adjusted revision above. You
+          Run it on your idea as evaluated or on the adjusted revision above. You
           choose at review, and review shows the exact scope before anything is charged.
         {:else}
-          It runs on your idea as evaluated. Review shows the exact scope before
-          anything is charged.
+          Review shows the exact scope before anything is charged.
         {/if}
       </p>
       <a
@@ -635,7 +647,7 @@
         </p>
       {/if}
     </div>
-  {:else}
+  {:else if !readOnly}
     <div class="iv-card iv-commit" data-tour="validate-continue">
       <h2 class="iv-eyebrow">Next</h2>
       <h3 class="iv-commit-title">Deep research isn't available for this idea</h3>
@@ -668,24 +680,37 @@
 <style>
   .iv {
     display: grid;
-    gap: 1rem;
-    /* One right edge for all supporting prose: 12px sets ~80ch, 13px ~74ch. Without
-       it every text run stretched across the full ~1116px column (~130-145ch). */
-    --iv-measure: 36rem;
+    gap: 0;
+    margin-top: var(--space-6);
+    /* Editorial measure for a paid report: long enough to scan, short enough to read. */
+    --iv-measure: 76ch;
   }
 
   .iv-card {
-    padding: 1rem 1.1rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    box-shadow: var(--shadow-sm);
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-6) 0;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--color-border);
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  /* The two moments of the page get air the supporting cards don't. */
+  .iv-card:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  /* The two decision moments keep elevation; supporting evidence reads as a document. */
   .iv-verdict,
   .iv-commit {
-    margin-block: 0.5rem;
+    margin-block: var(--space-6);
+    padding: var(--space-6);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
 
   .iv-list li,
@@ -701,22 +726,28 @@
     max-width: var(--iv-measure);
   }
 
-  /* Canonical eyebrow recipe: record-line at 0.08em tracking. */
-  .iv-eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    margin: 0 0 0.6rem;
+  /* Evidence records are for scanning and comparison, not continuous reading.
+     Let their quotes, risks, and dispositions use the report column instead of
+     inheriting the narrower narrative-prose measure. */
+  .iv-wide-evidence .iv-body-text,
+  .iv-wide-evidence .iv-list li,
+  .iv-wide-evidence .iv-quote,
+  .iv-wide-evidence .iv-related li {
+    max-width: none;
   }
-  /* The two MAJOR moments open one step larger and darker than supporting cards —
-     ten identical 10px openers gave the eye no hierarchy at all. */
+
+  /* Section headings stay sentence-case; mono uppercase is reserved for data records. */
+  .iv-eyebrow {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-3);
+  }
   .iv-verdict .iv-eyebrow,
   .iv-commit .iv-eyebrow {
-    font-size: 0.6875rem;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
   }
 
   /* Nested-panel titles are sentence-case body type — a mono-caps eyebrow INSIDE a
@@ -770,7 +801,7 @@
   }
   .iv-echo-row dd {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-base);
     line-height: 1.5;
     color: var(--color-text-primary);
     text-wrap: pretty;
@@ -779,15 +810,16 @@
   .iv-tag {
     display: inline-block;
     margin-left: 0.35rem;
-    padding: 0.05rem 0.4rem;
-    border: 1px solid var(--color-border);
-    border-radius: 999px;
+    padding: 0;
+    border: 0;
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     letter-spacing: 0.02em;
     color: var(--color-text-muted);
     white-space: nowrap;
   }
+  .iv-tag::before { content: "("; }
+  .iv-tag::after { content: ")"; }
 
   .iv-raw {
     margin-top: 0.6rem;
@@ -864,7 +896,7 @@
     font-weight: 600;
     line-height: 1.45; /* canonical pull-quote leading — 1.35 read compressed at two lines */
     letter-spacing: -0.01em;
-    max-width: 44rem; /* one step wider than --iv-measure: the page's widest line, earned */
+    max-width: 52ch;
     color: var(--color-text-primary);
     margin: 0 0 0.85rem;
     text-wrap: balance;
@@ -904,7 +936,7 @@
     white-space: nowrap;
   }
   .iv-part-detail {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     line-height: 1.45;
     color: var(--color-text-secondary);
     text-wrap: pretty;
@@ -914,12 +946,11 @@
      xs / 700 / 0.07em / uppercase / muted / tabular. */
   .iv-record {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
+    font-size: 0.6875rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "zero" 0;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
     color: var(--color-text-muted);
     margin: 0.75rem 0 0;
   }
@@ -938,11 +969,11 @@
   }
 
   .iv-body-text {
-    font-size: 0.8125rem;
-    line-height: 1.5;
+    font-size: var(--text-base);
+    line-height: 1.55;
     color: var(--color-text-secondary);
     margin: 0 0 0.4rem;
-    max-width: 76ch;
+    max-width: var(--iv-measure);
     text-wrap: pretty;
   }
 
@@ -956,7 +987,7 @@
   .iv-list li {
     position: relative;
     padding-left: 0.9rem;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--color-text-secondary);
   }
@@ -987,7 +1018,7 @@
     gap: 0.7rem;
   }
   .iv-pain-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-text-primary);
     margin: 0 0 0.25rem;
@@ -1009,17 +1040,11 @@
     margin: 0.25rem 0 0;
     padding-left: 0.75rem;
     border-left: 2px solid var(--color-border-emphasis);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--color-text-secondary);
     font-style: italic;
-    /* Supporting evidence, not the document: cap runaway snippets at 4 lines
-       (the full thread lives in the discovery dossier below). */
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
-    overflow: hidden;
+    text-wrap: pretty;
   }
   /* Two stacked quotes need their own rhythm — at title-gap spacing they read as
      one broken block. */
@@ -1029,6 +1054,11 @@
 
   .iv-table-wrap {
     overflow-x: auto;
+    border-radius: var(--radius-md);
+  }
+  .iv-table-wrap:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .iv-table {
     width: 100%;
@@ -1057,8 +1087,13 @@
     vertical-align: top;
   }
   .iv-price {
+    text-align: right;
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+  .iv-table th.iv-price {
+    text-align: right;
   }
   /* Labeled sub-facts inside the what-they-ship cell (verdict evidence, gap). */
   .iv-cell-note {
@@ -1072,7 +1107,7 @@
     margin-top: 0.85rem;
     padding: 0.75rem 0.85rem;
     border: 1px solid var(--color-border-emphasis);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-bg-surface) 70%, transparent);
   }
   .iv-pivot-name {
@@ -1180,7 +1215,7 @@
     row-gap: 0.1rem;
     padding: 0.4rem 0.55rem;
     border: 1px solid transparent;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
   }
   .iv-ladder li::before {
     content: counter(rung) ".";
@@ -1212,8 +1247,7 @@
   /* The 100-credit ask gets chrome of its own — it wore the identical flat card
      as the caveats list. */
   .iv-commit {
-    padding: 1.4rem 1.4rem 1.5rem;
-    border-color: var(--color-border-emphasis);
+    padding: var(--space-6);
   }
   .iv-commit-title {
     font-family: var(--font-display);
@@ -1270,6 +1304,23 @@
   }
 
   @media (max-width: 640px) {
+    .iv {
+      margin-top: var(--space-4);
+    }
+    .iv-card {
+      padding-block: var(--space-5);
+    }
+    .iv-verdict,
+    .iv-commit {
+      margin-block: var(--space-4);
+      padding: var(--space-4);
+    }
+    .iv-raw summary,
+    .iv-meta-link,
+    .iv-more-rows,
+    .iv-btn-primary {
+      min-height: 2.75rem;
+    }
     /* Rows keep subgrid — retarget the PARENT's tracks to collapse. */
     .iv-parts {
       grid-template-columns: 1.1rem minmax(0, 1fr);

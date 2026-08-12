@@ -150,7 +150,7 @@ export type IdeaValidationOutcome =
 
 export interface IdeaValidationPart {
 	key: 'problem_real' | 'space_occupied' | 'demand';
-	/** problem_real: supported|thin|not_found · space_occupied: shipped|partial|adjacent|none_found|not_checked · demand: not_measured */
+	/** problem_real: supported|thin|not_found · space_occupied: shipped|partial|adjacent|none_found|review_concerns|not_checked · demand: not_measured */
 	state: string;
 	answer: string;
 	detail: string;
@@ -412,6 +412,7 @@ export interface SolutionSnapshot {
 	tagline: string;
 	core_value_prop: string;
 	project_type: string;
+	delivery_format?: string | null;
 }
 
 export interface GoNoGoVerdict {
@@ -1091,6 +1092,7 @@ export interface SolutionDetails {
 	market_fit_score?: number;
 	technical_feasibility_score?: number;
 	project_type?: string;
+	delivery_format?: string | null;
 	programmatic_seo_opportunity?: string;
 	programmatic_seo_opportunity_refined?: string;
 	content_generation_model?: string;
@@ -1242,6 +1244,7 @@ export interface AlternativeSolution {
 	core_features?: string[];
 	target_personas?: string[];
 	technical_approach?: string;
+	delivery_format?: string | null;
 
 	// Additional scores and feasibility
 	novelty_score?: number;

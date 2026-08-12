@@ -112,8 +112,15 @@ async function settledSeedOutcome(jobId: string, sourceMessageId: string): Promi
  */
 jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    // Project-shape filters do not apply to Validate mode. Strip this one irrelevant
+    // legacy/client field before schema parsing so malformed historical values cannot
+    // block an otherwise valid submitted-product check. Every other field remains strict.
+    const requestBody = req.body?.entryMode === 'validate_idea'
+      ? { ...req.body, allowedProjectTypes: undefined }
+      : req.body;
+
     // Validate request body
-    const input = CreateJobSchema.parse(req.body);
+    const input = CreateJobSchema.parse(requestBody);
 
     // Use authenticated user's ID
     const userId = req.user!.id;
@@ -129,6 +136,11 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       return;
     }
     const chatMode = input.chatMode === true;
+    // Validate mode evaluates the submitted product as-is. Project-shape filters only
+    // constrain generated portfolios, so normalize legacy/alternate clients here.
+    const allowedProjectTypes = input.entryMode === 'validate_idea'
+      ? undefined
+      : input.allowedProjectTypes;
 
     // The new Job, the exact charge that bought this attempt, and its dispatch authorization are
     // one commit. A dispatch can therefore never exist without its charge (or vice versa).
@@ -137,7 +149,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
         tx,
         userId,
         input.niche,
-        input.allowedProjectTypes,
+        allowedProjectTypes,
         'interactive',
         input.entryMode,
         input.ideaFocus,
@@ -153,7 +165,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
           job_id: created.job.id,
           niche: input.niche,
           user_id: userId,
-          allowed_project_types: input.allowedProjectTypes ?? null,
+          allowed_project_types: allowedProjectTypes ?? null,
           resume: false,
           job_mode: 'interactive',
           entry_mode: input.entryMode ?? null,

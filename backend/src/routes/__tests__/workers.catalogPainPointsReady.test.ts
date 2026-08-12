@@ -58,6 +58,8 @@ const mockExtractOrCreate = vi.fn();
 const mockHasMeaningfulResearchContext = vi.fn();
 const mockGeneratePainPointSlug = vi.fn();
 const mockGenerateIdeaSlug = vi.fn();
+const mockCatalogIdeaFormat = vi.fn();
+const mockCatalogIdeaDeliveryFormat = vi.fn();
 const mockInvalidateCategoryLanding = vi.fn();
 const mockInvalidateCatalogTotals = vi.fn();
 const mockInvalidateTopCatalogPainPoints = vi.fn();
@@ -80,6 +82,8 @@ vi.mock('../../services/researchContextService.js', () => ({
 vi.mock('../../services/catalogService.js', () => ({
   generatePainPointSlug: (...args: unknown[]) => mockGeneratePainPointSlug(...args),
   generateIdeaSlug: (...args: unknown[]) => mockGenerateIdeaSlug(...args),
+  catalogIdeaFormat: (...args: unknown[]) => mockCatalogIdeaFormat(...args),
+  catalogIdeaDeliveryFormat: (...args: unknown[]) => mockCatalogIdeaDeliveryFormat(...args),
   invalidateCategoryLanding: (...args: unknown[]) =>
     mockInvalidateCategoryLanding(...args),
   invalidateCatalogTotals: (...args: unknown[]) => mockInvalidateCatalogTotals(...args),
@@ -139,6 +143,18 @@ beforeEach(async () => {
   mockExtractOrCreate.mockResolvedValue({ detailedPainPoints: [{ title: 'x' }] });
   mockHasMeaningfulResearchContext.mockReturnValue(true);
   mockGeneratePainPointSlug.mockResolvedValue('slug');
+  mockGenerateIdeaSlug.mockResolvedValue('idea-slug');
+  mockCatalogIdeaFormat.mockImplementation(
+    (idea: Record<string, unknown>) =>
+      String(idea.delivery_format ?? idea.project_type ?? 'saas'),
+  );
+  mockCatalogIdeaDeliveryFormat.mockImplementation((idea: Record<string, unknown>) => {
+    if (typeof idea.delivery_format !== 'string') return null;
+    const normalized = idea.delivery_format.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    return ['web-app', 'mobile-app', 'desktop-app', 'browser-extension', 'platform-plugin',
+      'api', 'bot-assistant', 'data-product', 'report', 'service', 'physical-product', 'other']
+      .includes(normalized) ? normalized : null;
+  });
   mockTxPainPointUpdateMany.mockResolvedValue({ count: 0 });
   mockTxJobUpdateMany.mockResolvedValue({ count: 1 });
   mockTxDispatchUpdateMany.mockResolvedValue({ count: 1 });
@@ -386,6 +402,61 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
 });
 
 describe('POST /api/workers/catalog-ideas-ready — dispatch settlement', () => {
+  it('stores delivery format separately from project type', async () => {
+    await request(app)
+      .post('/api/workers/catalog-ideas-ready')
+      .send({
+        worker_id: 'w1',
+        job_id: jobId,
+        category_id: categoryId,
+        ideas: [{
+          solution_name: 'Reply Draft',
+          description: 'Drafts support replies.',
+          delivery_format: 'browser-extension',
+          project_type: 'saas',
+        }],
+        niche: 'test-niche',
+      })
+      .expect(200);
+
+    expect(mockGenerateIdeaSlug).toHaveBeenCalledWith(
+      expect.objectContaining({ format: 'browser-extension' }),
+      expect.any(Object),
+    );
+    expect(mockTxIdeaCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        format: 'browser-extension',
+        deliveryFormat: 'browser-extension',
+        projectType: 'saas',
+      }),
+    });
+  });
+
+  it('keeps delivery format null for a legacy-shaped idea', async () => {
+    await request(app)
+      .post('/api/workers/catalog-ideas-ready')
+      .send({
+        worker_id: 'w1',
+        job_id: jobId,
+        category_id: categoryId,
+        ideas: [{
+          solution_name: 'Legacy SaaS',
+          description: 'A legacy-shaped payload.',
+          project_type: 'saas',
+        }],
+        niche: 'test-niche',
+      })
+      .expect(200);
+
+    expect(mockTxIdeaCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        format: 'saas',
+        deliveryFormat: null,
+        projectType: 'saas',
+      }),
+    });
+  });
+
   it('settles the matching modern dispatch for an empty successful batch', async () => {
     mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: dispatchId });
     mockTxQueryRaw.mockResolvedValue([

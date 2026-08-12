@@ -42,7 +42,7 @@ export type {
   SelectedSolutionRef,
 } from '$lib/types/job';
 import type { Job, SolutionPreview, SelectionDecisionProfile, SelectionDraft, SelectionDraftItem, SelectedSolutionRef, ReportSummary, GateG1PatchFields, GateG2PatchFields } from '$lib/types/job';
-import type { RuledOutFinding, OverlapGroup, IdeaThesisPartition, MarketReality, NicheDifficultyVerdict, DataQualitySummary } from '$lib/types/report';
+import type { RuledOutFinding, OverlapGroup, IdeaThesisPartition, MarketReality, NicheDifficultyVerdict, DataQualitySummary, IdeaValidation } from '$lib/types/report';
 import type { DiscoveryAnnotationDocument, DiscoveryAnnotationResponse } from '$lib/types/discoveryAnnotations';
 import type { SelectionCopilotGrounding } from '$lib/types/selectionCopilot';
 import type {
@@ -1231,6 +1231,8 @@ export interface SharedPreviewReport {
   niche_difficulty_verdict?: NicheDifficultyVerdict;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
   data_quality_summary?: DataQualitySummary | null;
+  /** Validate-mode report bound to the exact submitted idea revision. */
+  idea_validation?: IdeaValidation | null;
 }
 
 /**

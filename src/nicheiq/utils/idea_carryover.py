@@ -14,9 +14,11 @@ report's entire go/no-go verdict. The same nulls appear on red-team revisions an
 five other runs.
 
 This inverts the default: PRESERVE, then reset. A field is carried only when the revision
-left it empty, so a rebuild can never clobber what the LLM actually produced, and any field
-added to ``BaseSolutionIdea`` later is carried without anyone remembering to add it here.
-Only ``NEVER_CARRY`` is hand-maintained, under three rules:
+left it empty, so a rebuild can never clobber what the LLM actually produced, and most fields
+added to ``BaseSolutionIdea`` later are carried without anyone remembering to add them here.
+Identity-defining fields such as ``delivery_format`` are re-derived for an identity-changing
+rebuild; callers performing a same-product enrichment must opt into that distinct mode.
+``NEVER_CARRY`` is hand-maintained under these rules:
 
   (1) it evaluates the OLD product or the OLD market position, and the revision must
       re-earn it — ``_score_wave`` recomputes every one of these; carrying it would also
@@ -28,6 +30,17 @@ Only ``NEVER_CARRY`` is hand-maintained, under three rules:
 """
 
 from __future__ import annotations
+
+from enum import Enum
+
+from ..models.delivery_format import infer_delivery_format, normalize_delivery_format
+
+
+class CarryForwardMode(str, Enum):
+    """Whether a reconstruction preserves or changes the product's identity."""
+
+    IDENTITY_CHANGING_REBUILD = "identity_changing_rebuild"
+    SAME_PRODUCT_ENRICHMENT = "same_product_enrichment"
 
 # Rule (1): evaluation state the revision must re-earn.
 _RE_EARNED = frozenset({
@@ -82,6 +95,8 @@ _OLD_POSITIONING = frozenset({
 
 NEVER_CARRY = _RE_EARNED | _STALE_SUMMARY | _MINTED_IDENTITY | _OLD_POSITIONING
 
+_IDENTITY_CHANGING_FIELDS = frozenset({"delivery_format"})
+
 
 def _is_empty(value) -> bool:
     """Empty = nothing was produced. 0, 0.0 and False are real values, not absences."""
@@ -108,11 +123,17 @@ def _not_produced(value, field) -> bool:
         return False
 
 
-def carry_forward_idea_fields(orig, rev) -> list[str]:
-    """Fill every field the rebuilt `rev` left empty from the `orig` it was rebuilt from.
+def carry_forward_idea_fields(
+    orig,
+    rev,
+    *,
+    mode: CarryForwardMode = CarryForwardMode.IDENTITY_CHANGING_REBUILD,
+) -> list[str]:
+    """Fill fields the rebuilt `rev` left empty according to its reconstruction mode.
 
     Mutates `rev` in place and returns the names carried (for logging). Never overwrites a
-    value the revision produced, and never touches `NEVER_CARRY`.
+    value the revision produced, and never touches `NEVER_CARRY`. Identity-changing rebuilds
+    re-derive their primary delivery format from the rebuilt product instead of copying it.
     """
     if orig is None or rev is None:
         return []
@@ -120,6 +141,8 @@ def carry_forward_idea_fields(orig, rev) -> list[str]:
     carried: list[str] = []
     for name, field in type(rev).model_fields.items():
         if name in NEVER_CARRY:
+            continue
+        if mode == CarryForwardMode.IDENTITY_CHANGING_REBUILD and name in _IDENTITY_CHANGING_FIELDS:
             continue
         if not _not_produced(getattr(rev, name, None), field):
             continue
@@ -131,4 +154,15 @@ def carry_forward_idea_fields(orig, rev) -> list[str]:
         except Exception:  # noqa: BLE001 — a single uncopyable field must not fail the rebuild
             continue
         carried.append(name)
+
+    if mode == CarryForwardMode.IDENTITY_CHANGING_REBUILD:
+        rebuilt_text = " ".join(
+            str(getattr(rev, field, None) or "")
+            for field in ("description", "value_proposition", "technical_approach")
+        )
+        rev.delivery_format = (
+            normalize_delivery_format(getattr(rev, "delivery_format", None))
+            or infer_delivery_format(rebuilt_text)
+            or "other"
+        )
     return carried

@@ -45,6 +45,10 @@ class SolutionSnapshot(BaseModel):
         description="Solution type (e.g., 'directory', 'aggregator', 'marketplace', 'tool'). "
                     "None = the pipeline never recorded a type for this idea."
     )
+    delivery_format: Optional[str] = Field(
+        default=None,
+        description="Primary delivery surface or deliverable. None = not recorded.",
+    )
 
 class GoNoGoVerdict(BaseModel):
     """Strategic recommendation on whether to pursue this opportunity."""

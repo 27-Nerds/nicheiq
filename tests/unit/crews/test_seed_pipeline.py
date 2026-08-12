@@ -3,11 +3,15 @@
 `hydrate_from_state` (Phase-1 cache restore, no cold re-probe).
 
 LLM-touching internals (`_one_sample`, `tournament_refine_cell_v4`, `_score_cell_winner`,
-`_score_wave`, `_finalize_seed_tail`) are mocked — this module tests WIRING, not their own
-already-covered internals (see test_per_cell_tournament.py / test_backfill_demote.py).
+`_score_wave`, `_finalize_seed_tail`) are normally mocked — this module tests WIRING, not
+their own already-covered internals (see test_per_cell_tournament.py / test_backfill_demote.py).
+The project-type identity regressions deliberately keep the real `_score_wave` pool-contract
+step while stubbing its unrelated evaluator siblings.
 """
 
 from types import SimpleNamespace
+
+import pytest
 
 import nicheiq.crews.idea_improvement_loop_v4 as v4
 import nicheiq.crews.unified_solution_crew as usc
@@ -510,6 +514,208 @@ class TestRunSeedCell:
 # ---------------------------------------------------------------------------
 
 class TestExecuteSeedPipeline:
+    @staticmethod
+    def _stub_score_wave_evaluators(monkeypatch, *, route_step=None):
+        """Keep the real pool contract while avoiding unrelated evaluator/network work."""
+        def no_op(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_verify_pool_routes",
+            route_step or no_op,
+        )
+        for method in (
+            "_finalize_feasibility",
+            "_filter_pain_relevance",
+            "_stamp_payability",
+            "_finalize_dev_time",
+            "_probe_mechanism_parity",
+            "_calibrate_idea_scores",
+            "_validate_idea_caps",
+            "_classify_idea_angles",
+        ):
+            monkeypatch.setattr(UnifiedSolutionCrew, method, no_op)
+
+    @staticmethod
+    def _live_fallback_idea(seed, *, project_type="other"):
+        return SimpleNamespace(
+            solution_name=(
+                "A browser extension that drafts concise customer-support replies for independent"
+            ),
+            short_description=seed,
+            description=seed,
+            value_proposition=seed,
+            core_features=["Draft concise replies to repeated shipping and return questions"],
+            target_personas=["independent Shopify merchants"],
+            technical_approach="Browser extension over the merchant support workflow.",
+            project_type=project_type,
+            source_frame="user_seed",
+            generation_operation_id="validate",
+        )
+
+    def test_canonical_other_survives_real_score_wave(self, monkeypatch):
+        seed = (
+            "A browser extension that drafts concise customer-support replies for independent "
+            "Shopify merchants who repeatedly answer the same shipping and return questions."
+        )
+        idea = self._live_fallback_idea(seed)
+        crew = _crew()
+        tail_calls = []
+        assert crew._canonicalize_project_type(idea) is False
+        assert idea.project_type == "other"
+        self._stub_score_wave_evaluators(monkeypatch)
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_run_seed_cell",
+            lambda self, **_kwargs: idea,
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_finalize_seed_tail",
+            lambda self, wave: tail_calls.append(list(wave)),
+        )
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew,
+            "_record_divergent_usage",
+            lambda self, usage: None,
+            raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(seed_text=seed))
+
+        assert result is idea
+        assert idea.project_type == "other"
+        assert tail_calls == [[idea]]
+
+    @pytest.mark.parametrize(
+        ("raw_project_type", "canonical_project_type"),
+        [(" OTHER ", "other"), ("SaaS", "saas")],
+    )
+    def test_valid_project_type_is_canonical_before_identity_lock(
+        self, monkeypatch, raw_project_type, canonical_project_type,
+    ):
+        seed = (
+            "A browser extension that drafts concise customer-support replies for independent "
+            "Shopify merchants who repeatedly answer the same shipping and return questions."
+        )
+        idea = self._live_fallback_idea(seed, project_type=raw_project_type)
+        crew = _crew()
+        score_entry_types = []
+        real_score_wave = UnifiedSolutionCrew._score_wave
+        self._stub_score_wave_evaluators(monkeypatch)
+
+        def observe_real_score_wave(self, wave, **kwargs):
+            score_entry_types.append(wave[0].project_type)
+            return real_score_wave(self, wave, **kwargs)
+
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_run_seed_cell",
+            lambda self, **_kwargs: idea,
+        )
+        monkeypatch.setattr(UnifiedSolutionCrew, "_score_wave", observe_real_score_wave)
+        monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seed_tail", lambda self, wave: None)
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew,
+            "_record_divergent_usage",
+            lambda self, usage: None,
+            raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(seed_text=seed))
+
+        assert result is idea
+        assert score_entry_types == [canonical_project_type]
+        assert idea.project_type == canonical_project_type
+
+    def test_canonical_other_still_rejects_later_project_shape_change(
+        self, monkeypatch,
+    ):
+        seed = (
+            "A browser extension that drafts concise customer-support replies for independent "
+            "Shopify merchants who repeatedly answer the same shipping and return questions."
+        )
+        idea = self._live_fallback_idea(seed, project_type=" OTHER ")
+        crew = _crew()
+        score_entry_types = []
+        tail_calls = []
+        real_score_wave = UnifiedSolutionCrew._score_wave
+
+        def change_shape_during_route_verification(_self, wave):
+            wave[0].project_type = "marketplace"
+
+        def observe_real_score_wave(self, wave, **kwargs):
+            score_entry_types.append(wave[0].project_type)
+            return real_score_wave(self, wave, **kwargs)
+
+        self._stub_score_wave_evaluators(
+            monkeypatch,
+            route_step=change_shape_during_route_verification,
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_run_seed_cell",
+            lambda self, **_kwargs: idea,
+        )
+        monkeypatch.setattr(UnifiedSolutionCrew, "_score_wave", observe_real_score_wave)
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_finalize_seed_tail",
+            lambda self, wave: tail_calls.append(list(wave)),
+        )
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew,
+            "_record_divergent_usage",
+            lambda self, usage: None,
+            raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(seed_text=seed))
+
+        assert score_entry_types == ["other"]
+        assert result is None
+        assert tail_calls == []
+
+    def test_off_vocab_project_type_is_canonical_before_identity_lock(self, monkeypatch):
+        seed = (
+            "A browser extension that drafts concise customer-support replies for independent "
+            "Shopify merchants who repeatedly answer the same shipping and return questions."
+        )
+        idea = self._live_fallback_idea(seed, project_type="browser extension")
+        crew = _crew()
+        score_entry_types = []
+        real_score_wave = UnifiedSolutionCrew._score_wave
+        self._stub_score_wave_evaluators(monkeypatch)
+
+        def observe_real_score_wave(self, wave, **kwargs):
+            score_entry_types.append(wave[0].project_type)
+            return real_score_wave(self, wave, **kwargs)
+
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_run_seed_cell",
+            lambda self, **_kwargs: idea,
+        )
+        monkeypatch.setattr(UnifiedSolutionCrew, "_score_wave", observe_real_score_wave)
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_finalize_seed_tail",
+            lambda self, wave: None,
+        )
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew,
+            "_record_divergent_usage",
+            lambda self, usage: None,
+            raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(seed_text=seed))
+
+        assert result is idea
+        assert score_entry_types == ["saas"]
+        assert idea.project_type == "saas"
+
     def test_semantic_birth_verdict_rejects_a_replacement_hidden_behind_a_brief_echo(
         self, monkeypatch,
     ):

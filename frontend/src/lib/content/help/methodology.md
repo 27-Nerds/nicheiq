@@ -1,6 +1,6 @@
 Every report comes with numbers attached, and we want to be straight about what they are. They're estimates with guardrails on them, meant to point you in a direction. They are not promises, and they're not as precise as the decimals make them look. Here's how each one is built and how much weight to put on it.
 
-### Pain point scores
+## Pain point scores
 
 Every pain point we surface has three scores, and they describe the problem, not a product.
 
@@ -10,13 +10,13 @@ Every pain point we surface has three scores, and they describe the problem, not
 
 **Opportunity** combines the two: high when both are strong, medium when one is, low when neither. We weight them equally on purpose. For inputs that point the right way, simple equal weighting is famously hard to beat ([Dawes, 1979](https://doi.org/10.1037/0003-066X.34.7.571)). The cutoff itself is a reasonable rule of thumb, not a threshold we've tuned to the decimal. We don't have the outcome data yet (which ideas actually made money), so we'd rather tell you it's a heuristic than dress it up as something calibrated.
 
-### The guardrails
+## The guardrails
 
 We built every guardrail to do one job: pull a score down when it's been too generous. None of them can push a score up.
 
 A pain with thin or missing evidence can't hold onto a high severity, however it was worded. If software can't realistically move the needle on a problem (something lifestyle, cultural, or structural), its commercial-intent score gets capped and it's kept out of idea generation, because there's no sense pricing a problem software can't touch. And generic emotional themes like burnout or stress, or anything that would read identically for any audience, get capped too. They don't tell you where the real opportunity is.
 
-### The idea scores
+## The idea scores
 
 Each generated idea gets its own set of scores, shown as percentages. The selection list leads with a relative **Research score**, while detail and comparison views can show **market fit** (does this solve a validated problem for a reachable market?), **feasibility** (can it be built with today's tools and obtainable data?), **solo manageability** (could one person ship it and keep it running?), **organic discovery** (can useful public pages attract search traffic?), and **distinctiveness** (how far its mechanism or angle departs from obvious alternatives). These are comparison aids, not probabilities or automatic Go / No-Go decisions.
 
@@ -28,11 +28,11 @@ Sitting on top of that re-grade is a handful of hard caps, and these can only ev
 
 Ideas are ranked on an angle-weighted composite of market fit, technical feasibility, SEO, and an internal calibration of how non-obvious the mechanism is. A lower independent build-feasibility assessment can reduce the ranking without overwriting the displayed technical-feasibility score. Current reports store that adjusted result; legacy reports use a fixed five-field client fallback in which a missing field contributes zero. The **Distinctiveness** value you see is a separate read: current reports invert an independent review of how obvious the idea is, while older reports fall back to the calibrated mechanism signal. Distinctiveness helps explain the idea, but it does not directly determine its Research ranking.
 
-### Distinctiveness depends on how the idea wins
+## Distinctiveness depends on how the idea wins
 
 We don't judge every idea's edge in the same place. Each one is matched to the way it could actually win: by being found (SEO and reach), by using a mechanism rivals cannot easily copy, or by owning a workflow for one kind of user. Distinctiveness asks how far that mechanism or angle departs from the obvious alternatives. For a mechanism-led idea, a familiar approach is a real concern. For a directory or catalog, the edge may instead be the data it holds, its coverage, freshness, or how that data is presented. The explanation beside the rating tells you where the idea's edge is meant to live. Research ranking separately applies the idea's angle weights to the calibrated mechanism signal described above.
 
-### Who pays, and how often
+## Who pays, and how often
 
 A loud pain doesn't make a market; someone still has to reach for a wallet. So beyond scoring the problem, we look at the buyer. Every idea is tagged with how often its buyer would actually *use* it: as part of a daily workflow, on a calendar rhythm, only when some irregular event triggers it, or exactly once. That distinction matters because an episodic product priced as a subscription quietly bleeds customers between events. Someone who buys a tool to validate one idea has no reason to still be paying in month four. When we see that mismatch, the idea carries a plain warning naming the pricing shape that would actually fit (a one-time purchase, credits, usage-based). It never changes a score; it's there so you price the thing the way it will really be used.
 
@@ -42,21 +42,21 @@ The deeper version of this signal scores each audience segment's ability and hab
 
 The wallet also has one deliberate consequence for the verdict. **"No-Go" is reserved for structural blockers**: the tech can't be built, or the data route was refuted. An idea that is perfectly buildable but aimed at a buyer with a weak wallet isn't a "no"; it comes back as *Conditional, high risk*, with the condition spelled out: validate real payment intent (pre-sales, a paid pilot, a concierge version) before writing code. You paid for direction, and "prove the wallet first" is direction. A bare "no" is not.
 
-### The competition check looks sideways too
+## The competition check looks sideways too
 
 Each idea gets a web-verified check for whether some product already ships its core mechanism. Two honest wrinkles in that. First, "no commercial product" isn't always good news: sometimes the outcome is already available free — an official data source, a spreadsheet template, a manual routine — and a paid wrapper around a free thing has to argue hard for its price. That gets reported as its own finding rather than passing for a clear field. Second, searching from the idea's own framing can miss the market where the mechanism actually makes money: a "failed government contracts digest for founders" won't surface the enterprise procurement-intelligence vendors who already sell that data, because none of them market to founders. So a second pass strips the audience out, asks what commercial category the mechanism belongs to, and searches that instead. Anything it finds is shown with the incumbent's name, verified against the actual search results, and handed to the score reviewer as competition evidence, which, like every guardrail here, can only pull a score down and never up. When almost every idea in a run comes back "no incumbent found," we flag that too: it usually means the searches missed the adjacent market, not that you've found an untouched field.
 
-A competition finding has to clear a bar before it can touch a score. It names the vendor, and the evidence behind it comes from a search run for that specific idea, not from a vendor page that happened to surface while we were looking at something else. Nothing else can be reported as competition, either: the adversarial review described below turns up plenty of reasons an idea might not work, and those appear under the review's own heading, as objections, rather than borrowing a competitor's authority.
+A competition finding has to clear a bar before it can touch a score. It names the vendor, and the evidence behind it comes from a search run for that specific idea, not from a vendor page that happened to surface while we were looking at something else. The adversarial review can still find overlap or another decision-critical objection. That appears under its own heading rather than being relabeled as a verified direct competitor. In an Idea Check verdict, this distinction is shown as **Concerns found** when the direct-equivalent probe has no result but the broader review found something material.
 
 The strongest claim this check can make — some incumbent already bundles the capability for free — is also the one that caps an idea's market-fit score hardest, so it has to meet a stricter standard of evidence than the milder findings. "Free" has to appear in the page evidence itself, next to the capability, and that evidence has to come from a search built from the idea's own keywords. One vendor's feature page can't cap half a run's ideas just because it kept showing up in nearby searches. When a vendor's own pricing contradicts the "free" part, we report a paid competitor shipping the capability instead, which still lowers the ceiling, just not as far. Weaker evidence gets the weaker finding, not the scarier one. And if a report still ends up saying two things that don't agree, such as a "bundled free" finding beside pricing evidence for the same vendor, a data-quality caveat names the conflict so you're not left to reconcile it yourself.
 
-### The highest score and the recommendation can sit on different ideas
+## The highest score and the recommendation can sit on different ideas
 
 The strongest candidates get an adversarial review, a round that goes looking specifically for the reason an idea doesn't hold up. When that review can't find evidence for an idea's core premise — usually that a reachable buyer wants this at all — the idea is marked **premise unproven**, and it isn't put forward as the recommendation no matter where it sits in the ranking. The recommendation goes to the strongest idea that came through review intact.
 
 That leaves the highest score in the list attached to something other than the recommendation, which looks like a mistake and isn't. Every other score answers a conditional question: how well would this work *if* the premise holds? Market fit, feasibility, distinctiveness and the rest are all reasoned inside that "if". The adversarial review is the one step that tests the "if" itself, so a high score next to a premise-unproven mark means promising but unproven rather than wrong. That combination is the best possible argument for a cheap test — a landing page, ten conversations, a pre-sale — before it's worth a quarter of build time. The idea keeps its rank and stays selectable, and when the split happens the screen names both ideas so you're not left comparing two numbers on your own.
 
-### Search demand is measured, or it isn't measured at all
+## Search demand is measured, or it isn't measured at all
 
 During Deep Research, each idea's keywords go to real search data, and every keyword is graded on one question before its volume counts for anything: is this search about the idea, or only about the broad category the idea sits in? Only keywords that pass feed the demand score. An idea in a busy niche doesn't inherit the niche's traffic as if it were its own. The keyword count shown beside an idea is that graded set, the keywords genuinely about this idea, which is why it's usually a small number.
 
@@ -68,13 +68,13 @@ The same graded set anchors the market-size estimate. If nothing is on-idea, the
 
 Reports generated before August 2026 used a different demand scale, so their numbers aren't comparable with newer ones. Ranking within each report is unaffected.
 
-### How the prompts are built and tested
+## How the prompts are built and tested
 
 None of this runs on casually-worded instructions. The prompt behind each stage is written deliberately, and a change to one is tested against real saved runs before it ships. The old wording and the new one are compared on the same niches, and the change is kept only if the output genuinely improves. The care is there because language models have predictable weak spots: they grade their own work generously (the reason for the separate re-grade above), and they latch onto any specific number put in front of them, drifting toward it instead of reasoning from the evidence ([Lou & Sun, 2024](https://arxiv.org/abs/2412.06593)). So the instructions are built not to hand the model an answer to copy. A market size or a price is worked out from your niche's own data, never seeded with an example figure to anchor on. The aim throughout is that a number you read was reasoned to, not parroted.
 
 And where a step leans on the model to *judge* rather than generate — deciding which discussions or search terms are genuinely about your idea versus its broad category — we don't take one model's word for it. Before trusting a judge, we check its calls against several independent models and against what actually ranks in search, and we keep only the parts they agree on. A single model turns out to be unreliable on exactly the borderline calls that matter most, so the agreement of independent checks, not one model's confidence, is what we build on.
 
-### How to read them
+## How to read them
 
 Read these as bands, not decimals. A 63% and a 61% are the same thing. They reflect the discussion we found for your niche on the day we ran it, so more and better source material means better-calibrated scores. They're guides drawn from self-selected public conversation, not instruments measured against ground truth.
 
@@ -82,7 +82,7 @@ The point was never a perfect number. We'd rather hand you a cautious score with
 
 That honesty runs all the way to the top of a report, too. A set can end with a plain "nothing here is worth paying to validate further," evidence attached. The best-looking idea in a pool can lose its shine because a web check finds the incumbent it would compete with already bundles the same capability into its own sales process. Telling you that costs you nothing. A confident recommendation that falls apart under real diligence costs you a paid validation cycle.
 
-### Sources
+## Sources
 
 - Jakob Nielsen, [Severity Ratings for Usability Problems](https://www.nngroup.com/articles/how-to-rate-the-severity-of-usability-problems/) (Nielsen Norman Group)
 - Jansen, Booth & Spink (2008), [Determining the informational, navigational, and transactional intent of web queries](https://doi.org/10.1016/j.ipm.2007.07.015), *Information Processing & Management*

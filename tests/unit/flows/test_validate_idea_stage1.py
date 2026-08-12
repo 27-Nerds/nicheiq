@@ -24,6 +24,7 @@ DERIVED_MARKET = (
     "Community-management tooling for B2B SaaS: software that helps companies run, "
     "moderate, and grow their user communities across Reddit, Discord, and forums."
 )
+NAMED_PROJECT_TYPES = ["saas", "directory", "aggregator", "comparison-tool", "marketplace"]
 
 
 def _ctx_fields() -> dict:
@@ -145,6 +146,31 @@ def test_stage1_rebinds_working_niche_to_derived_market():
     assert flow.niche_description == DERIVED_MARKET
 
 
+def test_validate_flow_discards_project_type_constraints_at_initialization():
+    flow = ResearchFlow(
+        niche_description=PITCH,
+        allowed_project_types=NAMED_PROJECT_TYPES,
+        job_id="job-validate-initial",
+        entry_mode="validate_idea",
+    )
+
+    assert flow.allowed_project_types is None
+    assert flow.checkpoint_mgr.allowed_project_types is None
+
+
+def test_normal_flow_preserves_explicit_project_type_constraints():
+    subset = ["saas", "directory"]
+    flow = ResearchFlow(
+        niche_description="Independent veterinary clinics",
+        allowed_project_types=subset,
+        job_id="job-normal-initial",
+        entry_mode="idea",
+    )
+
+    assert flow.allowed_project_types == subset
+    assert flow.checkpoint_mgr.allowed_project_types == subset
+
+
 def test_round_trip_and_resume_rebind(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
     monkeypatch.setattr(settings, "checkpoint_enabled", True)
@@ -183,6 +209,65 @@ def test_round_trip_and_resume_rebind(tmp_path, monkeypatch):
     assert flow.state.user_idea_brief_parity == "substitute (SomeTool): drafts AI replies"
     # The rebind: thread validation must see the derived market, never the pitch.
     assert flow.niche_description == DERIVED_MARKET
+
+
+def test_legacy_validate_checkpoint_cannot_restore_project_type_constraints(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
+    monkeypatch.setattr(settings, "checkpoint_enabled", True)
+
+    save_state = ResearchState()
+    save_state.niche_context = NicheContext(**{**_ctx_fields(), "niche_input": PITCH})
+    save_state.current_stage = 2
+    save_state.user_idea_text = PITCH
+    save_state.allowed_project_types = NAMED_PROJECT_TYPES
+    cm = CheckpointManager(
+        niche_description=PITCH,
+        state=save_state,
+        allowed_project_types=NAMED_PROJECT_TYPES,
+        job_id="job-validate-legacy",
+        entry_mode="validate_idea",
+    )
+    cm.save_stage("stage_1_niche_context", save_state.niche_context)
+
+    flow = ResearchFlow(
+        niche_description=PITCH,
+        allowed_project_types=NAMED_PROJECT_TYPES,
+        job_id="job-validate-legacy",
+    )
+    assert flow.resume_from_checkpoint(cm.checkpoint_folder) is True
+
+    assert flow.entry_mode == "validate_idea"
+    assert flow.allowed_project_types is None
+    assert flow.state.allowed_project_types is None
+    assert flow.checkpoint_mgr.allowed_project_types is None
+
+
+def test_normal_checkpoint_still_restores_project_type_constraints(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
+    monkeypatch.setattr(settings, "checkpoint_enabled", True)
+    subset = ["saas", "directory"]
+
+    save_state = ResearchState()
+    save_state.niche_context = NicheContext(**{**_ctx_fields(), "niche_input": "plain niche"})
+    save_state.current_stage = 2
+    save_state.allowed_project_types = subset
+    cm = CheckpointManager(
+        niche_description="plain niche",
+        state=save_state,
+        allowed_project_types=subset,
+        job_id="job-normal-resume",
+        entry_mode="idea",
+    )
+    cm.save_stage("stage_1_niche_context", save_state.niche_context)
+
+    flow = ResearchFlow(niche_description="plain niche", job_id="job-normal-resume")
+    assert flow.resume_from_checkpoint(cm.checkpoint_folder) is True
+
+    assert flow.entry_mode == "idea"
+    assert flow.allowed_project_types == subset
+    assert flow.state.allowed_project_types == subset
 
 
 def test_resume_without_idea_fields_keeps_niche_description(tmp_path, monkeypatch):

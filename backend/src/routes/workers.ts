@@ -3493,7 +3493,9 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
       });
       const existingNames = new Set(existingIdeas.map(i => i.solutionName.toLowerCase()));
 
-      const { generateIdeaSlug } = await import('../services/catalogService.js');
+      const { catalogIdeaDeliveryFormat, catalogIdeaFormat, generateIdeaSlug } = await import(
+        '../services/catalogService.js'
+      );
 
       let created = 0;
       let skipped = 0;
@@ -3510,13 +3512,12 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
 
         try {
           const projectType = idea.project_type ? String(idea.project_type) : null;
+          const deliveryFormat = catalogIdeaDeliveryFormat(idea);
+          const formatSlug = catalogIdeaFormat(idea);
           const slug = await generateIdeaSlug(
-            { name, categoryId: data.category_id, format: projectType },
+            { name, categoryId: data.category_id, format: formatSlug },
             tx,
           );
-          const formatSlug = projectType
-            ? projectType.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'saas'
-            : 'saas';
 
           // Validate + canonicalize addressed pain titles against the parent
           // research context's pain list. Drops titles with no plausible
@@ -3546,6 +3547,7 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
               categoryId: data.category_id,
               slug,
               format: formatSlug,
+              deliveryFormat,
               sourceJobId: effectiveSourceJobId,
               sourceNiche: data.niche,
               sourceGeneratedAt: new Date(),

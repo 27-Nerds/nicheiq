@@ -116,6 +116,7 @@ class TestNoneProjectTypeKeepsTheVerdict:
         assert dashboard is not None
         assert dashboard.recommended_solution_snapshot is not None
         assert dashboard.recommended_solution_snapshot.project_type is None
+        assert dashboard.recommended_solution_snapshot.delivery_format is None
         assert dashboard.unavailable_sections == []
 
     def test_none_project_type_carries_the_negative_verdict_and_all_signals(self):
@@ -147,6 +148,17 @@ class TestNoneProjectTypeKeepsTheVerdict:
         )
 
         assert dashboard.recommended_solution_snapshot.project_type == "directory"
+
+    def test_delivery_format_is_preserved_independently_of_project_type(self):
+        solution = _solution(
+            project_type="saas",
+            delivery_format="browser-extension",
+        )
+        gen = _generator(solution)
+
+        dashboard = gen._generate_executive_dashboard(enriched_solution=solution)
+
+        assert dashboard.recommended_solution_snapshot.delivery_format == "browser-extension"
 
 
 class TestSupportingSectionsDegradeAlone:

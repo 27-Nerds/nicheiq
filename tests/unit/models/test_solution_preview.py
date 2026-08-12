@@ -93,6 +93,13 @@ class TestSolutionPreview:
         preview = _make_preview(custom_extra="data")
         assert preview.custom_extra == "data"
 
+    def test_delivery_format_is_optional_and_serialized(self):
+        legacy = _make_preview()
+        current = _make_preview(delivery_format="browser-extension")
+
+        assert legacy.delivery_format is None
+        assert current.model_dump()["delivery_format"] == "browser-extension"
+
 
 class TestSolutionPreviewList:
     def test_constructs_with_list(self):

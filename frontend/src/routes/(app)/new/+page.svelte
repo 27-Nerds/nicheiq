@@ -580,7 +580,9 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           niche: pitch,
-          ...(selectedProjectTypes.length > 0 && {
+          ...(!isValidateMode
+            && selectedProjectTypes.length > 0
+            && selectedProjectTypes.length < PROJECT_TYPES.length && {
             allowedProjectTypes: selectedProjectTypes,
           }),
           ...(selectedFocus !== "auto" && { ideaFocus: selectedFocus }),
@@ -921,15 +923,16 @@
 
           {#if showResearchSetup}
           <div id="research-setup-controls">
+          {#if !isValidateMode}
           <div class="research-setup-row">
             <button
               type="button"
               onclick={() => showProjectTypes = !showProjectTypes}
               aria-expanded={showProjectTypes}
-              aria-controls="business-model-panel"
+              aria-controls="product-shape-panel"
               class="research-setup-trigger"
             >
-              <span class="font-medium">Business model filter</span>
+              <span class="font-medium">Product shape filter</span>
               <span>·</span>
               <span>{projectTypeCountLabel}</span>
               <ChevronDown class="w-3 h-3 transition-transform duration-200 {showProjectTypes ? 'rotate-180' : ''}" />
@@ -939,7 +942,7 @@
                 Leave all selected if you're exploring multiple approaches.
               </p>
               {@const allSelected = selectedProjectTypes.length === PROJECT_TYPES.length}
-              <div id="business-model-panel" class="flex flex-wrap gap-2 mt-2">
+              <div id="product-shape-panel" class="flex flex-wrap gap-2 mt-2">
                 <button
                   type="button"
                   onclick={() => selectedProjectTypes = PROJECT_TYPES.map(t => t.value)}
@@ -969,6 +972,7 @@
               </div>
             {/if}
           </div>
+          {/if}
 
           <div class="research-setup-row">
             <button

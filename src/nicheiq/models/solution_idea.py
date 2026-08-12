@@ -564,6 +564,15 @@ class BaseSolutionIdea(BaseModel):
         default=None,
         description="Project type category: saas, directory, aggregator, comparison-tool, marketplace"
     )
+    delivery_format: Optional[str] = Field(
+        default=None,
+        description=(
+            "Primary way the buyer receives or uses the product. Prefer one exact value: "
+            "web-app, mobile-app, desktop-app, browser-extension, platform-plugin, api, "
+            "bot-assistant, data-product, report, service, physical-product, or other. "
+            "This boundary is intentionally tolerant; code normalizes the value later."
+        ),
+    )
 
     # Structural-dedup tags (M/D/J) carried over from the source RawConcept during
     # refinement. Persisted so the cross-run/regeneration dedup can catch a
@@ -1167,6 +1176,14 @@ class RawConcept(BaseModel):
     project_type: str = Field(
         ...,
         description="Project type: directory, aggregator, comparison-tool, marketplace, saas, or other"
+    )
+    delivery_format: Optional[str] = Field(
+        default=None,
+        description=(
+            "Primary delivery surface: web-app, mobile-app, desktop-app, browser-extension, "
+            "platform-plugin, api, bot-assistant, data-product, report, service, "
+            "physical-product, or other. Use one; do not confuse delivery with project_type."
+        ),
     )
     target_keywords: list[str] = Field(
         ...,

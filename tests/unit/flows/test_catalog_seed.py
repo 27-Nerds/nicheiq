@@ -90,6 +90,7 @@ def _idea(**overrides):
         "technical_feasibility_score": 0.8,
         "addressed_pain_titles": ["Manual invoicing"],
         "project_type": "saas",
+        "delivery_format": "browser-extension",
         "source_niche": "Freelance tools",
     }
     base.update(overrides)
@@ -139,6 +140,19 @@ class TestBuildIdeaSeedState:
         assert real.novelty_score == 0.4
         assert real.estimated_cac_organic == "Low ($1-5)"
         assert ss.all_solution_scores[0].seo_growth_potential_score is not None
+
+    def test_delivery_format_is_forwarded_without_inference(self):
+        _, ig, _, _ = build_idea_seed_state(_idea(), "n")
+
+        assert ig.solution_ideas[0].delivery_format == "browser-extension"
+
+    def test_missing_delivery_format_stays_none_for_legacy_catalog_idea(self):
+        idea = _idea()
+        idea.pop("delivery_format")
+
+        _, ig, _, _ = build_idea_seed_state(idea, "n")
+
+        assert ig.solution_ideas[0].delivery_format is None
 
     def test_absent_catalog_scores_stay_none(self):
         _, ig, _, _ = build_idea_seed_state(_idea(), "n")

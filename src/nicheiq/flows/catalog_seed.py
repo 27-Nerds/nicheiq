@@ -233,6 +233,7 @@ def build_idea_seed_state(
         novelty_score=_clamp01_opt(idea.get("novelty_score")),
         estimated_cac_organic=_clean(idea.get("estimated_cac_organic")) or None,
         project_type=idea.get("project_type") or None,
+        delivery_format=idea.get("delivery_format") or None,
         programmatic_seo_opportunity=_clean(idea.get("programmatic_seo_opportunity")) or None,
         organic_discovery_queries=_clean_list(idea.get("organic_discovery_queries")) or None,
     )

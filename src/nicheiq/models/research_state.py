@@ -464,6 +464,10 @@ class AlternativeSolution(BaseModel):
     core_features: Optional[list[str]] = Field(default=None, description="Top 3-5 core features")
     target_personas: Optional[list[str]] = Field(default=None, description="Primary target personas")
     technical_approach: Optional[str] = Field(default=None, description="Technical implementation approach")
+    delivery_format: Optional[str] = Field(
+        default=None,
+        description="Primary delivery surface or deliverable; None when not recorded",
+    )
 
     # NEW: Additional scores and feasibility
     novelty_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Innovation/novelty score")

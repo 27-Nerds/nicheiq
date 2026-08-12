@@ -277,6 +277,9 @@ divergent_exploration:
     - **one_liner**: 1-2 sentence description focusing on unique angle
     - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip, platform_leverage, ai_native)
     - **project_type**: directory, aggregator, comparison-tool, marketplace, saas, or other
+    - **delivery_format**: ONE primary delivery surface: web-app, mobile-app, desktop-app,
+      browser-extension, platform-plugin, api, bot-assistant, data-product, report, service,
+      physical-product, or other. This is how the buyer receives/uses it, not its business archetype.
     - **target_keywords**: 2-5 specific SEO queries. PRIORITY: use community-vocabulary
       phrases from Discussion Themes above before inventing new terms.
     - **data_source_hint**: Primary data source or mechanism
@@ -589,7 +592,9 @@ solution_refinement:
     - novelty_score (derive from above), solo_dev_feasibility
 
     **Strategy:**
-    - pricing_strategy (see PRICING STRATEGY guidance below), differentiation_factors, project_type
+    - pricing_strategy (see PRICING STRATEGY guidance below), differentiation_factors, project_type,
+      delivery_format (one primary surface: web-app/mobile-app/desktop-app/browser-extension/
+      platform-plugin/api/bot-assistant/data-product/report/service/physical-product/other)
     - technical_approach, estimated_development_time
     - requires_data_aggregation, data_sources
 

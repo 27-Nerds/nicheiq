@@ -1,6 +1,8 @@
-Everything downstream is built from this one line. It becomes the searches we run, the discussions we pull, the problems we find, and the ideas we score against them. Give the pipeline a sharp niche and it has something concrete to chew on. Give it a vague one and you get fog back: ten shades of the same forgettable idea. So it's worth a minute of thought before you hit go.
+When you choose **Explore a niche**, everything downstream starts with the brief you write. It becomes the searches we run, the discussions we pull, the problems we find, and the ideas we score against them. A specific niche gives the research something concrete to investigate. A vague one produces broad evidence and interchangeable ideas.
 
-### What a good niche has
+If you already know the audience, use **Solve for a group**. If you already know the product, use **Check my idea** and describe it directly. This page is only about writing a strong Explore-a-niche brief. See [Choose how to start](/help/starting-research) for the difference.
+
+## What a good niche has
 
 The things that make a real micro-SaaS work are mostly the same things that make a niche produce good results here. A few are worth being deliberate about.
 
@@ -14,16 +16,16 @@ The things that make a real micro-SaaS work are mostly the same things that make
 
 **A buying signal somewhere in the room.** The strongest niches have people already spending: naming a paid tool they tolerate, complaining about hours lost, mentioning a budget. That's commercial intent, and it lifts the scores honestly. A purely hobbyist niche where nobody pays for anything scores lower. That's the system being straight with you, not pessimistic.
 
-### How to write it
+## How to write it
 
-Once you know the niche, write it as a sentence about the people and what they're stuck on. Not a product.
+For Explore a niche, write one sentence about the people and where they get stuck. Leave the product out of this brief so the evidence can support more than one answer.
 
 - **Name the audience and their situation.** "Open-source AI model users trying to pick the right model for a task on their own hardware" tells us who they are, what they're doing, and where it gets hard. "AI" tells us nothing.
-- **Describe the job, not a solution.** Resist typing "a Chrome extension that...". The moment you name the product, you've done our job for us and boxed out better answers. Say where people get stuck and let the ideas come from the evidence.
+- **Describe the job, not a solution.** “A Chrome extension that...” belongs in Check my idea. Here, say where people get stuck and let the evidence support the product options.
 - **Get the width right.** Too broad ("productivity," "small business") and the searches scatter. Too narrow ("a tool for left-handed Vue developers in Berlin") and there isn't enough public discussion to learn from. You want a group big enough to be talking online, specific enough to share a real problem.
 - **Lead with the doers.** If your phrasing could just as easily describe spectators or fans, tighten it toward the people with their hands on the problem.
 
-### Good and weak niches, side by side
+## Good and weak niches, side by side
 
 | What you might type | How it lands |
 |---|---|
@@ -33,11 +35,11 @@ Once you know the niche, write it as a sentence about the people and what they'r
 | "Fitness enthusiasts" | Vague, and a lot of the pain is motivation and lifestyle that software can't touch. |
 | "Make money online" | A wish, not an audience. Thin evidence, forgettable ideas. |
 
-### What to keep in mind
+## What to keep in mind
 
 A good niche can't guarantee a good idea, but a vague one almost guarantees a forgettable one. When a report comes back thin, the fix is usually upstream: the niche was too broad, aimed at the wrong people, or built on data nobody can get. Tighten the input and run it again.
 
-### Sources
+## Sources
 
 - [How to find profitable niches that actually work](https://proven-saas.com/blog/how-to-find-profitable-niches-that-actually-work)
 - [The solopreneur's guide to one-person SaaS](https://www.twocents.software/blog/solopreneur-saas-realistic-expectations-for-one-person-ops/)

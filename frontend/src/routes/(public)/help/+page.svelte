@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { HELP_TOPICS } from "$lib/help/registry";
+  import { HELP_SECTIONS } from "$lib/help/registry";
 </script>
 
 <svelte:head>
   <title>Help - How NicheIQ works</title>
   <meta
     name="description"
-    content="How NicheIQ works — the research steps, how pain points are gathered, how ideas are generated, and what the scores mean."
+    content="Choose how to start NicheIQ research, understand reports and sharing, and read the evidence and scoring methodology."
   />
 </svelte:head>
 
@@ -22,26 +22,39 @@
     <h1 class="text-3xl sm:text-4xl font-display font-bold text-text-primary mb-4">
       How NicheIQ works
     </h1>
-    <p class="text-text-muted text-sm mb-12">
-      Plain explanations of the research, grounded and honest about the limits
+    <p class="text-text-muted text-base leading-relaxed max-w-2xl mb-12">
+      Start with what you are trying to do. The detailed methodology is here when you need it.
     </p>
 
-    <ul class="space-y-6">
-      {#each HELP_TOPICS as topic (topic.slug)}
-        <li>
-          <a
-            href="/help/{topic.slug}"
-            class="group block rounded-lg border border-border p-5 hover:border-text-muted transition-colors"
-          >
-            <span
-              class="font-mono text-text-secondary group-hover:text-text-primary transition-colors"
+    <div class="space-y-12">
+      {#each HELP_SECTIONS as section (section.title)}
+        <section aria-labelledby={`help-${section.title.toLowerCase().replaceAll(' ', '-')}`}>
+          <div class="mb-5">
+            <h2
+              id={`help-${section.title.toLowerCase().replaceAll(' ', '-')}`}
+              class="text-xl font-display font-semibold text-text-primary"
             >
-              {topic.title} &rarr;
-            </span>
-            <span class="block text-text-muted text-sm mt-1">{topic.subtitle}</span>
-          </a>
-        </li>
+              {section.title}
+            </h2>
+            <p class="text-sm text-text-muted mt-1 max-w-2xl">{section.subtitle}</p>
+          </div>
+          <ul class="grid gap-3 sm:grid-cols-2">
+            {#each section.topics as topic (topic.slug)}
+              <li>
+                <a
+                  href="/help/{topic.slug}"
+                  class="group block h-full rounded-lg border border-border p-5 hover:border-text-muted transition-colors"
+                >
+                  <span class="font-medium text-text-secondary group-hover:text-text-primary transition-colors">
+                    {topic.title} &rarr;
+                  </span>
+                  <span class="block text-text-muted text-sm leading-relaxed mt-1">{topic.subtitle}</span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </section>
       {/each}
-    </ul>
+    </div>
   </div>
 </div>
