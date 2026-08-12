@@ -585,12 +585,12 @@
             </a>
           </div>
         {/if}
-        <div class="report-help" aria-label="Related help">
+        <nav class="report-help" aria-label="Related help">
           <HelpLink
             href="/help/reading-and-sharing-reports"
             label="Guide to reading and sharing reports"
           />
-        </div>
+        </nav>
       </div>
 
     </header>
