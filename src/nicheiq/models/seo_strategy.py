@@ -415,6 +415,18 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METADATA
     # ========================================
+    solution_name: Optional[str] = Field(
+        default=None,
+        description="CODE-STAMPED exact candidate name; None only on legacy SEO checkpoints",
+    )
+    candidate_idea_id: Optional[str] = Field(
+        default=None,
+        description="CODE-STAMPED durable candidate identity; None on legacy checkpoints",
+    )
+    candidate_idea_revision: Optional[int] = Field(
+        default=None, ge=1,
+        description="CODE-STAMPED candidate revision; None on legacy checkpoints",
+    )
     total_keywords_analyzed: int = Field(
         ..., description="Total number of keywords with measurable search volume (after expansion)"
     )

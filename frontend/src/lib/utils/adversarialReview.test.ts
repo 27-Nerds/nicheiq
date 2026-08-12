@@ -1,15 +1,235 @@
 import { describe, expect, it } from "vitest";
+import type { RedTeamFinding } from "$lib/types/job";
 import {
   adversarialReviewFinding,
   adversarialReviewSummary,
+  adversarialReviewVerdictSummary,
   directIncumbentParity,
   incumbentParityPhrase,
   isPremiseUnproven,
   noDirectIncumbentFound,
   recommendationSplitNote,
+  resolveAdversarialReviewPrimaryFinding,
 } from "./adversarialReview";
 
 describe("adversarial review classification", () => {
+  it("keeps finding kinds closed at the TypeScript boundary", () => {
+    const invalidFinding: RedTeamFinding = {
+      claim: "No free tool was found.",
+      // @ts-expect-error untyped prose categories must not enter the report contract
+      kind: "no_free_tool_found",
+    };
+    expect(invalidFinding.claim).toBe("No free tool was found.");
+  });
+
+  it("renders a typed affirmative kill as verified counterevidence", () => {
+    const finding = adversarialReviewFinding({
+      red_team_verdict: "killed",
+      red_team_findings: [{
+        claim: "The incumbent already ships the same weekly compliance feed.",
+        kind: "verified_incumbent_overlap",
+      }],
+    });
+
+    expect(finding).toEqual({
+      label: "Adversarial review: Verified incumbent overlap",
+      chipLabel: "Incumbent overlap",
+      details: ["The incumbent already ships the same weekly compliance feed."],
+      severity: "killed",
+      primary: {
+        basis: "counterevidence",
+        kind: "verified_incumbent_overlap",
+        claim: "The incumbent already ships the same weekly compliance feed.",
+        label: "Verified incumbent overlap",
+        chipLabel: "Incumbent overlap",
+        summaryOpener: "The adversarial review found verified incumbent overlap",
+      },
+    });
+    expect(adversarialReviewSummary(finding!)).toContain(
+      "The adversarial review found verified incumbent overlap",
+    );
+  });
+
+  it("renders a typed evidence-gap weakening as incomplete evidence", () => {
+    const finding = adversarialReviewFinding({
+      red_team_verdict: "weakened",
+      red_team_findings: [{
+        claim: "The review did not establish a reachable payer.",
+        kind: "evidence_gap",
+      }],
+    });
+
+    expect(finding).toEqual({
+      label: "Adversarial review: Evidence incomplete",
+      chipLabel: "Evidence incomplete",
+      details: ["The review did not establish a reachable payer."],
+      severity: "weakened",
+      primary: {
+        basis: "incomplete_evidence",
+        kind: "evidence_gap",
+        claim: "The review did not establish a reachable payer.",
+        label: "Evidence incomplete",
+        chipLabel: "Evidence incomplete",
+        summaryOpener: "The adversarial review found the decision-critical evidence incomplete",
+      },
+    });
+    expect(adversarialReviewSummary(finding!)).toContain(
+      "The adversarial review found the decision-critical evidence incomplete",
+    );
+  });
+
+  it("treats a raw typed gap-only kill as an effective weakening", () => {
+    const idea = {
+      red_team_verdict: "killed",
+      red_team_findings: [{
+        claim: "The review did not establish a reachable payer.",
+        kind: "evidence_gap",
+      }],
+    };
+
+    expect(isPremiseUnproven(idea)).toBe(false);
+    expect(adversarialReviewFinding(idea)).toMatchObject({
+      label: "Adversarial review: Evidence incomplete",
+      chipLabel: "Evidence incomplete",
+      severity: "weakened",
+      primary: { basis: "incomplete_evidence" },
+    });
+    expect(adversarialReviewVerdictSummary(idea)).toContain(
+      "decision-critical evidence incomplete",
+    );
+  });
+
+  it.each([
+    {
+      name: "empty typed array",
+      findings: [],
+      expectedLabel: "Adversarial review: Evidence incomplete",
+      expectedSeverity: "weakened",
+      expectedPremise: false,
+      expectedDetail: "The review did not establish decision-critical evidence.",
+    },
+    {
+      name: "all-invalid typed array",
+      findings: [{ kind: "invented_kind", claim: "Injected claim." }],
+      expectedLabel: "Adversarial review: Evidence incomplete",
+      expectedSeverity: "weakened",
+      expectedPremise: false,
+      expectedDetail: "The review did not establish decision-critical evidence.",
+    },
+    {
+      name: "evidence gap",
+      findings: [{ kind: "evidence_gap", claim: "The review did not establish a payer." }],
+      expectedLabel: "Adversarial review: Evidence incomplete",
+      expectedSeverity: "weakened",
+      expectedPremise: false,
+      expectedDetail: "The review did not establish a payer.",
+    },
+    {
+      name: "legacy null",
+      findings: null,
+      expectedLabel: "Adversarial review: Premise unproven",
+      expectedSeverity: "killed",
+      expectedPremise: true,
+      expectedDetail: undefined,
+    },
+    {
+      name: "mixed affirmative",
+      findings: [
+        { kind: "evidence_gap", claim: "The review did not establish a payer." },
+        { kind: "verified_payer_mismatch", claim: "The user and payer are different roles." },
+      ],
+      expectedLabel: "Adversarial review: Verified payer mismatch",
+      expectedSeverity: "killed",
+      expectedPremise: true,
+      expectedDetail: "The user and payer are different roles.",
+    },
+    {
+      name: "legacy non-array",
+      findings: "not a typed findings array",
+      expectedLabel: "Adversarial review: Premise unproven",
+      expectedSeverity: "killed",
+      expectedPremise: true,
+      expectedDetail: undefined,
+    },
+  ])("applies the shared typed-findings matrix for $name", ({
+    findings,
+    expectedLabel,
+    expectedSeverity,
+    expectedPremise,
+    expectedDetail,
+  }) => {
+    const idea = { red_team_verdict: "killed", red_team_findings: findings };
+    const finding = adversarialReviewFinding(idea);
+
+    expect(isPremiseUnproven(idea)).toBe(expectedPremise);
+    expect(finding?.label).toBe(expectedLabel);
+    expect(finding?.severity).toBe(expectedSeverity);
+    expect(finding?.details[0]).toBe(expectedDetail);
+    if (!expectedPremise) {
+      expect(adversarialReviewSummary(finding!)).toContain(
+        "decision-critical evidence incomplete",
+      );
+      expect(adversarialReviewSummary(finding!)).not.toMatch(
+        /material|objection|premise unproven/i,
+      );
+    }
+  });
+
+  it("uses affirmative counterevidence for a mixed killed review", () => {
+    const finding = adversarialReviewFinding({
+      red_team_verdict: "killed",
+      red_team_findings: [
+        { claim: "No free tool was found.", kind: "evidence_gap" },
+        {
+          claim: "A bundled incumbent alternative covers the workflow.",
+          kind: "verified_free_or_bundled_alternative",
+        },
+      ],
+    });
+
+    expect(finding?.primary).toMatchObject({
+      basis: "counterevidence",
+      kind: "verified_free_or_bundled_alternative",
+      claim: "A bundled incumbent alternative covers the workflow.",
+    });
+    expect(finding?.label).toBe(
+      "Adversarial review: Verified free or bundled alternative",
+    );
+    expect(finding?.details[0]).toBe(
+      "A bundled incumbent alternative covers the workflow.",
+    );
+    const summary = adversarialReviewSummary(finding!);
+    expect(summary).toContain(
+      "verified free or bundled alternative: A bundled incumbent alternative covers the workflow.",
+    );
+    expect(summary).not.toContain("verified free or bundled alternative: No free tool was found");
+  });
+
+  it("does not turn a no-free-tool evidence gap into counterevidence", () => {
+    const finding = adversarialReviewFinding({
+      red_team_verdict: "weakened",
+      red_team_findings: [{ claim: "No free tool was found.", kind: "evidence_gap" }],
+    });
+
+    expect(finding?.primary?.basis).toBe("incomplete_evidence");
+    expect(adversarialReviewSummary(finding!)).not.toContain("verified free");
+  });
+
+  it("returns one atomic primary finding for mixed gap-first input", () => {
+    expect(resolveAdversarialReviewPrimaryFinding([
+      { claim: "No free tool was found.", kind: "evidence_gap" },
+      {
+        claim: "The incumbent bundles the same workflow.",
+        kind: "verified_free_or_bundled_alternative",
+      },
+    ])).toMatchObject({
+      basis: "counterevidence",
+      kind: "verified_free_or_bundled_alternative",
+      claim: "The incumbent bundles the same workflow.",
+      label: "Verified free or bundled alternative",
+    });
+  });
+
   it("separates a red-team evidence objection from actual incumbent parity", () => {
     const idea = {
       incumbent_parity: "shipped by evidence: the proposed source misses the buyer",
@@ -89,6 +309,67 @@ describe("adversarial review classification", () => {
       red_team_verdict: "survives",
       red_team_caveats: ["Some caveat that should not surface."],
     })).toBeNull();
+  });
+
+  it("rejects malformed runtime fields without calling string methods on them", () => {
+    for (const malformed of [42, { unexpected: true }, null]) {
+      const idea = {
+        incumbent_parity: malformed,
+        red_team_verdict: malformed,
+        red_team_caveats: malformed,
+        red_team_findings: malformed,
+      };
+
+      expect(isPremiseUnproven(idea)).toBe(false);
+      expect(directIncumbentParity(idea)).toBeNull();
+      expect(noDirectIncumbentFound(idea)).toBe(false);
+      expect(incumbentParityPhrase(malformed)).toBe("");
+      expect(adversarialReviewFinding(idea)).toBeNull();
+      expect(adversarialReviewVerdictSummary(idea)).toBeNull();
+    }
+  });
+
+  it("fails a malformed typed findings array soft as an effective weakening", () => {
+    const idea = {
+      red_team_verdict: " KILLED ",
+      red_team_caveats: [null, 7, {}, "   "],
+      red_team_findings: [
+        null,
+        7,
+        { kind: "verified_incumbent_overlap", claim: 12 },
+        { kind: "invented_kind", claim: "Invented evidence." },
+        { kind: "evidence_gap", claim: "   " },
+      ],
+    };
+
+    expect(isPremiseUnproven(idea)).toBe(false);
+    expect(adversarialReviewFinding(idea)).toMatchObject({
+      label: "Adversarial review: Evidence incomplete",
+      chipLabel: "Evidence incomplete",
+      severity: "weakened",
+    });
+    expect(adversarialReviewVerdictSummary(idea)).toContain(
+      "decision-critical evidence incomplete",
+    );
+  });
+
+  it("normalizes only valid non-empty caveats and typed finding claims", () => {
+    expect(adversarialReviewFinding({
+      red_team_verdict: " weakened ",
+      red_team_caveats: [null, 3, {}, "  A citable caveat.  ", ""],
+      red_team_findings: [
+        { kind: "evidence_gap", claim: "  A missing payer link.  " },
+        { kind: "verified_payer_mismatch", claim: {} },
+      ],
+    })).toMatchObject({
+      label: "Adversarial review: Evidence incomplete",
+      details: ["A missing payer link.", "A citable caveat."],
+      severity: "weakened",
+      primary: {
+        kind: "evidence_gap",
+        claim: "A missing payer link.",
+      },
+    });
   });
 
   it("classifies a weakened verdict with an evidence marker as weakened", () => {
@@ -183,6 +464,17 @@ describe("premise-unproven helpers", () => {
     expect(isPremiseUnproven({ red_team_verdict: "weakened" })).toBe(false);
     expect(isPremiseUnproven({ red_team_verdict: null })).toBe(false);
     expect(isPremiseUnproven({})).toBe(false);
+    expect(isPremiseUnproven({ red_team_verdict: "killed", red_team_findings: [] }))
+      .toBe(false);
+    expect(isPremiseUnproven({ red_team_verdict: "killed", red_team_findings: null }))
+      .toBe(true);
+    expect(isPremiseUnproven({
+      red_team_verdict: "killed",
+      red_team_findings: [{
+        claim: "The incumbent ships the workflow.",
+        kind: "verified_incumbent_overlap",
+      }],
+    })).toBe(true);
   });
 
   it("names both ideas in the split note and keeps the leader in play", () => {
@@ -191,6 +483,18 @@ describe("premise-unproven helpers", () => {
     expect(note).toContain("could not confirm its premise");
     expect(note).toContain("the recommendation goes to CountPad Vet");
     expect(note).toContain("keeps its rank and you can still shortlist it");
+  });
+
+  it("uses typed counterevidence in the recommendation split note", () => {
+    const note = recommendationSplitNote("Leader", "Recommended", {
+      red_team_findings: [{
+        claim: "The incumbent already ships it.",
+        kind: "verified_incumbent_overlap",
+      }],
+    });
+    expect(note).toContain("the adversarial review found verified incumbent overlap");
+    expect(note).toContain("The incumbent already ships it.");
+    expect(note).not.toContain("could not confirm its premise");
   });
 });
 

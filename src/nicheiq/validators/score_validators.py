@@ -9,6 +9,11 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from ..models.solution_idea import (
+    effective_red_team_state,
+    has_affirmative_red_team_findings,
+)
+
 
 class ConfidenceThresholds(BaseModel):
     """
@@ -719,6 +724,7 @@ class VerdictValidator:
         primary_concern: Optional[str],
         red_team_verdict: Optional[str],
         red_team_caveats: Optional[list],
+        red_team_findings: Optional[list] = None,
     ) -> tuple[
         Literal["Go", "No-Go", "Conditional"],
         Literal["Low", "Medium", "High"],
@@ -737,7 +743,11 @@ class VerdictValidator:
         concern for a killed verdict so this one can land. Abstains (no context) for
         survives/None; a vocabulary-mismatch abstain (red_team_vocab_mismatch) is NOT a
         verdict and never triggers this."""
-        rt = (red_team_verdict or "").strip().lower()
+        rt, typed_findings = effective_red_team_state({
+            "red_team_verdict": red_team_verdict,
+            "red_team_findings": red_team_findings,
+        })
+        rt = rt or ""
         if rt not in ("weakened", "killed"):
             return verdict, risk_level, primary_concern, None
 
@@ -749,7 +759,20 @@ class VerdictValidator:
             risk_level = "High"
 
         caveats = [c for c in (red_team_caveats or []) if isinstance(c, str) and c.strip()]
-        first = caveats[0].strip()[:200] if caveats else ""
+        affirmative = [
+            finding for finding in (typed_findings or [])
+            if has_affirmative_red_team_findings([finding])
+        ]
+        explicit_incomplete = (
+            typed_findings is not None
+            and not has_affirmative_red_team_findings(typed_findings)
+        )
+        if typed_findings is None:
+            first = caveats[0].strip()[:200] if caveats else ""
+        elif rt == "killed" and affirmative:
+            first = affirmative[0].claim[:200]
+        else:
+            first = typed_findings[0].claim[:200] if typed_findings else ""
         cited = f" — {first}" if first else ""
         # The verdict enum must NOT be interpolated into the sentence. This read
         # "an adversarial evidence probe killed this idea" in the go/no-go block — the most
@@ -758,22 +781,46 @@ class VerdictValidator:
         # vocabulary sweep because the only artifact to check had `executive_dashboard: null`
         # from the project_type defect, so this string was computed and discarded. Fixing
         # that bug put this one on screen (live run 8f35ea6b, 2026-08-03).
-        finding = (
-            "could not find evidence for this idea's premise"
-            if rt == "killed"
-            else "raised a decision-critical objection to this idea"
-        )
+        if typed_findings is None:
+            # Exact legacy fallback for prose-only checkpoints.
+            finding = (
+                "could not find evidence for this idea's premise"
+                if rt == "killed"
+                else "raised a decision-critical objection to this idea"
+            )
+        elif rt == "killed":
+            finding = "found verified counterevidence against this idea's premise"
+        elif explicit_incomplete:
+            finding = "returned incomplete evidence for this idea's premise"
+        else:
+            finding = "raised a verified decision-critical objection to this idea"
         red_team_context = (
             f"Red-team review: an adversarial evidence probe {finding}{cited}. "
             "Treat the caveat as a validation task, not a footnote."
         )
         if primary_concern is None:
-            primary_concern = (
-                "Adversarial red-team review found this idea's core premise refuted by evidence"
-                if rt == "killed"
-                else "Adversarial red-team review raised a decision-critical objection to the "
-                     "selected idea"
-            )
+            if typed_findings is None:
+                primary_concern = (
+                    "Adversarial red-team review found this idea's core premise refuted by evidence"
+                    if rt == "killed"
+                    else "Adversarial red-team review raised a decision-critical objection to the "
+                         "selected idea"
+                )
+            elif rt == "killed":
+                primary_concern = (
+                    "Adversarial red-team review found verified counterevidence against the "
+                    "selected idea"
+                )
+            elif explicit_incomplete:
+                primary_concern = (
+                    "Adversarial red-team review returned incomplete evidence for the "
+                    "selected idea"
+                )
+            else:
+                primary_concern = (
+                    "Adversarial red-team review raised a verified decision-critical objection "
+                    "to the selected idea"
+                )
         return verdict, risk_level, primary_concern, red_team_context
 
     def apply_regulatory_risk_downgrade(

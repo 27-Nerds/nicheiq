@@ -198,6 +198,20 @@ def test_clean_idea_carries_no_fatal_assumptions():
     assert out["theses"][0]["fatal_assumptions"] == []
 
 
+def test_assigned_gap_only_kill_is_not_a_fatal_thesis_assumption():
+    ideas = [_idea(
+        "Gap",
+        source_pain=CTRL,
+        red_team_verdict="killed",
+        red_team_findings=[{"kind": "evidence_gap", "claim": "Search found no proof"}],
+        red_team_caveats=["Search found no proof"],
+    )]
+
+    out = build_idea_theses(ideas, partition=_partition())
+
+    assert out["theses"][0]["fatal_assumptions"] == []
+
+
 def test_uncovered_families_separate_no_cell_from_no_survivor():
     ideas = [_idea("NarcVault", source_pain=CTRL)]
     telemetry = {

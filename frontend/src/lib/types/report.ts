@@ -1,6 +1,6 @@
 // NicheIQ Report TypeScript Interfaces
 
-import type { IdeaTags, SolutionPreview } from './job';
+import type { IdeaTags, RedTeamFinding, SolutionPreview } from './job';
 
 export interface Report {
 	niche: string;
@@ -262,6 +262,7 @@ export interface IdeaValidation {
 	/** Our own generator independently proposed the same product — a DEMAND signal. */
 	duplicate_of?: { idea_id?: string | null; name: string } | null;
 	red_team_verdict?: string | null;
+	red_team_findings?: RedTeamFinding[] | null;
 	kill_risks: {
 		claim: string;
 		why_it_matters?: string | null;
@@ -331,37 +332,59 @@ export interface TrafficMonetization {
 	monetization_model: string;
 	estimated_monthly_pageviews: string;
 	traffic_source_breakdown: Array<{ source: string; percentage: string }>;
-	estimated_cpm_rate?: string;
-	estimated_monthly_ad_revenue: string;
+	estimated_cpm_rate?: string | null;
+	estimated_monthly_ad_revenue?: string | null;
 	recommended_ad_networks: string[];
-	affiliate_commission_rate?: string;
-	estimated_affiliate_ctr?: string;
-	estimated_monthly_affiliate_revenue: string;
+	affiliate_commission_rate?: string | null;
+	estimated_affiliate_ctr?: string | null;
+	estimated_monthly_affiliate_revenue?: string | null;
 	recommended_affiliate_programs: string[];
-	sponsored_listing_price?: string;
-	premium_placement_price?: string;
-	lead_gen_price_per_lead?: string;
-	estimated_monthly_revenue_range: string;
-	estimated_annual_revenue_range: string;
-	break_even_traffic_threshold?: string;
+	sponsored_listing_price?: string | null;
+	premium_placement_price?: string | null;
+	lead_gen_price_per_lead?: string | null;
+	estimated_monthly_revenue_range?: string | null;
+	estimated_annual_revenue_range?: string | null;
+	break_even_traffic_threshold?: string | null;
 	monetization_rationale: string;
-	scaling_strategy: string;
+	scaling_strategy?: string | null;
 	monetization_confidence?: 'High' | 'Medium' | 'Low';
+	viability_verdict?: 'viable' | 'conditional' | 'nonviable' | null;
+	economics_evaluated?: boolean;
+	funnel_target?: string | null;
+	qualified_actions?: string | null;
+	conversion_assumptions?: string[] | null;
+	estimated_funnel_value?: string | null;
+	unit_value_evidence?: {
+		route: 'lead_generation' | 'sponsorship' | 'paid_upgrade_funnel' | 'affiliate';
+		candidate_idea_id?: string | null;
+		candidate_idea_revision?: number | null;
+		source_name: string;
+		source_url: string;
+		evidence_text: string;
+		retrieved_quote?: string | null;
+		retrieved_at?: string | null;
+		verification_marker?: 'exact_quote_in_fetched_public_content' | null;
+		value_low?: number | null;
+		value_high?: number | null;
+		billing_basis: 'per_lead' | 'per_sponsored_listing_month' | 'per_paid_upgrade_month' | 'affiliate_program';
+		commission_pct_low?: number | null;
+		commission_pct_high?: number | null;
+	} | null;
 	saas_alternative_viable: boolean;
 	saas_vs_traffic_recommendation: string;
-	traffic_methodology?: string;
-	traffic_data_sources?: string[];
-	year3_monthly_pageviews?: string;
-	year3_monthly_revenue?: string;
-	full_potential_monthly_pageviews?: string;
-	full_potential_monthly_revenue?: string;
-	revenue_growth_note?: string;
+	traffic_methodology?: string | null;
+	traffic_data_sources?: string[] | null;
+	year3_monthly_pageviews?: string | null;
+	year3_monthly_revenue?: string | null;
+	full_potential_monthly_pageviews?: string | null;
+	full_potential_monthly_revenue?: string | null;
+	revenue_growth_note?: string | null;
 	revenue_milestones?: Array<{
 		traffic: string;
 		ad_revenue: string;
 		unlock: string;
 		total_potential: string;
-	}>;
+	}> | null;
 }
 
 // Refinement Highlights interface
@@ -1274,6 +1297,7 @@ export interface AlternativeSolution {
 	adjacent_market_parity?: string | null; // audience-independent incumbent where the mechanism monetizes ("HigherGov (govcon intel): …"), null = none found
 	red_team_verdict?: string | null; // adversarial pass verdict: survives | weakened | killed
 	red_team_caveats?: string[] | null; // evidence-cited caveats from the red-team pass
+	red_team_findings?: RedTeamFinding[] | null;
 	/** 'parity_pivot' | 'variant_merge' | 'red_team_revision' when this idea replaced an
 	 *  earlier one that was rebuilt mid-run. Used to explain a missing CAC figure rather
 	 *  than hiding the tile — the old estimate priced a product that no longer exists. */

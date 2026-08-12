@@ -11,9 +11,15 @@ import pytest
 
 from nicheiq.config.settings import settings
 from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+from nicheiq.models.solution_idea import RedTeamFinding
 from nicheiq.utils import llm_service
 from nicheiq.utils.idea_portfolio_summary import _idea_digest_line
-from nicheiq.utils.red_team_review import run_red_team_review
+from nicheiq.utils.red_team_review import _RedTeamVerdict, run_red_team_review
+
+
+def _verdict(verdict, claim=None, kind="evidence_gap"):
+    findings = [RedTeamFinding(kind=kind, claim=claim)] if claim else []
+    return _RedTeamVerdict(verdict=verdict, findings=findings, uplift=None)
 
 
 def _crew(search_map=None):
@@ -113,8 +119,9 @@ class TestRedTeamReview:
         monkeypatch.setattr(settings, "parity_bundled_free_cap", 0.40)
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(
-            verdict="killed", caveats=["free in Truckstop broker portal"], uplift=None)
+        verdict = _verdict(
+            "killed", "free in Truckstop broker portal",
+            "verified_free_or_bundled_alternative")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(lambda **kw: (verdict, SimpleNamespace(to_dict=lambda: {}))))
@@ -131,8 +138,7 @@ class TestRedTeamReview:
         monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(
-            verdict="weakened", caveats=["minor category overlap noted"], uplift=None)
+        verdict = _verdict("weakened", "minor category overlap noted")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(lambda **kw: (verdict, SimpleNamespace(to_dict=lambda: {}))))
@@ -143,6 +149,24 @@ class TestRedTeamReview:
         assert idea.red_team_caveats == ["minor category overlap noted"]
         assert idea.incumbent_parity is None
         assert idea.market_fit_score == 0.8
+
+    def test_gap_only_requested_kill_is_stamped_weakened_with_legacy_claims(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
+        crew = _crew(search_map={"pricing calc alternative": "some result"})
+        idea = _idea(mf=0.8)
+        verdict = _verdict(
+            "killed", "No free tool appeared in the results", "evidence_gap")
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (verdict, SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([idea]))
+
+        assert idea.red_team_verdict == "weakened"
+        assert idea.red_team_caveats == ["No free tool appeared in the results"]
+        assert idea.red_team_findings == verdict.findings
+        crew._score_wave.assert_not_called()
 
     def test_llm_exception_is_fail_soft(self, monkeypatch):
         monkeypatch.setattr(settings, "red_team_top_k", 1)
@@ -205,8 +229,9 @@ class TestRedTeamRevision:
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         crew._score_wave.side_effect = _score_wave_stub()
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(
-            verdict="killed", caveats=["free in Truckstop portal"], uplift=None)
+        verdict = _verdict(
+            "killed", "free in Truckstop portal",
+            "verified_free_or_bundled_alternative")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(_dispatch(verdict, {"solution_name": "Revised Idea",
@@ -240,8 +265,9 @@ class TestRedTeamRevision:
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         crew._score_wave.side_effect = _score_wave_stub(**score_overrides)
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(
-            verdict="killed", caveats=["free in Truckstop portal"], uplift=None)
+        verdict = _verdict(
+            "killed", "free in Truckstop portal",
+            "verified_free_or_bundled_alternative")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(_dispatch(verdict, {"solution_name": "Revised Idea",
@@ -261,7 +287,7 @@ class TestRedTeamRevision:
         monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(verdict="survives", caveats=[], uplift=None)
+        verdict = _verdict("survives")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(lambda **kw: (verdict, SimpleNamespace(to_dict=lambda: {}))))
@@ -277,8 +303,7 @@ class TestRedTeamRevision:
         monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
         crew = _crew(search_map={"pricing calc alternative": "some result"})
         idea = _idea(mf=0.8)
-        verdict = SimpleNamespace(
-            verdict="weakened", caveats=["minor category overlap noted"], uplift=None)
+        verdict = _verdict("weakened", "minor category overlap noted")
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
             staticmethod(lambda **kw: (verdict, SimpleNamespace(to_dict=lambda: {}))))
@@ -298,9 +323,10 @@ class TestRedTeamRevision:
         idea_a = _idea(name="IdeaA", mf=0.9)
         idea_b = _idea(name="IdeaB", mf=0.8)
         verdicts = {
-            "IdeaA": SimpleNamespace(
-                verdict="killed", caveats=["free in Truckstop portal"], uplift=None),
-            "IdeaB": SimpleNamespace(verdict="survives", caveats=[], uplift=None),
+            "IdeaA": _verdict(
+                "killed", "free in Truckstop portal",
+                "verified_free_or_bundled_alternative"),
+            "IdeaB": _verdict("survives"),
         }
         monkeypatch.setattr(
             llm_service.LLMService, "invoke_structured",
@@ -337,7 +363,7 @@ def _anchored_ctx(**overrides):
 
 
 def _survives():
-    return SimpleNamespace(verdict="survives", caveats=[], uplift=None)
+    return _verdict("survives")
 
 
 class TestAnchoredQueries:
@@ -538,7 +564,7 @@ class TestSeedRunDataContext:
 
         def fake_invoke(**kw):
             captured["prompt"] = kw.get("prompt", "")
-            return _RedTeamVerdict(verdict="survives", caveats=[], uplift=None), None
+            return _RedTeamVerdict(verdict="survives", findings=[], uplift=None), None
 
         from nicheiq.utils import llm_service
         monkeypatch.setattr(
@@ -556,3 +582,11 @@ class TestSeedRunDataContext:
     def test_pool_reviews_get_no_run_data_block(self, monkeypatch):
         prompt = self._captured_prompt(self._crew_with_pains(None), monkeypatch)
         assert "This run's own discovery" not in prompt
+
+    def test_prompt_hard_types_absence_of_evidence_as_gap(self, monkeypatch):
+        prompt = self._captured_prompt(self._crew_with_pains("validate"), monkeypatch)
+
+        assert "AFFIRMATIVE kinds are" in prompt
+        assert "MUST always be evidence_gap" in prompt
+        for phrase in ("not found", "no proof", "does not appear"):
+            assert phrase in prompt

@@ -45,7 +45,8 @@ class CarryForwardMode(str, Enum):
 # Rule (1): evaluation state the revision must re-earn.
 _RE_EARNED = frozenset({
     "incumbent_parity", "adjacent_market_parity", "market_fit_claimed_route",
-    "red_team_verdict", "red_team_caveats", "red_team_revised", "red_team_vocab_mismatch",
+    "red_team_verdict", "red_team_caveats", "red_team_findings", "red_team_revised",
+    "red_team_vocab_mismatch",
     "calibration_notes", "refine_binding_constraint", "duplicate_of",
     "novelty_score", "seo_scalability_score", "solo_dev_feasibility", "obviousness_score",
     "market_fit_score_raw", "technical_feasibility_score_raw", "novelty_score_raw",

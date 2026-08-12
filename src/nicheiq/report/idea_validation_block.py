@@ -18,13 +18,13 @@ import re
 
 from loguru import logger
 
+from ..models.solution_idea import (
+    effective_red_team_state,
+    effective_red_team_verdict,
+    has_affirmative_red_team_findings,
+)
 from ..utils.calibration_notes import extract_criterion_reason, truncate_for_display
 from ..utils.seed_fidelity import content_tokens, seed_clause_drift
-from ..utils.validation.evidence_breadth import (
-    compute_evidence_breadth,
-    compute_evidence_confidence,
-)
-from ..validators.report_consistency import parse_stamp_vendor_evidence, strip_vendor_echo
 
 # ── fixed copy (asserted by tests; the frontend renders these verbatim) ──
 UNANCHORED_NOTE = (
@@ -68,6 +68,114 @@ _PRICE_UNKNOWNS = {
 }
 
 
+def resolve_idea_validation_outcome(
+    *,
+    idea_name: str | None,
+    demoted: bool,
+    parity_raw: str | None,
+    unanchored: bool,
+    red_team_verdict: str | None,
+    refinement_present: bool,
+    brief_parity_hit: bool,
+    red_team_findings: list | None = None,
+) -> tuple[str, str]:
+    """Return the one top-line outcome/headline for an evaluated idea-check seed.
+
+    This is the sole outcome-precedence authority for both live preview materialization
+    and the registered-asset backfill. Keep raw red-team diagnostics on the record, but
+    absorb their decision meaning here before any consumer renders the top line.
+    """
+    parity = (parity_raw or "").strip().lower()
+    red_team = effective_red_team_verdict(red_team_verdict, red_team_findings) or ""
+
+    if demoted:
+        return (
+            "ruled_out",
+            f"We ruled {idea_name or 'your idea'} out on this run. "
+            "The evidence did not support building it.",
+        )
+    if parity.startswith(("shipped", "partial")):
+        return (
+            "occupied",
+            "Real problem, and a named competitor already ships the core of "
+            f"{idea_name or 'your idea'}. That is demand proof and an entry "
+            "constraint at the same time.",
+        )
+    if unanchored:
+        return (
+            "premise_unproven",
+            f"{idea_name or 'Your idea'} rests on a problem this run's evidence "
+            "does not name. We graded it as a hypothesis.",
+        )
+    if red_team == "killed":
+        if has_affirmative_red_team_findings(red_team_findings):
+            return (
+                "premise_unproven",
+                f"The problem behind {idea_name or 'your idea'} shows up in real "
+                "threads, but adversarial review found verified counterevidence "
+                "against the evaluated premise. Demand is still unmeasured.",
+            )
+        return (
+            "premise_unproven",
+            f"The problem behind {idea_name or 'your idea'} shows up in real "
+            "threads, but adversarial review could not confirm the premise. "
+            "Demand is still unmeasured.",
+        )
+    if red_team == "weakened":
+        if (red_team_findings is not None
+                and not has_affirmative_red_team_findings(red_team_findings)):
+            return (
+                "worth_testing",
+                f"The problem behind {idea_name or 'your idea'} shows up in real "
+                "threads, but adversarial review returned incomplete evidence. "
+                "Demand is still unmeasured.",
+            )
+        return (
+            "worth_testing",
+            f"The problem behind {idea_name or 'your idea'} shows up in real "
+            "threads, but adversarial review found material concerns. Demand "
+            "is still unmeasured.",
+        )
+    if refinement_present:
+        # One verdict, not three: scope the sentence to the mechanism actually evaluated.
+        if brief_parity_hit:
+            return (
+                "worth_testing",
+                f"The problem behind {idea_name or 'your idea'} is real. Your "
+                "original mechanism already has tools shipping in it; the "
+                "sharpened version we evaluated has no direct shipper. Demand "
+                "is still unmeasured.",
+            )
+        return (
+            "worth_testing",
+            f"The problem behind {idea_name or 'your idea'} shows up in "
+            "real threads, and nothing we found ships the mechanism we "
+            "evaluated, a sharpened version of your pitch. Demand is "
+            "still unmeasured.",
+        )
+    if brief_parity_hit:
+        return (
+            "worth_testing",
+            f"The problem behind {idea_name or 'your idea'} shows up in real "
+            "threads. Tools already ship in your mechanism's category, though "
+            "no direct equivalent of your exact product turned up. Demand is "
+            "still unmeasured.",
+        )
+    if parity.startswith("none"):
+        return (
+            "worth_testing",
+            f"The problem behind {idea_name or 'your idea'} shows up in real "
+            "threads, and nothing we found ships your mechanism yet. Demand is "
+            "still unmeasured.",
+        )
+    return (
+        "worth_testing",
+        f"The problem behind {idea_name or 'your idea'} shows up in real "
+        "threads. The direct-equivalent probe did not produce a result, "
+        "and demand is still unmeasured.",
+    )
+
+
 def _normalize_price_note(value) -> str | None:
     """Snippet-derived pricing arrives as free text. Real prices ('$15-49/mo',
     'Free or $9.99/mo') pass verbatim; unknowns become None (the column renders an
@@ -96,6 +204,8 @@ def _parse_parity_incumbent(parity_raw) -> tuple[str, str] | None:
     """(vendor, evidence) from the seed's parity stamp via the shared shape authority
     (`validators/report_consistency`); None for 'none found', free text, or
     placeholder vendors (DIY, unknown …)."""
+    from ..validators.report_consistency import parse_stamp_vendor_evidence
+
     parsed = parse_stamp_vendor_evidence(parity_raw)
     if parsed is None:
         return None
@@ -134,6 +244,8 @@ def _display_parity(stamp):
     if not isinstance(stamp, str) or not stamp.strip():
         return stamp
     text = stamp.strip()
+    from ..validators.report_consistency import parse_stamp_vendor_evidence
+
     parsed = parse_stamp_vendor_evidence(text)
     if parsed is None:
         return stamp
@@ -529,14 +641,33 @@ def _kill_risks(state, seed, anchored_sevs: list) -> list[dict]:
     critic's concession fills an empty card, and the market-signal risk — the strongest
     empirical entry — always survives the cap when found."""
     entries: list[dict] = []
-    for caveat in (getattr(seed, "red_team_caveats", None) or [])[:3]:
-        entries.append({
-            "claim": caveat if isinstance(caveat, str) else str(caveat),
-            "why_it_matters": None,
-            "falsification": None,
-            "quote": None,
-            "source": "adversarial_review",
-        })
+    _verdict, typed_findings = effective_red_team_state(seed)
+    if typed_findings is not None:
+        for finding in typed_findings[:3]:
+            claim = (finding.get("claim") if isinstance(finding, dict)
+                     else getattr(finding, "claim", None))
+            kind = (finding.get("kind") if isinstance(finding, dict)
+                    else getattr(finding, "kind", None))
+            if not isinstance(claim, str) or not claim.strip():
+                continue
+            entries.append({
+                "claim": claim.strip(),
+                "finding_kind": kind,
+                "why_it_matters": None,
+                "falsification": None,
+                "quote": None,
+                "source": "adversarial_review",
+            })
+    else:
+        # Exact legacy fallback: old checkpoints carry prose caveats but no typed findings.
+        for caveat in (getattr(seed, "red_team_caveats", None) or [])[:3]:
+            entries.append({
+                "claim": caveat if isinstance(caveat, str) else str(caveat),
+                "why_it_matters": None,
+                "falsification": None,
+                "quote": None,
+                "source": "adversarial_review",
+            })
     if not entries:
         concern = _critic_concern(seed)
         if concern:
@@ -602,6 +733,14 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
     if not is_validate:
         return None
 
+    # Kept local so the pure outcome resolver and its maintenance runner can import
+    # under the API image's minimal Python dependency set.
+    from ..utils.validation.evidence_breadth import (
+        compute_evidence_breadth,
+        compute_evidence_confidence,
+    )
+    from ..validators.report_consistency import strip_vendor_echo
+
     ideas = getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
     seed = _find_marked(ideas, _MARKER_SEED)
     pivot_idea = _find_marked(ideas, _MARKER_PIVOT)
@@ -641,7 +780,8 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
             "stronger_pain_count": 0,
             "unanchored_hypothesis": None,
             "incumbent_parity": None, "existing_equivalent": None, "competitors": [],
-            "duplicate_of": None, "red_team_verdict": None, "kill_risks": [],
+            "duplicate_of": None, "red_team_verdict": None,
+            "red_team_findings": None, "kill_risks": [],
             "alternatives": _alternatives(ideas, seed=None, pivot=None),
             "seed_candidate_status": None, "seed_idea_id": None,
             "seed_idea_revision": None, "seed_purchasable": False,
@@ -654,8 +794,13 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
 
     parity_raw = (getattr(seed, "incumbent_parity", None) or "").strip()
     parity = parity_raw.lower()
-    red_team_verdict = (getattr(seed, "red_team_verdict", None) or "").strip().lower()
+    red_team_verdict, red_team_findings = effective_red_team_state(seed)
     red_team_raised_concerns = red_team_verdict in ("killed", "weakened")
+    red_team_evidence_incomplete = (
+        red_team_raised_concerns
+        and red_team_findings is not None
+        and not has_affirmative_red_team_findings(red_team_findings)
+    )
     unanchored = bool(getattr(seed, "unanchored_hypothesis", False))
     demoted = (getattr(seed, "candidate_status", "active") or "active") != "active"
     breadth = compute_evidence_breadth(
@@ -676,63 +821,16 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         ("shipped", "partial", "substitute", "bundled"))
 
     # ── outcome enum (priority order) ──
-    if demoted:
-        outcome = "ruled_out"
-        headline = (f"We ruled {idea_name or 'your idea'} out on this run. "
-                    "The evidence did not support building it.")
-    elif parity.startswith(("shipped", "partial")):
-        outcome = "occupied"
-        headline = (f"Real problem, and a named competitor already ships the core of "
-                    f"{idea_name or 'your idea'}. That is demand proof and an entry "
-                    "constraint at the same time.")
-    elif unanchored:
-        outcome = "premise_unproven"
-        headline = (f"{idea_name or 'Your idea'} rests on a problem this run's evidence "
-                    "does not name. We graded it as a hypothesis.")
-    elif red_team_verdict == "killed":
-        outcome = "premise_unproven"
-        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
-                    "threads, but adversarial review could not confirm the premise. "
-                    "Demand is still unmeasured.")
-    elif red_team_verdict == "weakened":
-        outcome = "worth_testing"
-        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
-                    "threads, but adversarial review found material concerns. Demand "
-                    "is still unmeasured.")
-    elif refinement is not None:
-        # One verdict, not three: with a disclosed refinement, "nothing ships your
-        # mechanism" would be true of the REFINED mechanism while the PITCHED one may
-        # be a crowded category — scope the sentence to what was actually evaluated.
-        outcome = "worth_testing"
-        if brief_parity_hit:
-            headline = (f"The problem behind {idea_name or 'your idea'} is real. Your "
-                        "original mechanism already has tools shipping in it; the "
-                        "sharpened version we evaluated has no direct shipper. Demand "
-                        "is still unmeasured.")
-        else:
-            headline = (f"The problem behind {idea_name or 'your idea'} shows up in "
-                        "real threads, and nothing we found ships the mechanism we "
-                        "evaluated, a sharpened version of your pitch. Demand is "
-                        "still unmeasured.")
-    elif brief_parity_hit:
-        # No disclosed refinement, but the brief probe found the pitched mechanism's
-        # category occupied while the evaluated product read "none found" — claiming
-        # "nothing ships your mechanism" would contradict the block's own finding.
-        outcome = "worth_testing"
-        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
-                    "threads. Tools already ship in your mechanism's category, though "
-                    "no direct equivalent of your exact product turned up. Demand is "
-                    "still unmeasured.")
-    elif parity.startswith("none"):
-        outcome = "worth_testing"
-        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
-                    "threads, and nothing we found ships your mechanism yet. Demand is "
-                    "still unmeasured.")
-    else:
-        outcome = "worth_testing"
-        headline = (f"The problem behind {idea_name or 'your idea'} shows up in real "
-                    "threads. The direct-equivalent probe did not produce a result, "
-                    "and demand is still unmeasured.")
+    outcome, headline = resolve_idea_validation_outcome(
+        idea_name=idea_name,
+        demoted=demoted,
+        parity_raw=parity_raw,
+        unanchored=unanchored,
+        red_team_verdict=red_team_verdict,
+        refinement_present=refinement is not None,
+        brief_parity_hit=brief_parity_hit,
+        red_team_findings=red_team_findings,
+    )
 
     # ── three parts ──
     if unanchored:
@@ -755,12 +853,19 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         # NOT "None found": the category-incumbents table two cards below lists named
         # tools, and the two truths must not read as a contradiction.
         space_state, space_answer = "none_found", "No direct equivalent"
+    elif red_team_evidence_incomplete:
+        space_state, space_answer = "evidence_incomplete", "Evidence incomplete"
     elif red_team_raised_concerns:
         space_state, space_answer = "review_concerns", "Concerns found"
     else:
         space_state, space_answer = "not_checked", "Not checked"
     if space_state == "none_found":
         space_detail = NONE_FOUND_NOTE
+    elif space_state == "evidence_incomplete":
+        space_detail = (
+            "The direct-equivalent probe did not produce a result, and adversarial "
+            "review returned incomplete evidence. No competitive conclusion was established."
+        )
     elif space_state == "review_concerns":
         space_detail = (
             "The direct-equivalent probe did not produce a result, but adversarial "
@@ -870,7 +975,11 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         "existing_equivalent": getattr(seed, "existing_equivalent", None),
         "competitors": competitors,
         "duplicate_of": duplicate_of,
-        "red_team_verdict": getattr(seed, "red_team_verdict", None),
+        "red_team_verdict": red_team_verdict,
+        "red_team_findings": [
+            finding.model_dump(mode="json") if hasattr(finding, "model_dump") else finding
+            for finding in (red_team_findings or [])
+        ] if red_team_findings is not None else None,
         "kill_risks": kill_risks,
         "alternatives": _alternatives(ideas, seed=seed, pivot=pivot_idea),
         "seed_candidate_status": getattr(seed, "candidate_status", None),

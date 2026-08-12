@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import type { IdeaValidation } from "$lib/types/report";
-  import { PREMISE_UNPROVEN_LABEL } from "$lib/utils/adversarialReview";
+  import { adversarialReviewVerdictSummary } from "$lib/utils/adversarialReview";
   import { cleanEvidenceExcerpt } from "$lib/utils/cleanEvidenceExcerpt";
   import { ArrowRight, ChevronDown } from "lucide-svelte";
 
@@ -151,20 +151,12 @@
     market_signal: "market signal",
   };
 
-  // red_team_verdict is an enum (survives|weakened|killed) — never render the raw
-  // word: "killed" beside a green "Worth testing" badge reads as the report
-  // contradicting itself. The killed copy reuses the app-wide "Premise unproven"
-  // vocabulary (utils/adversarialReview) so the workbench chip and this card give
-  // the same finding the same name. The verdict is advisory (it never moves
-  // scores); the outcome badge already states what the evaluation decided.
-  const RED_TEAM_COPY: Record<string, string> = {
-    killed:
-      `Adversarial review: ${PREMISE_UNPROVEN_LABEL.toLowerCase()}. The reviewer ` +
-      "could not confirm the premise behind this idea. Its strongest objections:",
-    weakened:
-      "Our adversarial reviewer found real weaknesses. The objections that stuck:",
-    survives: "Our adversarial reviewer raised no killing objection. Residual risks:",
-  };
+  // The verdict is advisory (it never moves scores); the outcome badge already states
+  // what the evaluation decided. Typed findings determine whether this paragraph names
+  // verified counterevidence or incomplete evidence; legacy records retain the old copy.
+  const redTeamCopy = $derived(
+    adversarialReviewVerdictSummary(data, { inIdeaDetail: true }),
+  );
 </script>
 
 <section class="iv" aria-label="Idea check">
@@ -559,10 +551,9 @@
     {#if data.kill_risks.length || data.red_team_verdict}
       <div class="iv-card iv-wide-evidence">
         <h2 class="iv-eyebrow">What would kill it</h2>
-        {#if data.red_team_verdict}
+        {#if redTeamCopy}
           <p class="iv-body-text">
-            {RED_TEAM_COPY[data.red_team_verdict] ??
-              `Adversarial review: ${data.red_team_verdict}`}
+            {redTeamCopy}
           </p>
         {/if}
         {#if data.kill_risks.length}

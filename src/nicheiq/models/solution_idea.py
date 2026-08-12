@@ -3,9 +3,109 @@ Pydantic models for solution ideas (Stage 7).
 """
 
 
+from collections.abc import Mapping
 from typing import Literal, Optional, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+RedTeamFindingKind = Literal[
+    "verified_incumbent_overlap",
+    "verified_free_or_bundled_alternative",
+    "verified_payer_mismatch",
+    "verified_modal_failure",
+    "evidence_gap",
+]
+
+
+class RedTeamFinding(BaseModel):
+    """One typed claim from the adversarial evidence review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str = Field(..., min_length=1)
+    kind: RedTeamFindingKind
+
+    @field_validator("claim", mode="before")
+    @classmethod
+    def _strip_nonblank_claim(cls, value):
+        if not isinstance(value, str):
+            raise ValueError("claim must be a nonblank string")
+        return value.strip()
+
+
+AFFIRMATIVE_RED_TEAM_FINDING_KINDS = frozenset({
+    "verified_incumbent_overlap",
+    "verified_free_or_bundled_alternative",
+    "verified_payer_mismatch",
+    "verified_modal_failure",
+})
+
+
+def _red_team_finding_kind(finding) -> Optional[str]:
+    return (
+        finding.get("kind")
+        if isinstance(finding, dict)
+        else getattr(finding, "kind", None)
+    )
+
+
+def _red_team_finding_claim(finding) -> Optional[str]:
+    return (
+        finding.get("claim")
+        if isinstance(finding, dict)
+        else getattr(finding, "claim", None)
+    )
+
+
+def has_affirmative_red_team_findings(findings: object) -> bool:
+    """Return whether typed findings contain verified adverse evidence."""
+    if not isinstance(findings, (list, tuple)):
+        return False
+    return any(
+        _red_team_finding_kind(finding) in AFFIRMATIVE_RED_TEAM_FINDING_KINDS
+        and isinstance(_red_team_finding_claim(finding), str)
+        and bool(_red_team_finding_claim(finding).strip())
+        for finding in findings
+    )
+
+
+def effective_red_team_verdict(
+    verdict: object, findings: object
+) -> Optional[str]:
+    """Resolve typed red-team semantics while preserving prose-only legacy records."""
+    normalized = verdict.strip().lower() or None if isinstance(verdict, str) else None
+    if not isinstance(findings, (list, tuple)):
+        return normalized
+    if normalized == "killed" and not has_affirmative_red_team_findings(findings):
+        return "weakened"
+    return normalized
+
+
+def effective_red_team_state(obj_or_mapping) -> tuple[Optional[str], Optional[list[RedTeamFinding]]]:
+    """Read and validate red-team state from a model, namespace, or checkpoint mapping.
+
+    ``None`` findings identify legacy prose-only records. An explicit (even empty) findings
+    collection identifies the typed contract and therefore remains distinct after validation.
+    Invalid rows are discarded independently rather than crashing a report or selection path.
+    """
+    if isinstance(obj_or_mapping, Mapping):
+        verdict = obj_or_mapping.get("red_team_verdict")
+        raw_findings = obj_or_mapping.get("red_team_findings")
+    else:
+        verdict = getattr(obj_or_mapping, "red_team_verdict", None)
+        raw_findings = getattr(obj_or_mapping, "red_team_findings", None)
+
+    if not isinstance(raw_findings, (list, tuple)):
+        findings = None
+    else:
+        findings = []
+        for row in raw_findings:
+            try:
+                findings.append(RedTeamFinding.model_validate(row))
+            except (TypeError, ValueError):
+                continue
+    return effective_red_team_verdict(verdict, findings), findings
 
 
 class AudienceFitResult(BaseModel):
@@ -182,6 +282,125 @@ StrengthTag = Literal[
 # How often the buyer USES the product — not how it bills. Episodic usage sold as a
 # subscription churns between events; the deterministic pricing-shape check reads this.
 UsageCadenceTag = Literal["continuous", "periodic", "episodic", "one-shot"]
+
+# Commercial-route contract available at concept birth, before payability/parity caps run.
+# This is deliberately separate from ``IdeaTags.monetization``: tags are derived late and
+# describe billing vocabulary, while this contract answers who pays and whether revenue depends
+# on the source segment paying directly. ``None`` on legacy checkpoints preserves old behavior.
+CommercialAccessModel = Literal["paid", "freemium", "free"]
+CommercialValueCaptureMode = Literal[
+    "direct_user_payment",
+    "advertising",
+    "affiliate",
+    "lead_generation",
+    "sponsorship",
+    "paid_upgrade_funnel",
+]
+CommercialCorpusOrigin = Literal[
+    "public_dataset",
+    "first_party",
+    "user_generated",
+    "licensed",
+    "none",
+]
+
+
+class CommercialRouteContract(BaseModel):
+    """Typed early commercial thesis, later re-stamped from code-owned concept provenance.
+
+    Each field degrades independently to ``None``. Raw concepts are creative model output: one
+    misspelled enum must not reject the whole concept (and thereby silently replace it with a
+    synthesis stub). Code that needs a particular route therefore tests that field explicitly.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    access_model: Optional[CommercialAccessModel] = None
+    value_capture_mode: Optional[CommercialValueCaptureMode] = None
+    payer: Optional[str] = Field(
+        default=None,
+        description=(
+            "Who funds the product (for example the end user, employer, sponsor, advertiser, "
+            "vendor, or lead buyer); name the payer, not merely the operator"
+        ),
+    )
+    source_user_payment_required: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether a source-segment user must pay to use the front-door utility. False is "
+            "required before a non-direct route may bypass source-user payability; null means "
+            "the route is not established."
+        ),
+    )
+    corpus_origin: Optional[CommercialCorpusOrigin] = Field(
+        default=None,
+        description=(
+            "Origin of the finite organic page corpus. public_dataset is required for the "
+            "commercial reserve; user/vendor submissions are a cold-start route, not public data."
+        ),
+    )
+    enumerable_dimensions: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Two or more finite parameter axes that mechanically enumerate pages, for example "
+            "city and permit_type. Free-text content themes are not dimensions."
+        ),
+    )
+
+    @field_validator("access_model", mode="before")
+    @classmethod
+    def _degrade_access_model(cls, value):
+        normalized = str(value or "").strip().lower()
+        return normalized if normalized in get_args(CommercialAccessModel) else None
+
+    @field_validator("value_capture_mode", mode="before")
+    @classmethod
+    def _degrade_value_capture_mode(cls, value):
+        normalized = str(value or "").strip().lower()
+        return normalized if normalized in get_args(CommercialValueCaptureMode) else None
+
+    @field_validator("payer", mode="before")
+    @classmethod
+    def _degrade_payer(cls, value):
+        normalized = str(value or "").strip()
+        return normalized or None
+
+    @field_validator("source_user_payment_required", mode="before")
+    @classmethod
+    def _degrade_source_user_payment_required(cls, value):
+        # Do not let Pydantic coerce model prose such as "no" or integers into a
+        # commercial fact. Generation must emit a real JSON boolean.
+        return value if isinstance(value, bool) else None
+
+    @field_validator("corpus_origin", mode="before")
+    @classmethod
+    def _degrade_corpus_origin(cls, value):
+        normalized = str(value or "").strip().lower()
+        return normalized if normalized in get_args(CommercialCorpusOrigin) else None
+
+    @field_validator("enumerable_dimensions", mode="before")
+    @classmethod
+    def _degrade_enumerable_dimensions(cls, value):
+        if not isinstance(value, list):
+            return None
+        out: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            if not isinstance(raw, str):
+                continue
+            axis = " ".join(raw.strip().lower().split())
+            if not axis or len(axis) > 64 or axis in seen:
+                continue
+            seen.add(axis)
+            out.append(axis)
+            if len(out) == 8:
+                break
+        return out or None
+
+
+def _commercial_contract_or_none(value):
+    """Field-style degradation: a mis-slotted scalar cannot reject its enclosing idea."""
+    return value if isinstance(value, (dict, CommercialRouteContract)) else None
 
 
 def _tag_vocabulary(model: type[BaseModel], field_name: str) -> Optional[frozenset]:
@@ -444,6 +663,27 @@ class BaseSolutionIdea(BaseModel):
     source_segment_payability_class: Optional[str] = Field(
         default=None,
         description="CODE-FILLED after generation — ALWAYS leave null/omit this field"
+    )
+    commercial_route: Optional[CommercialRouteContract] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED from the selected RawConcept's typed commercial contract before caps; "
+            "includes corpus provenance for distribution routes; legacy ideas remain null. "
+            "Refinement LLM output is never authoritative for this field."
+        ),
+    )
+
+    @field_validator("commercial_route", mode="before")
+    @classmethod
+    def _degrade_commercial_route(cls, value):
+        return _commercial_contract_or_none(value)
+
+    serp_competition: Optional[Literal["owned", "open", "unknown"]] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED pre-ranking SERP composition for distribution-funded routes; "
+            "owned=competition cap applies, open=sample showed room, unknown=probe abstained."
+        ),
     )
     audience_fit: Optional[bool] = Field(
         default=None,
@@ -841,6 +1081,22 @@ class BaseSolutionIdea(BaseModel):
             "evidence-cited kill/weaken caveats; None = idea not red-teamed."
         ),
     )
+    red_team_findings: Optional[list[RedTeamFinding]] = Field(
+        default=None,
+        max_length=3,
+        description=(
+            "CODE-FILLED typed red-team findings. None preserves legacy records whose "
+            "red_team_caveats predate finding classification."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _apply_typed_red_team_verdict(self):
+        self.red_team_verdict = effective_red_team_verdict(
+            self.red_team_verdict, self.red_team_findings
+        )
+        return self
+
     red_team_revised: Optional[bool] = Field(
         default=None,
         description=(
@@ -1247,6 +1503,21 @@ class RawConcept(BaseModel):
             "platform distribution is a bonus, not a replacement."
         )
     )
+    commercial_route: Optional[CommercialRouteContract] = Field(
+        default=None,
+        description=(
+            "Early commercial contract: access_model (paid/freemium/free), value_capture_mode "
+            "(direct_user_payment/advertising/affiliate/lead_generation/sponsorship/"
+            "paid_upgrade_funnel), actual payer, source_user_payment_required, corpus_origin, "
+            "and finite enumerable_dimensions. "
+            "Required for new generation; optional only so legacy checkpoints still load."
+        ),
+    )
+
+    @field_validator("commercial_route", mode="before")
+    @classmethod
+    def _degrade_commercial_route(cls, value):
+        return _commercial_contract_or_none(value)
 
     # Structural-dedup tags (M/D/J): the same tags from the prompt's dedup gate,
     # persisted as fields so code can verify the gate actually ran — within a

@@ -22,8 +22,8 @@ export type ScoreKey =
 // Keep hover tooltip rationale compact enough to scan without covering the card.
 const MAX_LEN = 240;
 
-function clean(s?: string | null): string {
-  return (s ?? "").replace(/\s+/g, " ").trim();
+function clean(s: unknown): string {
+  return typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
 }
 
 function clamp(s: string): string {

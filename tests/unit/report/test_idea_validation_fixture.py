@@ -30,6 +30,7 @@ QUALITY_PASS_KEYS = {
     "stronger_pain_count",           # Maya pass (new): ruled-out bridge count
     "alternatives",                  # findings pass: named_buyer_count replaces same_buyer_count
     "seed_display_composite_score",  # findings pass (new): ruled-out header score
+    "red_team_findings",             # RT-1 (new): typed red-team evidence kinds
 }
 
 

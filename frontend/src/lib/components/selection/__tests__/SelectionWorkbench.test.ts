@@ -1451,6 +1451,60 @@ describe("SelectionWorkbench — stable selection identity", () => {
     expect(await view.findByRole("dialog", { name: "Solution details: Workflow-led path" })).toBeInTheDocument();
   });
 
+  it("keeps a raw typed gap-only kill eligible for the strongest-candidate action", async () => {
+    vi.mocked(getSelectionDecisionState).mockResolvedValueOnce({
+      schemaVersion: 1,
+      jobId: "job-1",
+      status: "AWAITING_SELECTION",
+      shortlist: { version: 0, items: [] },
+      profile: null,
+      founderFit: null,
+      challenges: [],
+      ownerEvidence: [],
+      assumptions: [],
+      experiments: [],
+      conclusions: [],
+      staleCounts: { shortlist: 0, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: 0 },
+      deepResearch: { eligible: false, optionalWorkRequired: false, blockers: ["NO_CURRENT_SHORTLIST"] },
+      nextAction: {
+        kind: "select_candidate",
+        target: "shortlist",
+        reason: "Review the strongest eligible candidate.",
+        required: true,
+        ideas: [],
+        lens: null,
+        records: [],
+      },
+    } as never);
+    const gapLeader = solution("Gap leader", {
+      idea_id: "idea-gap",
+      idea_revision: 1,
+      headline: "Gap-only high score",
+      adjusted_composite_score: 0.8,
+      red_team_verdict: "killed",
+      red_team_findings: [{
+        claim: "The review did not establish a reachable payer.",
+        kind: "evidence_gap",
+      }],
+    });
+    const survivor = solution("Survivor", {
+      idea_id: "idea-survivor",
+      idea_revision: 1,
+      adjusted_composite_score: 0.6,
+    });
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [gapLeader, survivor] },
+    });
+
+    expect(await view.findByRole("button", { name: "Review Gap-only high score" }))
+      .toBeInTheDocument();
+    const row = within(view.getByRole("table", { name: "Ranked ideas" }))
+      .getAllByRole("row")
+      .find((entry) => entry.textContent?.includes("Gap-only high score")) as HTMLElement;
+    expect(row).toHaveTextContent("Evidence incomplete");
+    expect(row).not.toHaveTextContent("Premise unproven");
+  });
+
   it("keeps candidates with the same stored name independently selectable", async () => {
     const duplicateNames = [
       solution("Shared internal name", { idea_id: "idea-a", headline: "Audience-led path" }),

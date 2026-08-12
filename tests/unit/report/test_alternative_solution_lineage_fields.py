@@ -4,7 +4,11 @@ known residual: these fields exist on BaseSolutionIdea but were dropped when alt
 assembled)."""
 
 from nicheiq.models.research_state import ResearchState
-from nicheiq.models.solution_idea import BaseSolutionIdea, IdeaGenerationResult
+from nicheiq.models.solution_idea import (
+    BaseSolutionIdea,
+    IdeaGenerationResult,
+    RedTeamFinding,
+)
 from nicheiq.models.solution_selection import SolutionSelection
 from nicheiq.report.report_generator import ReportGenerator
 
@@ -147,8 +151,15 @@ def test_red_team_fields_pass_through():
     state.idea_generation = IdeaGenerationResult(
         solution_ideas=[
             _idea("Selected"),
-            _idea("RunnerUp", red_team_verdict="weakened",
-                  red_team_caveats=["vocabulary maps to a different industry"]),
+            _idea(
+                "RunnerUp",
+                red_team_verdict="weakened",
+                red_team_caveats=["vocabulary maps to a different industry"],
+                red_team_findings=[RedTeamFinding(
+                    kind="evidence_gap",
+                    claim="vocabulary maps to a different industry",
+                )],
+            ),
             _idea("Third"),
         ]
     )
@@ -161,8 +172,38 @@ def test_red_team_fields_pass_through():
     alt = ReportGenerator(state)._generate_alternative_solutions()[0]
     assert alt.red_team_verdict == "weakened"
     assert alt.red_team_caveats == ["vocabulary maps to a different industry"]
+    assert alt.red_team_findings == [RedTeamFinding(
+        kind="evidence_gap",
+        claim="vocabulary maps to a different industry",
+    )]
     # Not-red-teamed ideas keep None (no empty-list noise).
     state.solution_selection.runner_up_solutions = ["Third"]
     alt2 = ReportGenerator(state)._generate_alternative_solutions()[0]
     assert alt2.red_team_verdict is None
     assert alt2.red_team_caveats is None
+    assert alt2.red_team_findings is None
+
+
+def test_assigned_gap_only_kill_final_alternative_publishes_weakened():
+    runner = _idea("RunnerUp")
+    runner.red_team_verdict = "killed"
+    runner.red_team_findings = [{
+        "kind": "evidence_gap", "claim": "Search did not establish a buyer",
+    }]
+    state = ResearchState()
+    state.idea_generation = IdeaGenerationResult(solution_ideas=[
+        _idea("Selected"), runner, _idea("Third"),
+    ])
+    state.solution_selection = SolutionSelection(
+        selected_solution_name="Selected",
+        selection_rationale="x" * 120,
+        runner_up_solutions=["RunnerUp"],
+        recommended_focus="x",
+    )
+
+    alternative = ReportGenerator(state)._generate_alternative_solutions()[0]
+
+    assert alternative.red_team_verdict == "weakened"
+    assert alternative.red_team_findings == [RedTeamFinding(
+        kind="evidence_gap", claim="Search did not establish a buyer",
+    )]

@@ -6,6 +6,9 @@ traffic_monetization_analysis:
     Analyze traffic monetization strategy for: **{solution_name}**
 
     **Solution Type:** {project_type} (traffic-focused, not subscription SaaS)
+    **Access Model:** {access_model}
+    **Value Capture Mode:** {value_capture_mode}
+    **Payer:** {payer}
     **Solution Description:** {solution_description}
     **Niche:** {niche_description}
 
@@ -25,7 +28,9 @@ traffic_monetization_analysis:
     **Suggested CPM:** {suggested_cpm}
     **Pre-Computed Ad Revenue Estimate:** {ad_revenue_estimate}
 
-    Use these pre-computed values as anchors. Adjust based on competitive analysis and niche specifics.
+    Use these pre-computed values as fixed inputs. Your numeric route fields are hypotheses for the
+    structured response only: deterministic post-computation will replace or clear them. Never treat
+    a price, program, conversion rate, or revenue figure that you authored as evidence.
 
     ## SEO-Enriched Traffic Intelligence
     {seo_enrichment}
@@ -35,21 +40,17 @@ traffic_monetization_analysis:
     - For each projection, CITE the ceiling value and explain why your estimate is at or below it
     - If no SEO data is available, clearly state this and label projections as [UNCONSTRAINED ESTIMATE]
 
-    MONETIZATION DECISION RULES (evaluate top-to-bottom, first match is PRIMARY):
-    Rule 1 — IF commercial intent >= 40%:
-      → Primary: Affiliate marketing (take click rate, purchase CVR and commission from the real
-        programs you identify for THIS niche in Step 3)
-      → Secondary: Display ads
-    Rule 2 — IF informational intent >= 60%:
-      → Primary: Display advertising (RPM from the Niche CPM Benchmarks table in Step 2, matched
-        to this niche's vertical)
-      → Secondary: Email list building → digital products
-    Rule 3 — IF neither rule above matched, default:
-      → Primary: Hybrid (display ads + affiliate)
-    ADDITIONALLY, IF transactional intent >= 25%:
-      → Include: Lead generation channel alongside primary (price it from the Lead Gen row of the
-        Step 2 table, narrowed to this niche)
-    State which rules triggered and why.
+    MONETIZATION DECISION RULES FOR NARROW B2B (evaluate top-to-bottom):
+    1. Lead generation, paid placements, or an acquisition-to-paid-upgrade funnel comes first when a real
+       downstream payer and qualified action exist. Name the payer and funnel target. A value per
+       action qualifies only when the supplied competitor landscape attributes it to this exact
+       candidate with a source URL and compatible billing basis.
+    2. Affiliate is eligible only when you identify a real program for this exact niche. An empty
+       program list means affiliate is not viable; never infer it from commercial intent alone.
+    3. Display ads are eligible only when the pre-computed revenue is meaningful at projected
+       candidate-relevant traffic. A positive but tiny CPM result is not a viable business.
+    4. If none of those routes clears its evidence requirement, return viability_verdict=nonviable.
+    The deterministic post-computation may downgrade your verdict and cannot be overridden by prose.
 
     PHASED RAMP-UP:
     - IF pre-computed projections include a phased breakdown above → USE THEM DIRECTLY
@@ -127,11 +128,12 @@ traffic_monetization_analysis:
 
     ### Step 5: Revenue Projection
 
-    Calculate monthly revenue range:
+    Calculate monthly revenue range and, where applicable, funnel value:
     ```
     Ad Revenue = (Monthly Pageviews × CPM) / 1000
     Affiliate Revenue = Pageviews × Click Rate × Conversion Rate × Avg Order × Commission
     B2B Revenue = # Listings × Monthly Fee
+    Funnel Value = Qualified Actions × Value Per Qualified Action
     ```
 
     Apply these formulas to THIS niche's actual projected pageviews and its real CPM (both provided
@@ -142,8 +144,8 @@ traffic_monetization_analysis:
     - Ad Revenue: {ad_revenue_estimate}
     - Affiliate Revenue: {affiliate_revenue_estimate}
     - Total Estimated Revenue: {total_revenue_estimate}
-    Use these as your baseline. Adjust only if you have specific niche factors that justify deviation.
-    Explain any adjustments.
+    Use these only to explain the channel context. Do not upgrade route viability or invent unit
+    economics from them; code will own the final totals and verdict.
 
     Provide conservative (Year 1) and optimistic (Year 2+) projections.
 
@@ -197,10 +199,16 @@ traffic_monetization_analysis:
        - break_even_traffic_threshold: Min traffic to cover costs, format "<N> monthly pageviews"
 
     6. **Strategy**:
-       - monetization_model: Primary model ("Ad-Supported", "Affiliate", "Hybrid-Traffic", or "Lead-Gen")
+       - monetization_model: Select the schema's funnel enum for an acquisition-to-paid-upgrade
+         route; otherwise use the matching ad, affiliate, hybrid, or lead-generation enum
        - monetization_rationale: 2-3 sentences explaining the recommended mix
        - scaling_strategy: How to grow revenue as traffic increases
        - monetization_confidence: "High", "Medium", or "Low"
+       - viability_verdict: "viable", "conditional", or "nonviable"
+       - funnel_target: Optional paid downstream offer/action
+       - qualified_actions: Optional monthly qualified-action range
+       - conversion_assumptions: Optional list of explicit conversion assumptions
+       - estimated_funnel_value: Optional monthly value range
 
     7. **SaaS Comparison**:
        - saas_alternative_viable: Boolean (true/false)

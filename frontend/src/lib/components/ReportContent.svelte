@@ -66,6 +66,44 @@
     headerSlot,
     decisionSlot,
   }: Props = $props();
+
+  function safeEvidenceUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase();
+      const privateIpv4 = /^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/;
+      const privateIpv6 = /^(?:\[?::1\]?|\[?f[cd]|\[?fe[89ab])/;
+      return url.protocol === "https:"
+        && !url.username
+        && !url.password
+        && host !== "localhost"
+        && !host.endsWith(".localhost")
+        && !privateIpv4.test(host)
+        && !privateIpv6.test(host)
+        ? url.href
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const billingBasisLabel = (value: string): string => ({
+    per_lead: "Per lead",
+    per_sponsored_listing_month: "Per sponsored listing / month",
+    per_paid_upgrade_month: "Per paid upgrade / month",
+    affiliate_program: "Affiliate program",
+  })[value] ?? value;
+
+  const unitValueSummary = (
+    evidence: NonNullable<NonNullable<Report["traffic_monetization"]>["unit_value_evidence"]>,
+  ): string | null => {
+    if (evidence.value_low == null || evidence.value_high == null) return null;
+    const range = evidence.value_low === evidence.value_high
+      ? `$${evidence.value_low}`
+      : `$${evidence.value_low} - $${evidence.value_high}`;
+    return `${range} · ${billingBasisLabel(evidence.billing_basis)}`;
+  };
   // The single seam every report view shares. `detail=full` and the
   // Research-quality tab hand raw report fields to the older section components,
   // which never picked up the summary layer's per-call-site humanising — so the
@@ -778,18 +816,69 @@
             <section class="fallback-section" aria-labelledby="monetization-summary-title">
               <div class="fallback-heading">
                 <p>Monetization</p>
-                <h3 id="monetization-summary-title">How this model could earn revenue</h3>
+                <h3 id="monetization-summary-title">
+                  {report.traffic_monetization.viability_verdict === "nonviable"
+                    ? "Traffic route rejected"
+                    : "How this model could earn revenue"}
+                </h3>
               </div>
               <dl class="compact-metrics">
                 <div>
                   <dt>Model</dt>
                   <dd>{report.traffic_monetization.monetization_model}</dd>
                 </div>
-                <div>
-                  <dt>Estimated monthly range</dt>
-                  <dd>{report.traffic_monetization.estimated_monthly_revenue_range}</dd>
-                </div>
+                {#if report.traffic_monetization.viability_verdict !== "nonviable" && report.traffic_monetization.estimated_monthly_revenue_range}
+                  <div>
+                    <dt>Estimated monthly range</dt>
+                    <dd>{report.traffic_monetization.estimated_monthly_revenue_range}</dd>
+                  </div>
+                {/if}
+                {#if report.traffic_monetization.viability_verdict}
+                  <div>
+                    <dt>Route viability</dt>
+                    <dd>{report.traffic_monetization.viability_verdict}</dd>
+                  </div>
+                {/if}
+                {#if report.traffic_monetization.viability_verdict !== "nonviable" && report.traffic_monetization.estimated_funnel_value}
+                  <div>
+                    <dt>Estimated funnel value</dt>
+                    <dd>{report.traffic_monetization.estimated_funnel_value}</dd>
+                  </div>
+                {/if}
               </dl>
+              {#if report.traffic_monetization.viability_verdict !== "nonviable" && report.traffic_monetization.qualified_actions}
+                <p class="narrative-copy">
+                  Qualified actions: {report.traffic_monetization.qualified_actions}
+                </p>
+              {/if}
+              {#if report.traffic_monetization.viability_verdict !== "nonviable" && report.traffic_monetization.conversion_assumptions?.length}
+                <ul class="plain-list">
+                  {#each report.traffic_monetization.conversion_assumptions as assumption}
+                    <li>{assumption}</li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if report.traffic_monetization.viability_verdict !== "nonviable" && report.traffic_monetization.unit_value_evidence}
+                {@const evidenceUrl = safeEvidenceUrl(report.traffic_monetization.unit_value_evidence.source_url)}
+                {@const evidenceValue = unitValueSummary(report.traffic_monetization.unit_value_evidence)}
+                {#if report.traffic_monetization.unit_value_evidence.retrieved_quote}
+                  <p class="narrative-copy">
+                    Verified quote:
+                    <span> {report.traffic_monetization.unit_value_evidence.retrieved_quote}</span>
+                  </p>
+                {/if}
+                {#if evidenceValue}<p class="narrative-copy">{evidenceValue}</p>{/if}
+                <p class="narrative-copy">
+                  Unit value source:
+                  {#if evidenceUrl}
+                    <a href={evidenceUrl} target="_blank" rel="noopener noreferrer">
+                      {report.traffic_monetization.unit_value_evidence.source_name}
+                    </a>
+                  {:else}
+                    <span>{report.traffic_monetization.unit_value_evidence.source_name}</span>
+                  {/if}
+                </p>
+              {/if}
               <p class="narrative-copy">{report.traffic_monetization.monetization_rationale}</p>
             </section>
           {:else if ideaPricingHypothesis || ideaBusinessModel}

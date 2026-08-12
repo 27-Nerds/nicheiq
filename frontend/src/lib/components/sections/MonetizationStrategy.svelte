@@ -38,6 +38,29 @@
   }
 
   let { pricingData, trafficData, cacBreakdown }: Props = $props();
+  const typedNonviable = $derived(trafficData?.viability_verdict === "nonviable");
+  const suppressTrafficPricingClaims = $derived(typedNonviable);
+
+  function safeEvidenceUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase();
+      const privateIpv4 = /^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/;
+      const privateIpv6 = /^(?:\[?::1\]?|\[?f[cd]|\[?fe[89ab])/;
+      return url.protocol === "https:"
+        && !url.username
+        && !url.password
+        && host !== "localhost"
+        && !host.endsWith(".localhost")
+        && !privateIpv4.test(host)
+        && !privateIpv6.test(host)
+        ? url.href
+        : null;
+    } catch {
+      return null;
+    }
+  }
 
   // Parse traffic source breakdown for display
   const trafficSources = $derived.by(() => {
@@ -53,6 +76,23 @@
     if (!value) return true;
     const lower = value.toLowerCase();
     return lower.includes("n/a") || lower.includes("not applicable");
+  };
+
+  const billingBasisLabel = (value: string): string => ({
+    per_lead: "Per lead",
+    per_sponsored_listing_month: "Per sponsored listing / month",
+    per_paid_upgrade_month: "Per paid upgrade / month",
+    affiliate_program: "Affiliate program",
+  })[value] ?? value;
+
+  const unitValueSummary = (
+    evidence: NonNullable<TrafficMonetization["unit_value_evidence"]>,
+  ): string | null => {
+    if (evidence.value_low == null || evidence.value_high == null) return null;
+    const range = evidence.value_low === evidence.value_high
+      ? `$${evidence.value_low}`
+      : `$${evidence.value_low} - $${evidence.value_high}`;
+    return `${range} · ${billingBasisLabel(evidence.billing_basis)}`;
   };
 
   // Get semantic variant based on metric type and value
@@ -97,7 +137,7 @@
   class="report-section"
   icon={SECTION_MAP['monetization'].icon}
   title="Monetization Strategy"
-  subtitle="Pricing model and revenue projections"
+  subtitle={typedNonviable ? "Deterministic route assessment" : "Pricing model and revenue projections"}
   headerSize="lg"
   elevated={false}
   border="none"
@@ -109,13 +149,15 @@
 	     ═══════════════════════════════════════════════════════════════════ -->
 
   <SubsectionHeader
-    title={pricingData.pricing_model === "Ad-Supported-Free" ||
+    title={typedNonviable
+      ? "Traffic Route Rejected"
+      : pricingData.pricing_model === "Ad-Supported-Free" ||
     pricingData.pricing_model === "Affiliate-Only"
       ? "Traffic Monetization Model"
       : "SaaS Pricing Model"}
   >
-    <Badge>{pricingData.pricing_model}</Badge>
-    {#if pricingData.pricing_confidence}
+    <Badge>{typedNonviable ? "Route rejected" : pricingData.pricing_model}</Badge>
+    {#if pricingData.pricing_confidence && !suppressTrafficPricingClaims}
       <span class="text-sm text-text-muted">
         {pricingData.pricing_confidence} confidence
       </span>
@@ -123,7 +165,7 @@
   </SubsectionHeader>
 
   <!-- Conditional Pricing Display based on pricing_model -->
-  {#if pricingData.pricing_model === "Ad-Supported-Free" || pricingData.pricing_model === "Affiliate-Only"}
+  {#if !suppressTrafficPricingClaims && (pricingData.pricing_model === "Ad-Supported-Free" || pricingData.pricing_model === "Affiliate-Only")}
     <!-- Ad-Supported / Affiliate-Only: Single "Free" display with revenue projections -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
       <!-- Free Tool Card -->
@@ -145,6 +187,7 @@
       </div>
 
       <!-- Revenue Projections Card -->
+      {#if !suppressTrafficPricingClaims}
       <div class="pricing-tier">
         <div class="text-center mb-4">
           <div class="text-sm text-text-muted mb-1">Revenue Projections</div>
@@ -190,8 +233,9 @@
           {/if}
         </div>
       </div>
+      {/if}
     </div>
-  {:else if pricingData.pricing_model === "Freemium-Lite"}
+  {:else if !suppressTrafficPricingClaims && pricingData.pricing_model === "Freemium-Lite"}
     <!-- Freemium-Lite: 2-tier display (Free + Pro only, no Starter/Enterprise) -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
       <!-- Free Tier -->
@@ -249,7 +293,7 @@
         {/if}
       </div>
     </div>
-  {:else}
+  {:else if !suppressTrafficPricingClaims}
     <!-- Standard 3-tier display (Freemium, Subscription, Hybrid, etc.) -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
       <!-- Free Tier -->
@@ -333,6 +377,7 @@
     {/if}
   {/if}
 
+  {#if !suppressTrafficPricingClaims}
   <!-- Pricing Rationale -->
   <InsightCard variant="muted" border="left" padding="lg" class="mb-6">
     {#snippet header()}
@@ -479,6 +524,7 @@
       </div>
     </ExpandableSection>
   {/if}
+  {/if}
 
   <!-- ═══════════════════════════════════════════════════════════════════
 	     REVENUE SCALING ROADMAP (optional)
@@ -487,12 +533,84 @@
   {#if trafficData}
     <div class="section-divider my-8"></div>
 
-    <SubsectionHeader title="Revenue Scaling Roadmap">
+    <SubsectionHeader title={typedNonviable ? "Traffic Monetization Assessment" : "Revenue Scaling Roadmap"}>
       <Badge variant="accent">{trafficData.monetization_model}</Badge>
+      {#if typedNonviable}
+        <span class="text-sm text-text-muted">Low confidence</span>
+      {/if}
     </SubsectionHeader>
 
+    {#if trafficData.viability_verdict || trafficData.funnel_target || trafficData.qualified_actions || trafficData.estimated_funnel_value || trafficData.conversion_assumptions?.length}
+      <div class="card mb-6" aria-label="Route economics">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <span class="text-xs uppercase tracking-wider text-text-muted">Route viability</span>
+          {#if trafficData.viability_verdict}
+            <Badge variant={trafficData.viability_verdict === "viable" ? "success" : "warning"}>
+              {trafficData.viability_verdict.charAt(0).toUpperCase() + trafficData.viability_verdict.slice(1)}
+            </Badge>
+          {/if}
+        </div>
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {#if !typedNonviable && trafficData.funnel_target}
+            <div>
+              <dt class="text-xs text-text-muted mb-1">Funnel target</dt>
+              <dd class="text-sm font-medium">{trafficData.funnel_target}</dd>
+            </div>
+          {/if}
+          {#if !typedNonviable && trafficData.qualified_actions}
+            <div>
+              <dt class="text-xs text-text-muted mb-1">Qualified actions</dt>
+              <dd class="text-sm font-medium">{trafficData.qualified_actions}</dd>
+            </div>
+          {/if}
+          {#if !typedNonviable && trafficData.estimated_funnel_value}
+            <div>
+              <dt class="text-xs text-text-muted mb-1">Estimated funnel value</dt>
+              <dd class="text-sm font-medium tabular-nums">{trafficData.estimated_funnel_value}</dd>
+            </div>
+          {/if}
+        </dl>
+        {#if !typedNonviable && trafficData.conversion_assumptions?.length}
+          <div class="mt-4 pt-4 border-t border-border">
+            <p class="text-xs text-text-muted mb-2">Conversion assumptions</p>
+            <ul class="space-y-1 text-sm">
+              {#each trafficData.conversion_assumptions as assumption}
+                <li>{assumption}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+        {#if !typedNonviable && trafficData.unit_value_evidence}
+          {@const evidenceUrl = safeEvidenceUrl(trafficData.unit_value_evidence.source_url)}
+          {@const evidenceValue = unitValueSummary(trafficData.unit_value_evidence)}
+          <div class="mt-4 pt-4 border-t border-border text-xs text-text-muted space-y-1">
+            {#if trafficData.unit_value_evidence.retrieved_quote}
+              <p>
+                Verified quote:
+                <span> {trafficData.unit_value_evidence.retrieved_quote}</span>
+              </p>
+            {/if}
+            {#if evidenceValue}<p>{evidenceValue}</p>{/if}
+            <p>
+              Unit value source:
+              {#if evidenceUrl}
+                <a
+                  href={evidenceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-accent hover:underline"
+                >{trafficData.unit_value_evidence.source_name}</a>
+              {:else}
+                <span>{trafficData.unit_value_evidence.source_name}</span>
+              {/if}
+            </p>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     <!-- 1. HERO ANCHOR — at-scale revenue potential -->
-    {#if trafficData.revenue_milestones?.length}
+    {#if !typedNonviable && trafficData.revenue_milestones?.length}
       {@const lastMilestone = trafficData.revenue_milestones[trafficData.revenue_milestones.length - 1]}
       <AnimateOnScroll animation="fade-up">
         <div class="card bento-accent mb-6">
@@ -510,7 +628,7 @@
     {/if}
 
     <!-- 2. YEAR PROGRESSION -->
-    {#if trafficData.year3_monthly_revenue || trafficData.full_potential_monthly_revenue}
+    {#if !typedNonviable && (trafficData.year3_monthly_revenue || trafficData.full_potential_monthly_revenue)}
       <HeroStrip>
         <HeroMetric
           value={trafficData.estimated_monthly_revenue_range ?? "N/A"}
@@ -536,7 +654,7 @@
     {/if}
 
     <!-- 3. MILESTONE ROADMAP — vertical timeline -->
-    {#if trafficData.revenue_milestones?.length}
+    {#if !typedNonviable && trafficData.revenue_milestones?.length}
       <AnimateOnScroll animation="fade-up">
         <div class="relative ml-4 mb-8">
           <div class="absolute left-3 top-0 bottom-0 w-0.5 bg-border"></div>
@@ -565,7 +683,7 @@
     {/if}
 
     <!-- 4. GROWTH STORY -->
-    {#if trafficData.revenue_growth_note}
+    {#if !typedNonviable && trafficData.revenue_growth_note}
       <ExpandableSection title="Why These Numbers Are the Floor" icon={Layers} defaultOpen={true}>
         <InsightCard variant="muted">
           <p class="text-sm text-muted-foreground whitespace-pre-line">{trafficData.revenue_growth_note}</p>
@@ -574,6 +692,16 @@
     {/if}
 
     <!-- 5. REVENUE STREAMS -->
+    {#if typedNonviable}
+      {#if trafficData.estimated_monthly_ad_revenue}
+        <div class="card mb-8">
+          <div class="text-xs text-text-muted">Display-ad rejection evidence</div>
+          <div class="text-lg font-semibold text-text-primary mt-1">
+            {trafficData.estimated_monthly_ad_revenue}
+          </div>
+        </div>
+      {/if}
+    {:else}
     <AnimateOnScroll animation="fade-up">
       <div class="grid md:grid-cols-3 gap-6 mb-8 items-start">
         <!-- Advertising Revenue -->
@@ -707,6 +835,7 @@
         </div>
       </div>
     </AnimateOnScroll>
+    {/if}
 
     <!-- 6. SUPPORTING DETAILS -->
     <!-- Traffic & Break-even -->
@@ -772,6 +901,7 @@
             {trafficData.monetization_rationale}
           </p>
         </div>
+        {#if trafficData.scaling_strategy}
         <div class="card">
           <h4 class="text-lg font-semibold text-text-primary mb-3">
             Scaling Strategy
@@ -780,6 +910,7 @@
             {trafficData.scaling_strategy}
           </p>
         </div>
+        {/if}
       </div>
 
     <!-- SaaS Alternative Recommendation -->

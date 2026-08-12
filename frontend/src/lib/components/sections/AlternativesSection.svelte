@@ -24,9 +24,9 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import { normalizeDataAccess } from "$lib/utils/ideaTagLabels";
   import {
     adversarialReviewFinding,
+    adversarialReviewCoda,
     directIncumbentParity,
     noDirectIncumbentFound,
-    PREMISE_UNPROVEN_CODA,
   } from "$lib/utils/adversarialReview";
 
   interface Props {
@@ -479,13 +479,9 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               {#each adversarial.details as detail}
                 <p class="text-sm text-text-secondary">{detail}</p>
               {/each}
-              {#if adversarial.severity === "weakened"}
-                <p class="text-sm text-text-muted mt-1">
-                  This candidate remains available. Review these concerns before committing to it.
-                </p>
-              {:else}
-                <p class="text-sm text-text-muted mt-1">{PREMISE_UNPROVEN_CODA}</p>
-              {/if}
+              <p class="text-sm text-text-muted mt-1">
+                {adversarialReviewCoda(adversarial, "decision")}
+              </p>
             </div>
           {/if}
           {#if directParity || noIncumbentFound}

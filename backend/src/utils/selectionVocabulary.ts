@@ -172,11 +172,10 @@ function joinParityEvidence(head: string, vendor: string, evidence: string): str
 /**
  * `red_team_verdict` is an INTERNAL enum — `killed` | `weakened` | `survives` — and it is a
  * verdict on the PREMISE the adversarial review tested, never a risk and never a verdict on
- * the idea. The shipped product does not say "killed": the owner's screen renders that value
- * as "Premise unproven" (frontend/src/lib/utils/adversarialReview.ts PREMISE_UNPROVEN_LABEL)
- * precisely because the idea keeps its rank and stays selectable. These are the prose forms
- * for analyst sentences; the chip forms live on the frontend. An unrecognised value maps to
- * null and is dropped, so a future enum member cannot leak by default.
+ * the idea. The shipped product does not say "killed": typed findings supply reason-specific
+ * counterevidence or incomplete-evidence copy, while legacy records retain "Premise unproven".
+ * The idea keeps its rank and stays selectable. An unrecognised value maps to null and is
+ * dropped, so a future enum member cannot leak by default.
  */
 const ADVERSARIAL_REVIEW_LABEL: Record<string, string> = {
   killed: 'Premise unproven',
@@ -184,9 +183,108 @@ const ADVERSARIAL_REVIEW_LABEL: Record<string, string> = {
   survives: 'no disqualifying objection',
 };
 
-export function adversarialReviewLabel(value: unknown): string | null {
+export type RedTeamFindingKind =
+  | 'verified_incumbent_overlap'
+  | 'verified_free_or_bundled_alternative'
+  | 'verified_payer_mismatch'
+  | 'verified_modal_failure'
+  | 'evidence_gap';
+
+const AFFIRMATIVE_REVIEW_LABEL: Partial<Record<RedTeamFindingKind, string>> = {
+  verified_incumbent_overlap: 'verified incumbent overlap',
+  verified_free_or_bundled_alternative: 'a verified free or bundled alternative',
+  verified_payer_mismatch: 'a verified payer mismatch',
+  verified_modal_failure: 'a verified modal failure',
+};
+
+const RED_TEAM_FINDING_KINDS = new Set<RedTeamFindingKind>([
+  ...Object.keys(AFFIRMATIVE_REVIEW_LABEL) as RedTeamFindingKind[],
+  'evidence_gap',
+]);
+
+export interface AdversarialReviewPrimaryFinding {
+  basis: 'counterevidence' | 'incomplete_evidence';
+  kind: RedTeamFindingKind;
+  claim: string;
+  label: string;
+}
+
+export function validatedRedTeamFindings(value: unknown): Array<{
+  kind: RedTeamFindingKind;
+  claim: string;
+  raw: Record<string, unknown>;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((finding) => {
+    if (!finding || typeof finding !== 'object') return [];
+    const { claim, kind } = finding as Record<string, unknown>;
+    return typeof claim === 'string'
+      && claim.trim().length > 0
+      && RED_TEAM_FINDING_KINDS.has(kind as RedTeamFindingKind)
+      ? [{
+        kind: kind as RedTeamFindingKind,
+        claim: claim.trim(),
+        raw: { ...(finding as Record<string, unknown>), kind, claim: claim.trim() },
+      }]
+      : [];
+  });
+}
+
+/** One atomic source for a review's reason-specific label and the claim that earns it. */
+export function resolveAdversarialReviewPrimaryFinding(
+  findings: unknown,
+): AdversarialReviewPrimaryFinding | null {
+  const typed = validatedRedTeamFindings(findings);
+  const affirmative = typed.find((finding) => finding.kind in AFFIRMATIVE_REVIEW_LABEL);
+  const finding = affirmative ?? typed.find((candidate) => candidate.kind === 'evidence_gap');
+  if (!finding) {
+    return Array.isArray(findings)
+      ? {
+        basis: 'incomplete_evidence',
+        kind: 'evidence_gap',
+        claim: 'The review did not establish decision-critical evidence.',
+        label: 'incomplete decision-critical evidence',
+      }
+      : null;
+  }
+  return {
+    basis: affirmative ? 'counterevidence' : 'incomplete_evidence',
+    kind: finding.kind,
+    claim: finding.claim,
+    label: affirmative
+      ? AFFIRMATIVE_REVIEW_LABEL[finding.kind] ?? 'verified counterevidence'
+      : 'incomplete decision-critical evidence',
+  };
+}
+
+function effectiveAdversarialReviewVerdict(value: unknown, findings: unknown): string {
   const verdict = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (verdict !== 'killed' || !Array.isArray(findings)) return verdict;
+  const hasAffirmative = validatedRedTeamFindings(findings)
+    .some((finding) => finding.kind in AFFIRMATIVE_REVIEW_LABEL);
+  return hasAffirmative ? verdict : 'weakened';
+}
+
+export function adversarialReviewLabel(value: unknown, findings?: unknown): string | null {
+  const verdict = effectiveAdversarialReviewVerdict(value, findings);
+  if (verdict === 'killed' || verdict === 'weakened') {
+    const primary = resolveAdversarialReviewPrimaryFinding(findings);
+    if (primary) return primary.label;
+  }
   return verdict ? ADVERSARIAL_REVIEW_LABEL[verdict] ?? null : null;
+}
+
+function primaryFindingFirst(value: unknown): Record<string, unknown>[] {
+  const typed = validatedRedTeamFindings(value);
+  const primary = resolveAdversarialReviewPrimaryFinding(value);
+  if (!primary) return typed.map((finding) => finding.raw);
+  const index = typed.findIndex(
+    (finding) => finding.kind === primary.kind && finding.claim === primary.claim,
+  );
+  const ordered = index > 0
+    ? [typed[index], ...typed.slice(0, index), ...typed.slice(index + 1)]
+    : typed;
+  return ordered.map((finding) => finding.raw);
 }
 
 /**
@@ -211,9 +309,9 @@ const PRESENTABLE_MAX_DEPTH = 12;
  *
  * A model repeats the vocabulary it is handed, so a raw record must never be handed to one:
  * the analyst read `red_team_verdict: "killed"` off its own tool result and told the owner
- * their still-selectable candidate was killed. Non-destructive by construction — keys are
- * preserved (report paths stay quotable), only the recognised token values are mapped, and
- * every other branch of the tree is copied through as-is.
+ * their still-selectable candidate was killed. Record keys are preserved (report paths stay
+ * quotable); recognised token values are mapped, invalid red-team finding entries are dropped
+ * at the closed contract boundary, and every other branch of the tree is copied through as-is.
  */
 export function presentableRecord<T>(value: T, depth = 0): T {
   if (depth >= PRESENTABLE_MAX_DEPTH || value === null || typeof value !== 'object') return value;
@@ -223,6 +321,13 @@ export function presentableRecord<T>(value: T, depth = 0): T {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, child]) => {
       const present = PRESENTABLE_FIELDS[key];
+      if (key === 'red_team_verdict') {
+        const findings = (value as Record<string, unknown>).red_team_findings;
+        return [key, typeof child === 'string' ? adversarialReviewLabel(child, findings) : child];
+      }
+      if (key === 'red_team_findings') {
+        return [key, presentableRecord(primaryFindingFirst(child), depth + 1)];
+      }
       return [key, present ? present(child) : presentableRecord(child, depth + 1)];
     }),
   ) as T;

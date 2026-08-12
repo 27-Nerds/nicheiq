@@ -72,9 +72,37 @@ describe("AlternativesSection adversarial review rendering", () => {
     expect(label.parentElement).toHaveClass("border-warning/30", "bg-warning/5");
     expect(
       view.getByText(
-        "This candidate remains available. Review these concerns before committing to it.",
+        "This candidate remains available — review these concerns before committing to it.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("uses the primary affirmative claim and counterevidence coda for mixed gap-first kills", () => {
+    const view = render(AlternativesSection, {
+      props: {
+        data: [
+          solution({
+            red_team_verdict: "killed",
+            red_team_findings: [
+              { claim: "No free tool was found.", kind: "evidence_gap" },
+              {
+                claim: "SuiteCo bundles the same workflow in its free plan.",
+                kind: "verified_free_or_bundled_alternative",
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(view.getByText("Adversarial review: Verified free or bundled alternative"))
+      .toBeInTheDocument();
+    const details = view.container.querySelectorAll(".text-text-secondary");
+    expect([...details].some((node) => node.textContent === "SuiteCo bundles the same workflow in its free plan."))
+      .toBe(true);
+    expect(view.getByText(/This is verified counterevidence, not missing evidence/))
+      .toBeInTheDocument();
+    expect(view.queryByText(/verdict on the premise, not on the idea/)).not.toBeInTheDocument();
   });
 
   it("suppresses a bare weakened verdict with no caveats", () => {

@@ -7,7 +7,7 @@ against the module's fixed constants — never re-derived prose.
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from nicheiq.models.solution_idea import BaseSolutionIdea
+from nicheiq.models.solution_idea import BaseSolutionIdea, RedTeamFinding
 from nicheiq.report.idea_validation_block import (
     DEMAND_NOT_MEASURED,
     NONE_FOUND_NOTE,
@@ -183,6 +183,104 @@ def test_red_team_weakness_keeps_worth_testing_without_claiming_clear_lane():
     assert "adversarial review found material concerns" in block["headline"]
     assert "nothing we found ships" not in block["headline"]
     assert parts["space_occupied"]["state"] == "review_concerns"
+
+
+def test_gap_only_typed_weakness_reports_incomplete_evidence():
+    seed = _idea(
+        incumbent_parity=None,
+        red_team_verdict="weakened",
+        red_team_findings=[RedTeamFinding(
+            kind="evidence_gap",
+            claim="Search did not establish a buyer.",
+        )],
+        red_team_caveats=["Search did not establish a buyer."],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+
+    assert block["outcome"] == "worth_testing"
+    assert "returned incomplete evidence" in block["headline"]
+    assert block["red_team_findings"] == [{
+        "claim": "Search did not establish a buyer.",
+        "kind": "evidence_gap",
+    }]
+    assert block["kill_risks"][0]["finding_kind"] == "evidence_gap"
+
+
+def test_space_occupied_distinguishes_explicit_incomplete_from_verified_concerns():
+    gap = {"kind": "evidence_gap", "claim": "Search did not establish a buyer."}
+    affirmative = {
+        "kind": "verified_payer_mismatch",
+        "claim": "The observed user cannot authorize a purchase.",
+    }
+    cases = [
+        ([], "evidence_incomplete", "Evidence incomplete", "incomplete evidence"),
+        ([{"kind": "not_a_kind", "claim": "Unsupported raw row."}],
+         "evidence_incomplete", "Evidence incomplete", "incomplete evidence"),
+        ([gap], "evidence_incomplete", "Evidence incomplete", "incomplete evidence"),
+        (None, "review_concerns", "Concerns found", "material concerns"),
+        ([gap, affirmative], "review_concerns", "Concerns found", "material concerns"),
+    ]
+
+    for findings, state, answer, detail in cases:
+        seed = _idea(
+            incumbent_parity=None,
+            red_team_verdict="weakened",
+            red_team_findings=findings,
+            red_team_caveats=["Legacy compatibility caveat."],
+            **SEED_KW,
+        )
+        block = build_idea_validation_block(_state([seed]), "validate_idea")
+        space = {part["key"]: part for part in block["parts"]}["space_occupied"]
+
+        assert space["state"] == state, findings
+        assert space["answer"] == answer, findings
+        assert detail in space["detail"], findings
+        if findings is not None and not any(
+            row.get("kind") == "verified_payer_mismatch"
+            for row in findings if isinstance(row, dict)
+        ):
+            assert "Concerns found" not in space["answer"]
+            assert "material concerns" not in space["detail"]
+
+
+def test_raw_gap_only_kill_materializes_as_weakened_incomplete_evidence():
+    seed = _idea(
+        incumbent_parity=None,
+        red_team_verdict="killed",
+        red_team_findings=[RedTeamFinding(
+            kind="evidence_gap",
+            claim="Search did not establish a buyer.",
+        )],
+        red_team_caveats=["Search did not establish a buyer."],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+
+    assert block["outcome"] == "worth_testing"
+    assert block["red_team_verdict"] == "weakened"
+    assert "incomplete evidence" in block["headline"]
+    assert "counterevidence" not in block["headline"]
+
+
+def test_affirmative_typed_kill_reports_verified_counterevidence():
+    seed = _idea(
+        incumbent_parity=None,
+        red_team_verdict="killed",
+        red_team_findings=[RedTeamFinding(
+            kind="verified_payer_mismatch",
+            claim="The observed user cannot authorize a purchase.",
+        )],
+        red_team_caveats=["The observed user cannot authorize a purchase."],
+        **SEED_KW,
+    )
+
+    block = build_idea_validation_block(_state([seed]), "validate_idea")
+
+    assert block["outcome"] == "premise_unproven"
+    assert "verified counterevidence" in block["headline"]
 
 
 def test_direct_parity_remains_authoritative_when_red_team_also_kills():

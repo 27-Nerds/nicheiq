@@ -2,10 +2,13 @@
 Pydantic models for competitive analysis (Stage 8).
 """
 
+from datetime import datetime
 from enum import Enum
-from typing import Optional
+from ipaddress import ip_address
+from typing import Literal, Optional
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CompetitorType(str, Enum):
@@ -53,12 +56,80 @@ class Competitor(BaseModel):
         description="Market position: leader | challenger | niche",
     )
 
+
+class VerifiedPricingProvenance(BaseModel):
+    """Code-owned output of a bounded exact-page pricing verifier.
+
+    CompetitiveLandscape is LLM-authored, so its URL and pricing prose can never create
+    this record. A verifier must fetch the exact safe public URL and confirm that
+    ``retrieved_quote`` occurs in the retrieved content before constructing it.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    candidate_idea_id: str = Field(..., min_length=1)
+    candidate_idea_revision: int = Field(..., ge=1)
+    route: Literal[
+        "lead_generation", "sponsorship", "paid_upgrade_funnel", "affiliate"
+    ]
+    source_name: str = Field(..., min_length=1)
+    source_url: str
+    retrieved_quote: str = Field(..., min_length=1)
+    retrieved_at: datetime
+    verification_marker: Literal["exact_quote_in_fetched_public_content"]
+    value_low: Optional[int] = Field(default=None, ge=0)
+    value_high: Optional[int] = Field(default=None, ge=0)
+    billing_basis: Literal[
+        "per_lead", "per_sponsored_listing_month", "per_paid_upgrade_month",
+        "affiliate_program",
+    ]
+    commission_pct_low: Optional[float] = Field(default=None, ge=0, le=100)
+    commission_pct_high: Optional[float] = Field(default=None, ge=0, le=100)
+
+    @field_validator("source_url")
+    @classmethod
+    def _require_public_https_url(cls, value: str) -> str:
+        parsed = urlparse(value.strip())
+        host = (parsed.hostname or "").lower()
+        if (
+            parsed.scheme != "https"
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or host == "localhost"
+            or host.endswith(".localhost")
+        ):
+            raise ValueError("source_url must be an exact public HTTPS URL")
+        try:
+            host_address = ip_address(host)
+        except ValueError:
+            host_address = None
+        if host_address is not None and not host_address.is_global:
+            raise ValueError("source_url must be an exact public HTTPS URL")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        if self.value_low is not None and self.value_high is not None:
+            if self.value_high < self.value_low:
+                raise ValueError("value_high must be greater than or equal to value_low")
+        return self
+
 class CompetitiveLandscape(BaseModel):
     """Complete competitive analysis for a solution idea."""
 
     model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
+    candidate_idea_id: Optional[str] = Field(
+        default=None,
+        description="Code-owned durable identity of the exact candidate analyzed",
+    )
+    candidate_idea_revision: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Code-owned immutable revision of the exact candidate analyzed",
+    )
     competitors: list[Competitor] = Field(
         default_factory=list,
         description="Competitors found (may be empty for emerging niches)"

@@ -108,6 +108,17 @@ describe("scoreRationale", () => {
     );
   });
 
+  it("ignores malformed runtime parity values instead of treating them as text", () => {
+    for (const incumbentParity of [42, { unexpected: true }, null]) {
+      const candidate = base({ why_it_works_short: "strong pain", market_fit_score: 0.45 });
+      Object.assign(candidate as unknown as Record<string, unknown>, {
+        incumbent_parity: incumbentParity,
+      });
+
+      expect(scoreRationale(candidate, "market_fit")).toBe("strong pain");
+    }
+  });
+
   it("does not mislabel an adversarial evidence cap as an incumbent", () => {
     expect(
       scoreRationale(

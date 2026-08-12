@@ -17,6 +17,7 @@ from typing import Optional
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from ..models.solution_idea import effective_red_team_state
 from .niche_difficulty import (
     monetization_guidance,
     paying_wallet_commercial_contract_copy,
@@ -161,7 +162,7 @@ def _grounded_portfolio_summary(
 
     eligible = [
         idea for idea in ideas
-        if (getattr(idea, "red_team_verdict", None) or "").strip() != "killed"
+        if effective_red_team_state(idea)[0] != "killed"
     ]
     eligible.sort(
         key=lambda idea: (
@@ -240,7 +241,7 @@ def _idea_digest_line(idea) -> str:
     risk_flags = list(getattr(tags, "risk_flags", None) or []) if tags is not None else []
     pricing_note = (getattr(tags, "pricing_shape_note", None) or "").strip() if tags is not None else ""
 
-    rt_verdict = (getattr(idea, "red_team_verdict", None) or "").strip()
+    rt_verdict, _rt_findings = effective_red_team_state(idea)
     rt_caveats = list(getattr(idea, "red_team_caveats", None) or [])
     rt_clause = ""
     if getattr(idea, "red_team_revised", None):

@@ -95,6 +95,68 @@ _INCUMBENT_DENSE_CHALLENGE = (
 )
 
 
+class MarketCrowdingBrief(BaseModel):
+    """Pure pre-ideation market-crowding facts; never reads generated ideas."""
+
+    incumbent_count: int = 0
+    priced_count: int = 0
+    software_addressability: Optional[float] = None
+    segment_payability_mean: Optional[float] = None
+    wallet_class: Optional[str] = None
+    free_density: Optional[str] = None
+    tooling_dense: bool = False
+    key_point: Optional[str] = None
+    generator_directive: Optional[str] = None
+
+
+def derive_market_crowding_brief(
+    pains=None, segments=None, niche_wallet_brief: Optional[dict] = None,
+    incumbent_map: Optional[list[dict]] = None,
+) -> MarketCrowdingBrief:
+    """Build the one pre-idea crowding authority from already-cached pipeline signals."""
+    pain_rows = list(pains or [])
+    segment_rows = list(segments or [])
+    incumbents = list(incumbent_map or [])
+    addressable = [
+        {"full": 1.0, "partial": 0.4, "none": 0.0}.get(
+            (getattr(p, "tool_addressable", None) or "").strip().lower()
+        )
+        for p in pain_rows
+    ]
+    addressable = [v for v in addressable if v is not None]
+    payability = [
+        getattr(s, "payability_score", None) for s in segment_rows
+        if isinstance(getattr(s, "payability_score", None), (int, float))
+    ]
+    incumbent_count = len(incumbents)
+    priced_count = sum(
+        1 for row in incumbents
+        if any(ch.isdigit() or ch == "$" for ch in str((row or {}).get("pricing") or ""))
+    )
+    dense = incumbent_count >= TOOLING_DENSE
+    key_point = _incumbent_density_challenge(incumbent_count, priced_count) if dense else None
+    directive = None
+    if dense:
+        directive = (
+            "Crowding authority: the verified incumbent map is dense. Use the named gaps in "
+            "MARKET REALITY as hard differentiation constraints; do not propose a head-on clone."
+        )
+    wallet = niche_wallet_brief or {}
+    return MarketCrowdingBrief(
+        incumbent_count=incumbent_count,
+        priced_count=priced_count,
+        software_addressability=(round(sum(addressable) / len(addressable), 3)
+                                 if addressable else None),
+        segment_payability_mean=(round(sum(payability) / len(payability), 3)
+                                 if payability else None),
+        wallet_class=(wallet.get("wallet_class") or None),
+        free_density=(wallet.get("free_density") or None),
+        tooling_dense=dense,
+        key_point=key_point,
+        generator_directive=directive,
+    )
+
+
 def _wallet_challenge(evidence: str) -> str:
     """Niche wallet probe (2026-07-09): a Phase-1 signal, not a validated verdict — Deep
     Research does the real pricing validation."""
@@ -644,6 +706,9 @@ def assess_niche_difficulty(
     if not pains and not ideas:
         return None
 
+    crowding = derive_market_crowding_brief(
+        pains, segments, niche_wallet_brief, incumbent_map)
+
     none_share = _share(pains, lambda p: getattr(p, "tool_addressable", "full") == "none")
     partial_share = _share(pains, lambda p: getattr(p, "tool_addressable", "full") == "partial")
     full_share = _share(pains, lambda p: getattr(p, "tool_addressable", "full") == "full")
@@ -907,16 +972,10 @@ def assess_niche_difficulty(
 
     # Incumbent-map probe (2026-07-10): a dense web-verified tool count is a caution signal —
     # new entrants compete for attention inside an existing stack, not an empty field.
-    incumbent_count = None
-    priced_count = None
-    if incumbent_map:
-        incumbent_count = len(incumbent_map)
-        priced_count = sum(
-            1 for row in incumbent_map
-            if any(ch.isdigit() or ch == "$" for ch in str((row or {}).get("pricing") or ""))
-        )
-        if incumbent_count >= TOOLING_DENSE:
-            key_points = [*key_points, _incumbent_density_challenge(incumbent_count, priced_count)]
+    incumbent_count = crowding.incumbent_count if incumbent_map else None
+    priced_count = crowding.priced_count if incumbent_map else None
+    if crowding.key_point:
+        key_points = [*key_points, crowding.key_point]
 
     # SERP-ownership probe (2026-07-10): a heavy share of distribution-angle ideas facing
     # already-owned SERPs is a caution signal about organic-discovery difficulty.

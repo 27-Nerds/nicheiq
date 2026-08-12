@@ -470,21 +470,28 @@ class TestDifficultyAdjustedScore:
         assert avg_diff is None
         assert rankability is None
 
-    def test_empty_validated_keywords_emits_none(self):
-        """Case (b) producer side: graded-and-empty emits None, never the stale scalar."""
+    def test_empty_validated_keywords_emits_measured_zero(self):
+        """Case (b): a completed, relevance-qualified search with no matches is measured zero."""
         from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
 
         result = self._make_result(validated_count=0, validated_keywords=[])
-        assert _calculate_difficulty_adjusted_score(result) == (None, None, None)
+        assert _calculate_difficulty_adjusted_score(result) == (0.0, None, None)
 
     def test_legacy_record_missing_validated_keywords_no_crash(self):
-        """Case (c): legacy checkpoints have validated_keywords=None — treated the
-        same as empty (None emitted), no crash."""
+        """Case (c): legacy checkpoints have validated_keywords=None — unmeasured, no crash."""
         from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
 
         result = self._make_result()  # validated_keywords defaults to None
         assert result.validated_keywords is None
         assert _calculate_difficulty_adjusted_score(result) == (None, None, None)
+
+    def test_measurement_state_distinguishes_zero_from_unmeasured(self):
+        from nicheiq.flows.research_flow import _keyword_demand_measurement_state
+
+        measured = self._make_result(validated_count=0, validated_keywords=[])
+        legacy = self._make_result()
+        assert _keyword_demand_measurement_state(measured) == (0.0, False)
+        assert _keyword_demand_measurement_state(legacy) == (None, True)
 
     def test_missing_metric_keys_treated_as_zero(self):
         """Keywords lacking search_volume/competition_index (or carrying None) are

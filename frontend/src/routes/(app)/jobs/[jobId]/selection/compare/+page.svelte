@@ -299,7 +299,10 @@
 
   function evidenceNote(idea: (typeof data.workspace.ideas)[number]): string {
     const adversarial = adversarialReviewFinding(idea);
-    if (adversarial && idea.red_team_verdict?.trim().toLowerCase() !== "survives") {
+    const verdict = typeof idea.red_team_verdict === "string"
+      ? idea.red_team_verdict.trim().toLowerCase()
+      : "";
+    if (adversarial && verdict !== "survives") {
       return [adversarial.label, ...adversarial.details].join(". ");
     }
     // Pipeline prose carries internal gate names, raw field names and a research
@@ -451,7 +454,7 @@
               position="bottom"
             >
               {#snippet children()}
-                <span class="premise-flag">{PREMISE_UNPROVEN_LABEL}</span>
+                <span class="premise-flag">{finding?.chipLabel ?? PREMISE_UNPROVEN_LABEL}</span>
               {/snippet}
             </Tooltip>
           {/if}

@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import re
 
-from ..models.solution_idea import visible_ideas
+from ..models.solution_idea import effective_red_team_state, visible_ideas
 from ..validators.report_consistency import parse_stamp_vendor
 from .calibration_notes import strip_markdown_emphasis
 
@@ -249,7 +249,7 @@ def _fatal_assumptions(members) -> list[dict]:
         })
 
     for m in members:
-        if (_get(m, "red_team_verdict") or "").strip().casefold() == "killed":
+        if effective_red_team_state(m)[0] == "killed":
             caveats = _get(m, "red_team_caveats") or []
             # User-facing string: the UI calls this state "Premise unproven"
             # (frontend/src/lib/utils/adversarialReview.ts PREMISE_UNPROVEN_LABEL).

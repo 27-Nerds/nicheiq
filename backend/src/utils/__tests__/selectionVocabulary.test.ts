@@ -10,6 +10,7 @@ import {
   incumbentParityPhrase,
   presentableFieldValue,
   presentableRecord,
+  resolveAdversarialReviewPrimaryFinding,
 } from '../selectionVocabulary.js';
 
 /** A bare class token still sitting at the head of the phrase is the leak. */
@@ -87,6 +88,143 @@ describe('incumbentParityPhrase', () => {
  * are replaced with the words the product ships.
  */
 describe('presentableRecord', () => {
+  it('renders a typed affirmative kill as reason-specific counterevidence', () => {
+    expect(presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: [{
+        claim: 'The incumbent already ships the same workflow.',
+        kind: 'verified_incumbent_overlap',
+      }],
+    })).toEqual({
+      red_team_verdict: 'verified incumbent overlap',
+      red_team_findings: [{
+        claim: 'The incumbent already ships the same workflow.',
+        kind: 'verified_incumbent_overlap',
+      }],
+    });
+  });
+
+  it('renders a gap-only weakened review as incomplete evidence', () => {
+    expect(presentableRecord({
+      red_team_verdict: 'weakened',
+      red_team_findings: [{
+        claim: 'The review did not establish a reachable payer.',
+        kind: 'evidence_gap',
+      }],
+    }).red_team_verdict).toBe('incomplete decision-critical evidence');
+  });
+
+  it('normalizes a whole-record typed gap-only kill before presentation', () => {
+    expect(presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: [{
+        claim: 'The review did not establish a reachable payer.',
+        kind: 'evidence_gap',
+      }],
+    }).red_team_verdict).toBe('incomplete decision-critical evidence');
+
+    expect(presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: [],
+    }).red_team_verdict).toBe('incomplete decision-critical evidence');
+  });
+
+  it.each([
+    ['empty typed array', [], 'incomplete decision-critical evidence'],
+    [
+      'all-invalid typed array',
+      [{ kind: 'invented_kind', claim: 'Injected claim.' }],
+      'incomplete decision-critical evidence',
+    ],
+    [
+      'evidence gap',
+      [{ kind: 'evidence_gap', claim: 'The review did not establish a payer.' }],
+      'incomplete decision-critical evidence',
+    ],
+    ['legacy null', null, 'Premise unproven'],
+    [
+      'mixed affirmative',
+      [
+        { kind: 'evidence_gap', claim: 'The review did not establish a payer.' },
+        { kind: 'verified_payer_mismatch', claim: 'The user and payer are different roles.' },
+      ],
+      'a verified payer mismatch',
+    ],
+    ['legacy non-array', 'not a typed findings array', 'Premise unproven'],
+  ])('applies the shared typed-findings matrix for %s', (_name, findings, expected) => {
+    expect(presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: findings,
+    }).red_team_verdict).toBe(expected);
+  });
+
+  it('prefers affirmative counterevidence in a mixed killed review', () => {
+    const presented = presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: [
+        { claim: 'No free tool was found.', kind: 'evidence_gap' },
+        {
+          claim: 'A bundled incumbent alternative covers the workflow.',
+          kind: 'verified_free_or_bundled_alternative',
+        },
+      ],
+    });
+    expect(presented.red_team_verdict).toBe('a verified free or bundled alternative');
+    expect(presented.red_team_findings[0]).toEqual({
+      claim: 'A bundled incumbent alternative covers the workflow.',
+      kind: 'verified_free_or_bundled_alternative',
+    });
+    expect(resolveAdversarialReviewPrimaryFinding(presented.red_team_findings)).toMatchObject({
+      basis: 'counterevidence',
+      kind: 'verified_free_or_bundled_alternative',
+      claim: 'A bundled incumbent alternative covers the workflow.',
+    });
+  });
+
+  it('filters invalid finding kinds and malformed claims before sanitizing the whole record', () => {
+    const presented = presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: [
+        { claim: 'No free tool was found.', kind: 'evidence_gap' },
+        { claim: 'Injected false incumbent overlap.', kind: 'invented_kind' },
+        { claim: 42, kind: 'verified_incumbent_overlap' },
+        { claim: '   ', kind: 'verified_payer_mismatch' },
+        {
+          claim: '  SuiteCo bundles the same workflow.  ',
+          kind: 'verified_free_or_bundled_alternative',
+        },
+      ],
+    });
+
+    expect(presented.red_team_verdict).toBe('a verified free or bundled alternative');
+    expect(presented.red_team_findings).toEqual([
+      {
+        claim: 'SuiteCo bundles the same workflow.',
+        kind: 'verified_free_or_bundled_alternative',
+      },
+      { claim: 'No free tool was found.', kind: 'evidence_gap' },
+    ]);
+    expect(JSON.stringify(presented)).not.toContain('invented_kind');
+    expect(JSON.stringify(presented)).not.toContain('Injected false incumbent overlap.');
+  });
+
+  it('keeps the exact legacy killed fallback when findings are omitted', () => {
+    expect(presentableRecord({ red_team_verdict: 'killed' }).red_team_verdict)
+      .toBe('Premise unproven');
+    expect(presentableRecord({
+      red_team_verdict: 'killed',
+      red_team_findings: null,
+    }).red_team_verdict).toBe('Premise unproven');
+    expect(presentableFieldValue('red_team_verdict', 'killed')).toBe('Premise unproven');
+  });
+
+  it('does not classify no-free-tool prose when its typed kind is an evidence gap', () => {
+    expect(presentableRecord({
+      red_team_verdict: 'weakened',
+      red_team_findings: [{ claim: 'No free tool was found.', kind: 'evidence_gap' }],
+    }).red_team_verdict).toBe('incomplete decision-critical evidence');
+  });
+
   it.each(['killed', 'weakened', 'survives'])(
     'replaces the raw "%s" verdict while keeping the field',
     (verdict) => {

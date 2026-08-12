@@ -184,3 +184,53 @@ class TestAngleFieldsInPreview:
         assert by_name["Extension"]["delivery_format"] == "browser-extension"
         assert by_name["API"]["delivery_format"] == "api"
         assert by_name["Legacy"]["delivery_format"] is None
+
+    def test_typed_red_team_findings_appear_on_preview_alternatives(self, tmp_path):
+        from nicheiq.models.solution_idea import IdeaGenerationResult, RedTeamFinding
+
+        flow = ResearchFlow(niche_description=NICHE, job_id="test-job-red-team")
+        flow.state.idea_generation = IdeaGenerationResult(solution_ideas=[
+            self._idea(
+                "Typed",
+                red_team_verdict="killed",
+                red_team_findings=[RedTeamFinding(
+                    kind="verified_incumbent_overlap",
+                    claim="Named incumbent ships the core workflow.",
+                )],
+                red_team_caveats=["Named incumbent ships the core workflow."],
+            ),
+            self._idea("Legacy", red_team_caveats=["Old prose stays prose."]),
+            self._idea("Clean"),
+        ])
+
+        assert flow._materialize_preview_report(str(tmp_path)) is not None
+
+        alternatives = _read_preview(tmp_path)["alternative_solutions"]
+        by_name = {alternative["solution_name"]: alternative for alternative in alternatives}
+        assert by_name["Typed"]["red_team_findings"] == [{
+            "claim": "Named incumbent ships the core workflow.",
+            "kind": "verified_incumbent_overlap",
+        }]
+        assert by_name["Legacy"]["red_team_findings"] is None
+
+    def test_assigned_gap_only_kill_preview_publishes_weakened(self, tmp_path):
+        from nicheiq.models.solution_idea import IdeaGenerationResult
+
+        gap = self._idea("Gap")
+        gap.red_team_verdict = "killed"
+        gap.red_team_findings = [{
+            "kind": "evidence_gap", "claim": "Search did not establish a buyer",
+        }]
+        flow = ResearchFlow(niche_description=NICHE, job_id="test-job-red-team-gap")
+        flow.state.idea_generation = IdeaGenerationResult(solution_ideas=[
+            gap, self._idea("Other A"), self._idea("Other B"),
+        ])
+
+        assert flow._materialize_preview_report(str(tmp_path)) is not None
+
+        alternatives = _read_preview(tmp_path)["alternative_solutions"]
+        published = next(row for row in alternatives if row["solution_name"] == "Gap")
+        assert published["red_team_verdict"] == "weakened"
+        assert published["red_team_findings"] == [{
+            "claim": "Search did not establish a buyer", "kind": "evidence_gap",
+        }]

@@ -1,10 +1,29 @@
+import type { RedTeamFinding, RedTeamFindingKind } from "$lib/types/job";
+
 type AdversarialReviewFields = {
-  incumbent_parity?: string | null;
-  red_team_verdict?: string | null;
-  red_team_caveats?: string[] | null;
+  incumbent_parity?: unknown;
+  red_team_verdict?: unknown;
+  red_team_caveats?: unknown;
+  red_team_findings?: unknown;
 };
 
+interface NormalizedAdversarialReviewFields {
+  incumbentParity: string;
+  verdict: string;
+  caveats: string[];
+  findings: RedTeamFinding[];
+}
+
 export type AdversarialSeverity = "killed" | "weakened";
+
+export interface AdversarialReviewPrimaryFinding {
+  basis: "counterevidence" | "incomplete_evidence";
+  kind: RedTeamFindingKind;
+  claim: string;
+  label: string;
+  chipLabel: string;
+  summaryOpener: string;
+}
 
 export interface AdversarialReviewFinding {
   /** Section/card heading, e.g. "Adversarial review: Premise unproven". */
@@ -13,6 +32,119 @@ export interface AdversarialReviewFinding {
   chipLabel: string;
   details: string[];
   severity: AdversarialSeverity;
+  /** Atomic authority for both the reason-specific label and the claim it describes. */
+  primary?: AdversarialReviewPrimaryFinding;
+}
+
+const AFFIRMATIVE_FINDING_KINDS = new Set<RedTeamFindingKind>([
+  "verified_incumbent_overlap",
+  "verified_free_or_bundled_alternative",
+  "verified_payer_mismatch",
+  "verified_modal_failure",
+]);
+
+const FINDING_KINDS = new Set<RedTeamFindingKind>([
+  ...AFFIRMATIVE_FINDING_KINDS,
+  "evidence_gap",
+]);
+
+const TYPED_REVIEW_COPY: Record<RedTeamFindingKind, {
+  label: string;
+  chipLabel: string;
+  summaryOpener: string;
+}> = {
+  verified_incumbent_overlap: {
+    label: "Verified incumbent overlap",
+    chipLabel: "Incumbent overlap",
+    summaryOpener: "The adversarial review found verified incumbent overlap",
+  },
+  verified_free_or_bundled_alternative: {
+    label: "Verified free or bundled alternative",
+    chipLabel: "Free or bundled alternative",
+    summaryOpener: "The adversarial review found a verified free or bundled alternative",
+  },
+  verified_payer_mismatch: {
+    label: "Verified payer mismatch",
+    chipLabel: "Payer mismatch",
+    summaryOpener: "The adversarial review found a verified payer mismatch",
+  },
+  verified_modal_failure: {
+    label: "Verified modal failure",
+    chipLabel: "Modal failure",
+    summaryOpener: "The adversarial review found a verified modal failure",
+  },
+  evidence_gap: {
+    label: "Evidence incomplete",
+    chipLabel: "Evidence incomplete",
+    summaryOpener: "The adversarial review found the decision-critical evidence incomplete",
+  },
+};
+
+const GENERIC_INCOMPLETE_EVIDENCE_CLAIM =
+  "The review did not establish decision-critical evidence.";
+
+function isRedTeamFindingKind(value: unknown): value is RedTeamFindingKind {
+  return typeof value === "string" && FINDING_KINDS.has(value as RedTeamFindingKind);
+}
+
+function normalizedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function validTypedFindings(value: unknown): RedTeamFinding[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((finding): RedTeamFinding[] => {
+    if (!finding || typeof finding !== "object") return [];
+    const record = finding as Record<string, unknown>;
+    const claim = normalizedString(record.claim);
+    if (!claim || !isRedTeamFindingKind(record.kind)) return [];
+    return [{ claim, kind: record.kind }];
+  });
+}
+
+function normalizeAdversarialReviewFields(
+  idea: AdversarialReviewFields,
+): NormalizedAdversarialReviewFields {
+  const findings = validTypedFindings(idea.red_team_findings);
+  const caveats = Array.isArray(idea.red_team_caveats)
+    ? idea.red_team_caveats.map(normalizedString).filter(Boolean)
+    : [];
+  const storedVerdict = normalizedString(idea.red_team_verdict);
+  const verdict = storedVerdict.toLowerCase() === "killed"
+    && Array.isArray(idea.red_team_findings)
+    && !findings.some((finding) => AFFIRMATIVE_FINDING_KINDS.has(finding.kind))
+      ? "weakened"
+      : storedVerdict;
+  return {
+    incumbentParity: normalizedString(idea.incumbent_parity),
+    verdict,
+    caveats,
+    findings,
+  };
+}
+
+export function resolveAdversarialReviewPrimaryFinding(
+  findings: unknown,
+): AdversarialReviewPrimaryFinding | undefined {
+  const typed = validTypedFindings(findings);
+  const affirmative = typed.find((finding) => AFFIRMATIVE_FINDING_KINDS.has(finding.kind));
+  const finding = affirmative ?? typed.find((candidate) => candidate.kind === "evidence_gap");
+  if (!finding) {
+    return Array.isArray(findings)
+      ? {
+          basis: "incomplete_evidence",
+          kind: "evidence_gap",
+          claim: GENERIC_INCOMPLETE_EVIDENCE_CLAIM,
+          ...TYPED_REVIEW_COPY.evidence_gap,
+        }
+      : undefined;
+  }
+  return {
+    basis: affirmative ? "counterevidence" : "incomplete_evidence",
+    kind: finding.kind,
+    claim: finding.claim.trim(),
+    ...TYPED_REVIEW_COPY[finding.kind],
+  };
 }
 
 /**
@@ -41,34 +173,42 @@ export const PREMISE_UNPROVEN_SCORE_NOTE =
   "These scores assume the premise holds. The adversarial review could not confirm it, so "
   + "read them as the upside if it does.";
 
-/** True when the adversarial review returned the internal `killed` verdict. */
+/** Selection-eligibility gate over the effective typed/legacy review state. */
 export function isPremiseUnproven(
-  idea: Pick<AdversarialReviewFields, "red_team_verdict">,
+  idea: Pick<AdversarialReviewFields, "red_team_verdict" | "red_team_findings">,
 ): boolean {
-  return idea.red_team_verdict?.trim().toLowerCase() === "killed";
+  return normalizeAdversarialReviewFields(idea).verdict.toLowerCase() === "killed";
 }
 
 /**
  * Explains the split a user sees when the highest-scoring idea is not the recommended one:
- * the top score is real, the premise behind it is not established, so the recommendation
- * moves down the list. Both ideas keep their place.
+ * the top score is real, but the review either found typed counterevidence or could not
+ * establish the premise, so the recommendation moves down the list. Both ideas keep their place.
  */
-export function recommendationSplitNote(topTitle: string, recommendedTitle: string): string {
-  return `${topTitle} scores highest, but the adversarial review could not confirm its `
-    + `premise, so the recommendation goes to ${recommendedTitle}: the strongest idea that `
+export function recommendationSplitNote(
+  topTitle: string,
+  recommendedTitle: string,
+  topIdea?: Pick<AdversarialReviewFields, "red_team_findings">,
+): string {
+  const primary = resolveAdversarialReviewPrimaryFinding(topIdea?.red_team_findings);
+  const reason = primary
+    ? `${primary.summaryOpener.replace(/^The /, "the ")}: ${primary.claim}`
+    : "the adversarial review could not confirm its premise";
+  return `${topTitle} scores highest, but ${reason}, `
+    + `so the recommendation goes to ${recommendedTitle}: the strongest idea that `
     + `came through review intact. ${topTitle} keeps its rank and you can still shortlist it.`;
 }
 
 const EVIDENCE_PREFIX = /^shipped by evidence\s*:\s*/i;
 
-export function isAdversarialEvidenceParity(value: string | null | undefined): boolean {
-  return EVIDENCE_PREFIX.test(value?.trim() ?? "");
+export function isAdversarialEvidenceParity(value: unknown): boolean {
+  return EVIDENCE_PREFIX.test(normalizedString(value));
 }
 
 export function directIncumbentParity(
   idea: Pick<AdversarialReviewFields, "incumbent_parity">,
 ): string | null {
-  const parity = idea.incumbent_parity?.trim();
+  const parity = normalizeAdversarialReviewFields(idea).incumbentParity;
   if (
     !parity
     || parity.toLowerCase().startsWith("none")
@@ -82,7 +222,8 @@ export function directIncumbentParity(
 export function noDirectIncumbentFound(
   idea: Pick<AdversarialReviewFields, "incumbent_parity">,
 ): boolean {
-  return idea.incumbent_parity?.trim().toLowerCase().startsWith("none") ?? false;
+  return normalizeAdversarialReviewFields(idea).incumbentParity
+    .toLowerCase().startsWith("none");
 }
 
 // Parity findings are stored with a closed-vocabulary class prefix
@@ -116,8 +257,8 @@ const PARITY_SHAPE = /^([a-z_]+)(?:\s+by\s+([^:]+?)|\s*\(([^)]*)\))?\s*(?::\s*([
  * A parity finding with its class prefix turned into words. Free prose carrying no known
  * class is returned untouched — it is already readable, and rewriting it would invent a claim.
  */
-export function incumbentParityPhrase(value: string | null | undefined): string {
-  const raw = value?.trim();
+export function incumbentParityPhrase(value: unknown): string {
+  const raw = normalizedString(value);
   if (!raw) return "";
   if (/^none\b/i.test(raw)) return "No competing product found";
 
@@ -159,13 +300,22 @@ function joinParityEvidence(head: string, vendor: string, evidence: string): str
 export function adversarialReviewFinding(
   idea: AdversarialReviewFields,
 ): AdversarialReviewFinding | null {
-  const verdict = idea.red_team_verdict?.trim();
-  const parity = idea.incumbent_parity?.trim();
+  const normalized = normalizeAdversarialReviewFields(idea);
+  const verdict = normalized.verdict;
+  const parity = normalized.incumbentParity;
   const evidenceDetail = isAdversarialEvidenceParity(parity)
-    ? parity!.replace(EVIDENCE_PREFIX, "").trim()
+    ? parity.replace(EVIDENCE_PREFIX, "").trim()
     : "";
-  const details = [...(idea.red_team_caveats ?? []), evidenceDetail]
-    .map((detail) => detail.trim())
+  const typedFindings = normalized.findings;
+  // Pass the raw field so [] / all-invalid arrays remain distinguishable from legacy
+  // records where the typed field was omitted or null.
+  const primary = resolveAdversarialReviewPrimaryFinding(idea.red_team_findings);
+  const details = [
+    primary?.claim ?? "",
+    ...typedFindings.map((finding) => finding.claim),
+    ...normalized.caveats,
+    evidenceDetail,
+  ]
     .filter((detail, index, all) => detail && all.indexOf(detail) === index);
 
   const v = verdict?.toLowerCase();
@@ -177,16 +327,18 @@ export function adversarialReviewFinding(
   const severity: AdversarialSeverity = killed ? "killed" : "weakened";
 
   // A killed verdict is renamed for the reader; every other verdict keeps its own word.
-  const verdictLabel = killed
+  const typedCopy = primary ?? null;
+  const verdictLabel = typedCopy?.label ?? (killed
     ? PREMISE_UNPROVEN_LABEL
     : verdict
       ? verdict.charAt(0).toUpperCase() + verdict.slice(1).toLowerCase()
-      : null;
+      : null);
   return {
     label: verdictLabel ? `Adversarial review: ${verdictLabel}` : "Adversarial review",
-    chipLabel: killed ? PREMISE_UNPROVEN_LABEL : "Weakened",
+    chipLabel: typedCopy?.chipLabel ?? (killed ? PREMISE_UNPROVEN_LABEL : "Weakened"),
     details,
     severity,
+    ...(primary ? { primary } : {}),
   };
 }
 
@@ -206,6 +358,7 @@ export function adversarialReviewSummary(
   context: AdversarialSummaryContext = {},
 ): string {
   const killed = finding.severity === "killed";
+  const typedCopy = finding.primary ?? null;
   // Same pointer, phrased for where the reader actually is.
   const whereSentence = context.inIdeaDetail
     ? "The full review is in this idea's findings below."
@@ -213,9 +366,9 @@ export function adversarialReviewSummary(
   const whereClause = context.inIdeaDetail
     ? "see the full review in this idea's findings below."
     : "open the idea for the full review.";
-  const opener = killed
+  const opener = typedCopy?.summaryOpener ?? (killed
     ? "The adversarial review could not find evidence for this idea's premise"
-    : "";
+    : "");
   const first = finding.details[0]?.trim() ?? "";
   if (!first) {
     if (killed) {
@@ -228,6 +381,10 @@ export function adversarialReviewSummary(
   let lead = sentenceEnd > 0 && sentenceEnd <= 200 ? first.slice(0, sentenceEnd + 1) : first;
   if (lead.length > 200) lead = `${lead.slice(0, 200).trimEnd()}…`;
   const rest = finding.details.length - 1;
+  if (typedCopy) {
+    const more = rest > 0 ? ` +${rest} more finding${rest === 1 ? "" : "s"}.` : ".";
+    return `${opener}: ${lead}${more} ${whereSentence}`;
+  }
   if (killed) {
     const more = rest > 0 ? ` +${rest} more objection${rest === 1 ? "" : "s"}.` : "";
     return `${opener}: ${lead}${more} The other scores describe how well it would work if `
@@ -235,4 +392,37 @@ export function adversarialReviewSummary(
   }
   const more = rest > 0 ? ` +${rest} more objection${rest === 1 ? "" : "s"} —` : " —";
   return `${lead}${more} ${whereClause}`;
+}
+
+/** Complete verdict copy for surfaces that render the review as a paragraph. */
+export function adversarialReviewVerdictSummary(
+  idea: AdversarialReviewFields,
+  context: AdversarialSummaryContext = {},
+): string | null {
+  const finding = adversarialReviewFinding(idea);
+  if (finding) return adversarialReviewSummary(finding, context);
+
+  const verdict = normalizeAdversarialReviewFields(idea).verdict.toLowerCase();
+  if (verdict === "survives") {
+    return "Our adversarial reviewer raised no killing objection. Residual risks:";
+  }
+  if (verdict === "weakened") {
+    return "Our adversarial reviewer found real weaknesses. The objections that stuck:";
+  }
+  return null;
+}
+
+export function adversarialReviewCoda(
+  finding: AdversarialReviewFinding,
+  context: "decision" | "scores",
+): string {
+  if (finding.primary?.basis === "counterevidence") {
+    return context === "scores"
+      ? "These scores do not erase the verified counterevidence. Weigh that finding before you build."
+      : "This is verified counterevidence, not missing evidence. The candidate keeps its rank and stays selectable; weigh the finding before committing.";
+  }
+  if (finding.severity === "weakened") {
+    return "This candidate remains available — review these concerns before committing to it.";
+  }
+  return context === "scores" ? PREMISE_UNPROVEN_SCORE_NOTE : PREMISE_UNPROVEN_CODA;
 }

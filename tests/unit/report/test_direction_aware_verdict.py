@@ -131,6 +131,26 @@ class TestRedTeamPhase55:
         assert v.risk_level == "High"
         assert v.primary_concern and "refuted" in v.primary_concern
 
+    def test_live_verdict_caller_treats_empty_or_invalid_typed_kill_as_incomplete(self, generator):
+        _scores(generator, mf=0.55, tech=0.65, seo=0.5, nov=0.5)
+        for findings in ([], [{"kind": "not_a_kind", "claim": "Unsupported raw row."}]):
+            v = generator._compute_go_no_go_verdict(
+                SimpleNamespace(
+                    winning_angle=None,
+                    red_team_verdict="killed",
+                    red_team_findings=findings,
+                    red_team_caveats=["Legacy compatibility caveat."],
+                ),
+                narrative_rationale="ok",
+            )
+
+            assert v.verdict == "Conditional", findings
+            assert v.risk_level == "Medium", findings
+            assert v.red_team_context and "incomplete evidence" in v.red_team_context
+            assert "verified" not in v.red_team_context.lower()
+            assert "verified" not in (v.primary_concern or "").lower()
+            assert "refuted" not in (v.primary_concern or "").lower()
+
     def test_unreviewed_selection_unchanged(self, generator):
         _scores(generator, mf=0.55, tech=0.65, seo=0.5, nov=0.5)
         v = generator._compute_go_no_go_verdict(

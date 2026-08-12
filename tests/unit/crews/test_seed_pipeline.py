@@ -183,6 +183,57 @@ class TestUserSeedIdentityLock:
 
         assert not is_seed_faithful(seed, drift)
 
+    def test_long_seed_survives_exact_terms_after_a_scoring_rewrite(self):
+        """Live e1b42702: a 62-token pitch was discarded post-scoring because exact_terms
+        demanded verbatim 100% token retention. Every idea-check run that completed carried
+        17-25 tokens, so the rule silently penalised users who described their product in
+        detail. Beyond EXACT_TERMS_TOKEN_CAP the requirement is capped, not linear."""
+        from nicheiq.utils.seed_fidelity import EXACT_TERMS_TOKEN_CAP, _content_tokens
+
+        seed = (
+            "NicheIQ is an AI market researcher for people who want to build their own "
+            "products, websites, and apps to earn additional income on the side. It has "
+            "analyzed millions of real comments to find the pains people already pay to "
+            "solve, pressure-tests product ideas, and returns an honest Go/No-Go verdict"
+        )
+        tokens = _content_tokens(seed)
+        assert len(tokens) > EXACT_TERMS_TOKEN_CAP, "fixture must exceed the cap to be a regression"
+
+        # A scoring wave renames the idea and drops a few peripheral words — exactly what
+        # `_score_wave` did on the live run before the terminal guard threw the run away.
+        rewritten = " ".join(
+            sorted(tokens - {"side", "honest", "additional", "websites"}))
+        candidate = SimpleNamespace(
+            solution_name="Go/No-Go Market Researcher",
+            headline=rewritten,
+            description=rewritten,
+            value_proposition=rewritten,
+        )
+
+        assert is_seed_faithful(seed, candidate, exact_terms=True)
+
+        # A candidate that keeps only a token here and there is still rejected.
+        gutted = SimpleNamespace(solution_name="Go/No-Go Market Researcher",
+                                 description="market researcher")
+        assert not is_seed_faithful(seed, gutted, exact_terms=True)
+
+    def test_short_seeds_keep_the_verbatim_exact_terms_rule(self):
+        """The cap must not loosen the lengths that already worked: at or below the cap the
+        requirement stays 100%, so every historical idea-check run is unaffected."""
+        from nicheiq.utils.seed_fidelity import EXACT_TERMS_TOKEN_CAP, exact_terms_minimum
+
+        for n in (1, 17, 18, 20, 22, EXACT_TERMS_TOKEN_CAP):
+            assert exact_terms_minimum(n) == n
+
+        seed = ("A Chrome extension that drafts Reddit replies for community managers at "
+                "small SaaS companies")
+        dropped_one = SimpleNamespace(
+            solution_name="RedditReplyRadar",
+            description="A Chrome extension that drafts replies for community managers at "
+                        "small SaaS companies",
+        )
+        assert not is_seed_faithful(seed, dropped_one, exact_terms=True)
+
     def test_allows_same_product_enrichment_and_optional_supporting_route(self):
         seed = "A browser tool that reconciles medication inventory and exports audit logs."
         enriched = SimpleNamespace(

@@ -51,11 +51,15 @@ describe('score glossary — the 2026-08 scoring changes', () => {
     expect(metricExplanation('validated_count')).toContain('not the unfiltered expansion pool');
   });
 
-  it('states the premise-unproven reading and never hands back the internal word', () => {
+  it('states the typed distinction and exact legacy fallback without prose classification', () => {
     const verdict = metricExplanation('red_team_verdict')!;
-    expect(verdict).toContain('"Premise unproven"');
-    expect(verdict).toContain('never say killed');
-    expect(verdict).toContain('keeps its rank and stays selectable');
+    expect(verdict).toContain('reason-specific verified finding');
+    expect(verdict).toContain('"incomplete decision-critical evidence"');
+    expect(verdict).toContain('legacy "Premise unproven" fallback');
+    expect(verdict).toContain('never infer a class from caveat prose');
+    const findings = metricExplanation('red_team_findings')!;
+    expect(findings).toContain('Evidence gap means');
+    expect(findings).toContain('Classify only from kind');
   });
 
   it('records the named-vendor competition bar and the ranking-only audience penalty', () => {

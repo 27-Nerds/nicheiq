@@ -1,0 +1,32 @@
+[
+  {
+    "source_file": "output/checkpoints/preview_report_5144763b-7715-4d47-a6c3-d8bcdcef36a1.json",
+    "json_path": "/idea_validation",
+    "block": {
+      "outcome": "worth_testing",
+      "idea_name": "RedditReplyRadar",
+      "headline": "The problem behind RedditReplyRadar shows up in real threads, and nothing we found ships your mechanism yet. Demand is still unmeasured.",
+      "incumbent_parity": "none found",
+      "unanchored_hypothesis": false,
+      "red_team_verdict": "killed",
+      "seed_candidate_status": "active",
+      "refinement": null,
+      "original_mechanism_parity": "shipped by Okara: 8 Reddit reply automation tools tested, including Okara AI agents"
+    }
+  },
+  {
+    "source_file": "output/checkpoints/preview_report_a6e0d001-e10a-4677-87ca-9fc07a940a5d.json",
+    "json_path": "/idea_validation",
+    "block": {
+      "outcome": "worth_testing",
+      "idea_name": "RedditReplyGuard",
+      "headline": "The problem behind RedditReplyGuard shows up in real threads, and nothing we found ships your mechanism yet. Demand is still unmeasured.",
+      "incumbent_parity": "none found",
+      "unanchored_hypothesis": false,
+      "red_team_verdict": "killed",
+      "seed_candidate_status": "active",
+      "refinement": null,
+      "original_mechanism_parity": null
+    }
+  }
+]

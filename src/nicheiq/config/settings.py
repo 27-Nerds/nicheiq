@@ -743,8 +743,8 @@ class Settings(BaseSettings):
         default=0.7, ge=0.0, le=1.0,
         description="Rule B ceiling for moderate page counts (threshold <= pages < high_score_min_pages)."
     )
-    # Rule D (owned SERP) — Phase-1 deterministic peek at SERP composition for distribution_seo
-    # ideas, preview path only; Stage-12 keyword grounding supersedes provisional scores entirely.
+    # Rule D (owned SERP) — bounded Phase-1 deterministic peek for the reserved commercial-route
+    # candidate plus classified distribution_seo ideas; Stage-12 keyword grounding supersedes it.
     serp_owned_domain_threshold: int = Field(
         default=7, ge=1, le=10,
         description=(
@@ -757,11 +757,25 @@ class Settings(BaseSettings):
         description="Rule D ceiling on stored seo_scalability_score when the SERP is owned. 0 disables."
     )
     serp_probe_queries_per_idea: int = Field(
-        default=2, ge=0, le=4,
+        default=2, ge=0, le=2,
         description=(
             "SERP-composition probe queries per distribution_seo idea (derived from "
-            "programmatic_seo_opportunity, fallback _mechanism_keywords). 0 disables."
+            "programmatic_seo_opportunity, fallback _mechanism_keywords). The implementation "
+            "has exactly two query variants; 0 disables."
         )
+    )
+    serp_probe_distribution_candidate_cap: int = Field(
+        default=2, ge=0, le=4,
+        description=(
+            "Hard per-run cap on already-classified distribution_seo candidates probed in "
+            "addition to the single credible commercial reserve."
+        ),
+    )
+    commercial_reserve_quality_floor: float = Field(
+        default=0.55, ge=0.0, le=1.0,
+        description=(
+            "Minimum calibrated mean quality for the one active public-corpus commercial reserve."
+        ),
     )
     market_awareness_serper_budget: int = Field(
         default=60, ge=0, le=500,
@@ -1657,13 +1671,20 @@ class Settings(BaseSettings):
 
     # Solution Validation Configuration
     top_solutions_for_validation: int = Field(
-        default=5,
+        default=5, ge=1, le=7,
         description=(
             "Number of top solutions to validate with pricing, keywords, and competitive "
             "analysis. Default 5 covers ALL refined solutions (3-5 generated) so novel "
             "ideas aren't structurally excluded from demand validation; batched keyword "
             "expansion keeps the API cost roughly flat vs the old top-3."
         )
+    )
+    keyword_probe_candidate_cap: int = Field(
+        default=4, ge=1, le=6,
+        description=(
+            "Hard total Stage-6 paid keyword-probe candidate cap. The selected idea and one "
+            "credible reserve receive priority, followed by ranked distribution_seo candidates."
+        ),
     )
 
     # keyword validation: Keyword Validation Configuration
@@ -1679,7 +1700,7 @@ class Settings(BaseSettings):
         description="Minimum search volume threshold for relevance checking (lower than min_search_volume)"
     )
     keyword_pivot_max_attempts: int = Field(
-        default=3,
+        default=3, ge=1, le=4,
         description=(
             "Maximum number of pivot attempts (different seed generation strategies) before "
             "accepting best result. Most successful validations land on attempts 1-2; "
@@ -1859,15 +1880,17 @@ class Settings(BaseSettings):
         description="Minimum individual score for Conditional verdict"
     )
     enable_direction_aware_eval: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "P1: direction-aware evaluation. P1d (verdict): replace the uniform min(market_fit, "
+            "Direction-aware evaluation is production-on across classification, provisional angle, "
+            "calibration, caps, and verdict. Emergency rollback only via ENABLE_DIRECTION_AWARE_EVAL=false. "
+            "P1d (verdict): replace the uniform min(market_fit, "
             "tech_feasibility) hard gate with a LIFT-ONLY angle-binding gate "
             "max(min(mf, tech), min(mf, angle_binding_dim)) — binding dim = seo for distribution_seo, "
             "novelty for novel_differentiation, tech otherwise — so an SEO play is gated on SEO not tech, "
             "while a misclassification still passes via tech (never wrongly demotes). An INDEPENDENT tech "
             "buildability floor (tech >= verdict_conditional_min_individual_score) still blocks un-buildable "
-            "ideas from Go. Dark pending the neutral-Opus-anchored A/B; env ENABLE_DIRECTION_AWARE_EVAL."
+            "ideas from Go."
         ),
     )
     # Segment payability is PERMANENT (flags removed 2026-07-06 after same-day calibration-gate

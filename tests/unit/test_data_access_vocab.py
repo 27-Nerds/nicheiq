@@ -142,7 +142,8 @@ class TestSlimSchemaPathsPreserveVocab:
         assert crew._route_label_counts["labels"] == 1
 
     def test_red_team_revision(self, raw, expected):
-        from nicheiq.utils.red_team_review import _attempt_red_team_revision
+        from nicheiq.models.solution_idea import RedTeamFinding
+        from nicheiq.utils.red_team_review import _RedTeamVerdict, _attempt_red_team_revision
 
         crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
         crew.cost_tracker = None
@@ -168,9 +169,12 @@ class TestSlimSchemaPathsPreserveVocab:
                    return_value=(SimpleNamespace(
                        model_dump=lambda: dict(_SLIM, data_access_model=raw)),
                        SimpleNamespace(to_dict=lambda: {}))):
+            # Real verdict model, not a namespace: RT-1 retyped `caveats` -> typed `findings`,
+            # and a hand-rolled double silently took the fail-soft path instead of revising.
             assert _attempt_red_team_revision(
                 crew, refined, orig,
-                SimpleNamespace(verdict="killed", caveats=["free in Etsy"], uplift=None),
+                _RedTeamVerdict(verdict="killed", uplift=None, findings=[RedTeamFinding(
+                    claim="free in Etsy", kind="verified_free_or_bundled_alternative")]),
                 "evidence") is True
         assert refined.solution_ideas[0].data_access_model == expected
         assert crew._route_label_counts["labels"] == 1

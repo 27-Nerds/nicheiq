@@ -6,6 +6,13 @@ from collections.abc import Iterable
 from math import ceil
 from typing import Any
 
+from loguru import logger
+
+# Seed length at which the exact-terms rule stops demanding verbatim 100% retention.
+# Every idea-check run that completed carried 17-25 content tokens; e1b42702 carried 62
+# and was discarded post-scoring. At or below the cap the rule is unchanged.
+EXACT_TERMS_TOKEN_CAP = 25
+
 _IDENTITY_FIELDS = (
     "concept_name",
     "one_liner",
@@ -769,6 +776,21 @@ def seed_fidelity_score(seed_text: str, candidate: Any) -> float:
     return len(shared) / len(seed_tokens)
 
 
+def exact_terms_minimum(token_count: int) -> int:
+    """Tokens an exact-terms candidate must retain, capped so long seeds stay winnable.
+
+    A verbatim 100% rule scales the wrong way: every extra token a user writes is another
+    independent chance for a scoring rewrite to drop one, so the more carefully someone
+    describes their product the more certainly the gate rejects it. Live e1b42702 hit this —
+    a 62-token pitch against a 17-25 token norm, discarded after a full scored run whose
+    stated-clause gate had already PASSED. Beyond the cap we ask for the same absolute
+    evidence a short seed provides, never less than the 60% floor the non-exact rule uses.
+    """
+    if token_count <= EXACT_TERMS_TOKEN_CAP:
+        return token_count
+    return max(EXACT_TERMS_TOKEN_CAP, (token_count * 3 + 4) // 5)
+
+
 def is_seed_faithful(
     seed_text: str,
     candidate: Any,
@@ -781,8 +803,16 @@ def is_seed_faithful(
     The route-role check catches an additive replacement that repeats every seed term
     while making a research-derived source the required mechanism. This remains a
     deterministic identity backstop, not a semantic judge of product quality.
+
+    Logs WHY on rejection: this is the only guard in the seed chain whose callers print a
+    verdict without a reason, which is what made e1b42702 read as inexplicable.
     """
-    if unpitched_core_dependencies(seed_text, candidate):
+    unpitched = unpitched_core_dependencies(seed_text, candidate)
+    if unpitched:
+        logger.warning(
+            "[SeedFidelity] rejected — unpitched core data route(s): "
+            + ", ".join(str(route) for route in unpitched)
+        )
         return False
     seed_tokens = _content_tokens(seed_text)
     if not seed_tokens:
@@ -790,11 +820,18 @@ def is_seed_faithful(
     candidate_text = _candidate_identity_text(candidate)
     shared = seed_tokens & _content_tokens(candidate_text)
     minimum_retained = (
-        len(seed_tokens)
+        exact_terms_minimum(len(seed_tokens))
         if exact_terms
         else max(1, (len(seed_tokens) * 3 + 4) // 5)
     )
-    return len(shared) >= minimum_retained
+    if len(shared) < minimum_retained:
+        logger.warning(
+            f"[SeedFidelity] rejected — retained {len(shared)}/{len(seed_tokens)} seed terms, "
+            f"needed {minimum_retained} (exact_terms={exact_terms}); "
+            f"missing: {sorted(seed_tokens - shared)[:12]}"
+        )
+        return False
+    return True
 
 
 def structured_synthesis_fidelity_failures(

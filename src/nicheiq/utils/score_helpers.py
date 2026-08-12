@@ -100,13 +100,13 @@ def demand_with_beachhead_magnitude(
 
     Fallback semantics (bug-fixed 2026-07-02 after the cottage-food run): an EXPLICIT
     niche_relevant_volume == 0 means the keywords were graded and NOTHING passed — total_volume is then
-    precisely the drifted category number, and blending it REWARDS the failure (observed live: demand
-    0.88→0.94 on an empty validated set). So: nrv > 0 → blend nrv; nrv is None (never computed, legacy) →
-    blend total_volume; nrv == 0 → NO magnitude credit (return ratio unchanged, neutral no-op).
+    precisely the drifted category number. That is not merely "no magnitude credit": a ratio derived
+    from irrelevant head terms/token collisions is no demand evidence, so the result is zero. ``None``
+    remains the legacy/unmeasured state and may fall back to total volume.
     """
     if isinstance(niche_relevant_volume, (int, float)) and not isinstance(niche_relevant_volume, bool):
         if niche_relevant_volume <= 0:
-            return round(ratio_demand, 4)  # graded-and-empty → no magnitude credit
+            return 0.0  # graded-and-empty → no relevant demand evidence
         vol = niche_relevant_volume
     else:
         vol = total_volume or 0  # nrv never computed → total is the only signal available
@@ -220,16 +220,22 @@ def ranking_seo(seo: float | None, idea) -> float | None:
     """
     if not isinstance(seo, (int, float)) or isinstance(seo, bool):
         return seo  # None / non-numeric: pass through untouched (mirrors _extract_optional_score)
+    def _get(field):
+        return idea.get(field) if isinstance(idea, dict) else getattr(idea, field, None)
+
+    refined = _get("seo_scalability_score_refined")
+    if refined is not None:
+        return seo  # keyword-grounded — earned its value
+
+    # Distribution routes are not exempt from competition: when the bounded pre-ranking probe
+    # found authority/incumbent ownership, apply the same ceiling the stored-score realism pass
+    # uses. Unlike the old runtime-only marker, this survives model copies/checkpoints.
+    if _get("serp_competition") == "owned" and settings.serp_owned_seo_ceiling > 0:
+        seo = min(seo, settings.serp_owned_seo_ceiling)
+
     ceiling = settings.provisional_seo_rank_ceiling
     if ceiling >= 1.0 or seo <= ceiling:
         return seo
-    refined = (
-        idea.get("seo_scalability_score_refined")
-        if isinstance(idea, dict)
-        else getattr(idea, "seo_scalability_score_refined", None)
-    )
-    if refined is not None:
-        return seo  # keyword-grounded — earned its value
     return ceiling
 
 
@@ -246,9 +252,10 @@ def red_team_killed(idea) -> bool:
     Reads defensively from models OR dicts (the worker/queue boundary hands the same idea
     across as a plain dict).
     """
-    v = idea.get("red_team_verdict") if isinstance(idea, dict) else getattr(
-        idea, "red_team_verdict", None)
-    return (v or "").strip().lower() == "killed"
+    from ..models.solution_idea import effective_red_team_state
+
+    verdict, _findings = effective_red_team_state(idea)
+    return verdict == "killed"
 
 
 def choose_auto_pick(ranked, ideas):

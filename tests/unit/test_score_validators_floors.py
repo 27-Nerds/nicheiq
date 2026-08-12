@@ -199,6 +199,98 @@ class TestRedTeamFloor:
                           red_team_context="Red-team review: …")
         assert v.red_team_context.startswith("Red-team review")
 
+    def test_typed_affirmative_kill_reports_verified_counterevidence(self):
+        _v, risk, concern, context = self._t().apply_red_team_downgrade(
+            "Conditional",
+            "Medium",
+            None,
+            red_team_verdict="killed",
+            red_team_caveats=["legacy compatibility claim"],
+            red_team_findings=[{
+                "kind": "verified_incumbent_overlap",
+                "claim": "Named vendor ships the core workflow.",
+            }],
+        )
+
+        assert risk == "High"
+        assert context and "verified counterevidence" in context
+        assert "Named vendor" in context
+        assert concern and "verified counterevidence" in concern
+
+    def test_typed_gap_only_weakness_reports_incomplete_evidence(self):
+        _v, risk, concern, context = self._t().apply_red_team_downgrade(
+            "Go",
+            "Low",
+            None,
+            red_team_verdict="weakened",
+            red_team_caveats=["legacy compatibility claim"],
+            red_team_findings=[{
+                "kind": "evidence_gap",
+                "claim": "Search did not establish a buyer.",
+            }],
+        )
+
+        assert risk == "Medium"
+        assert context and "incomplete evidence" in context
+        assert "Search did not establish" in context
+        assert concern and "incomplete evidence" in concern
+
+    def test_explicit_zero_affirmative_matrix_never_claims_verified_or_high(self):
+        explicit_zero_affirmative = [
+            [],
+            [{"kind": "not_a_kind", "claim": "Unsupported raw row."}],
+            [{"kind": "evidence_gap", "claim": "Search did not establish a buyer."}],
+        ]
+        for findings in explicit_zero_affirmative:
+            _verdict, risk, concern, context = self._t().apply_red_team_downgrade(
+                "Go",
+                "Low",
+                None,
+                red_team_verdict="killed",
+                red_team_caveats=["Legacy compatibility caveat."],
+                red_team_findings=findings,
+            )
+
+            assert risk == "Medium", findings
+            assert context and "incomplete evidence" in context, findings
+            assert concern and "incomplete evidence" in concern, findings
+            assert "verified" not in context.lower(), findings
+            assert "objection" not in context.lower(), findings
+
+    def test_legacy_null_and_mixed_affirmative_keep_distinct_floor_semantics(self):
+        _verdict, legacy_risk, legacy_concern, legacy_context = (
+            self._t().apply_red_team_downgrade(
+                "Conditional",
+                "Medium",
+                None,
+                red_team_verdict="killed",
+                red_team_caveats=["Legacy prose-only caveat."],
+                red_team_findings=None,
+            )
+        )
+        assert legacy_risk == "High"
+        assert legacy_context and "could not find evidence" in legacy_context
+        assert legacy_concern and "refuted" in legacy_concern
+
+        mixed = [
+            {"kind": "evidence_gap", "claim": "Search coverage was incomplete."},
+            {"kind": "verified_payer_mismatch", "claim": "The user cannot buy."},
+        ]
+        _verdict, mixed_risk, mixed_concern, mixed_context = (
+            self._t().apply_red_team_downgrade(
+                "Conditional",
+                "Medium",
+                None,
+                red_team_verdict="killed",
+                red_team_caveats=[],
+                red_team_findings=mixed,
+            )
+        )
+        assert mixed_risk == "High"
+        assert mixed_context and "verified counterevidence" in mixed_context
+        assert "The user cannot buy" in mixed_context
+        assert mixed_concern and "verified counterevidence" in mixed_concern
+
 
 class TestGeographicPrioritiesMayBeEmpty:
     """Most niches have no geographic signal, and forcing an entry guaranteed fabrication.

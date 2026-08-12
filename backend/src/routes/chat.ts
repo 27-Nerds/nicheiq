@@ -22,6 +22,8 @@ import {
   incumbentParityPhrase,
   presentableFieldValue,
   presentableRecord,
+  resolveAdversarialReviewPrimaryFinding,
+  validatedRedTeamFindings,
 } from '../utils/selectionVocabulary.js';
 // Gate patch whitelists — the SAME Zod schemas gate-action (jobs.ts) validates
 // an apply against. Reusing them here (rather than duplicating the shape) keeps
@@ -1086,10 +1088,27 @@ export function stripSchemaVocabulary(text: string): string {
  * are still carried, since those are prose the review wrote and the owner needs them.
  * What the labels MEAN is stated once, in the product-knowledge section, not per idea.
  */
-function adversarialReviewLine(verdict: string, caveats: string[]): string {
-  const label = adversarialReviewLabel(verdict);
-  const objections = caveats.length ? ` — ${caveats.join('; ')}` : '';
-  if (!label) return caveats.length ? `Adversarial review objections${objections}` : '';
+function adversarialReviewLine(idea: Record<string, unknown>): string {
+  const verdict = typeof idea.red_team_verdict === 'string' ? idea.red_team_verdict : '';
+  const primary = resolveAdversarialReviewPrimaryFinding(idea.red_team_findings);
+  const label = adversarialReviewLabel(verdict, idea.red_team_findings);
+  const typedClaims = validatedRedTeamFindings(idea.red_team_findings);
+  const caveats = Array.isArray(idea.red_team_caveats)
+    ? idea.red_team_caveats.filter((caveat): caveat is string => typeof caveat === 'string' && Boolean(caveat.trim()))
+    : [];
+  const secondaryClaims = typedClaims
+    .filter((finding) => finding.kind !== 'evidence_gap' || !primary || primary.basis !== 'counterevidence')
+    .map((finding) => finding.claim);
+  const gapClaims = new Set(
+    typedClaims.filter((finding) => finding.kind === 'evidence_gap').map((finding) => finding.claim),
+  );
+  const compatibleCaveats = caveats.filter(
+    (caveat) => !primary || primary.basis !== 'counterevidence' || !gapClaims.has(caveat),
+  );
+  const details = [primary?.claim ?? '', ...secondaryClaims, ...compatibleCaveats]
+    .filter((detail, index, all) => detail && all.indexOf(detail) === index);
+  const objections = details.length ? ` — ${details.join('; ')}` : '';
+  if (!label) return details.length ? `Adversarial review objections${objections}` : '';
   return `Adversarial review: ${label}${objections}`;
 }
 
@@ -1100,7 +1119,6 @@ function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudg
   const name = ideaDisplayTitle(idea) || `Idea ${index + 1}`;
   const tags = (idea.tags ?? {}) as Record<string, unknown>;
   const diffFactors = Array.isArray(idea.differentiation_factors) ? (idea.differentiation_factors as string[]) : [];
-  const caveats = Array.isArray(idea.red_team_caveats) ? (idea.red_team_caveats as string[]) : [];
   const status = (idea.candidate_status as string) || 'active';
   const seoScore = idea.seo_scalability_score ?? idea.seo_growth_potential_score;
   const pricingStrategy = idea.pricing_strategy ?? idea.pricing_model;
@@ -1130,7 +1148,7 @@ function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudg
     idea.adjacent_market_parity
       ? `Adjacent-market competitor findings: ${incumbentParityPhrase(String(idea.adjacent_market_parity))}`
       : '',
-    idea.red_team_verdict ? adversarialReviewLine(String(idea.red_team_verdict), caveats) : '',
+    idea.red_team_verdict ? adversarialReviewLine(idea) : '',
     pricingStrategy ? `Pricing: ${pricingStrategy}` : '',
     tags.rationale ? `Why these tags: ${tags.rationale}` : '',
   ]
@@ -1252,9 +1270,6 @@ function buildRuledOutSection(
   const coreFeatures = Array.isArray(idea.core_features)
     ? (idea.core_features as string[]).slice(0, 5)
     : [];
-  const caveats = Array.isArray(idea.red_team_caveats)
-    ? (idea.red_team_caveats as string[]).slice(0, 5)
-    : [];
   const seoScore = idea.seo_growth_potential_score ?? idea.seo_scalability_score;
 
   const bodyLines = [
@@ -1281,7 +1296,7 @@ function buildRuledOutSection(
       : '',
     typeof seoScore === 'number' ? `SEO potential: ${scoreBand(seoScore)}` : '',
     idea.incumbent_parity ? `Competitor findings: ${incumbentParityPhrase(String(idea.incumbent_parity))}` : '',
-    idea.red_team_verdict ? adversarialReviewLine(String(idea.red_team_verdict), caveats) : '',
+    idea.red_team_verdict ? adversarialReviewLine(idea) : '',
   ]
     .filter(Boolean)
     .join('\n');

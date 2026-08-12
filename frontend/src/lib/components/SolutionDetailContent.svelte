@@ -13,12 +13,11 @@
   import { SvelteSet } from "svelte/reactivity";
   import {
     adversarialReviewFinding,
+    adversarialReviewCoda,
     adversarialReviewSummary,
     directIncumbentParity,
     incumbentParityPhrase,
     noDirectIncumbentFound,
-    PREMISE_UNPROVEN_CODA,
-    PREMISE_UNPROVEN_SCORE_NOTE,
   } from "$lib/utils/adversarialReview";
   import {
     originalityMetric,
@@ -441,13 +440,7 @@
           {#each adversarialReview.details as detail}
             <p>{detail}</p>
           {/each}
-          {#if adversarialReview.severity === "weakened"}
-            <p>
-              This candidate remains available — review these concerns before committing to it.
-            </p>
-          {:else}
-            <p>{PREMISE_UNPROVEN_CODA}</p>
-          {/if}
+          <p>{adversarialReviewCoda(adversarialReview, "decision")}</p>
         </div>
       </div>
     {/if}
@@ -670,13 +663,7 @@
             {/each}
           </ul>
         {/if}
-        {#if adversarialReview.severity === "weakened"}
-          <p class="fd-finding-coda">
-            This candidate remains available — review these concerns before committing to it.
-          </p>
-        {:else}
-          <p class="fd-finding-coda">{PREMISE_UNPROVEN_CODA}</p>
-        {/if}
+        <p class="fd-finding-coda">{adversarialReviewCoda(adversarialReview, "decision")}</p>
       </section>
     {/if}
 
@@ -724,7 +711,7 @@
         <!-- Every criterion below is conditional on the premise. Say so here, where the
              numbers are, rather than leaving a high score next to an unproven premise. -->
         {#if adversarialReview?.severity === "killed"}
-          <p class="fd-finding-coda">{PREMISE_UNPROVEN_SCORE_NOTE}</p>
+          <p class="fd-finding-coda">{adversarialReviewCoda(adversarialReview, "scores")}</p>
         {/if}
         <dl class="fd-score-list">
           {#each scoreCriteria as c}

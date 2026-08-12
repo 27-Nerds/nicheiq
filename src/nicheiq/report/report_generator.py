@@ -258,6 +258,25 @@ class ReportGenerator:
             except Exception:
                 pass
 
+    @staticmethod
+    def _merge_legacy_traffic_projection(
+        traffic_monetization: Any,
+        update_fields: dict[str, Any],
+    ) -> Any:
+        """Apply raw-tier report projections only to unevaluated legacy records.
+
+        Deterministic Stage-8 economics may intentionally produce an unknown verdict.
+        The explicit evaluation marker keeps that third state distinct from a legacy
+        record. Raw SEO tier totals may include category or off-topic demand and cannot
+        replace an evaluated record.
+        """
+        if (
+            getattr(traffic_monetization, "economics_evaluated", False)
+            or getattr(traffic_monetization, "viability_verdict", None) is not None
+        ):
+            return traffic_monetization
+        return traffic_monetization.model_copy(update=update_fields)
+
     def generate_report(self) -> FinalReport:
         """
         Generate complete final report using hybrid approach.
@@ -611,7 +630,12 @@ class ReportGenerator:
                     break
 
         # Override LLM numeric fields with pre-computed evidence-based values + populate growth trajectory
-        if traffic_monetization and getattr(self.state, 'seo_strategy_report', None):
+        if (
+            traffic_monetization
+            and getattr(self.state, 'seo_strategy_report', None)
+            and not getattr(traffic_monetization, 'economics_evaluated', False)
+            and getattr(traffic_monetization, 'viability_verdict', None) is None
+        ):
             seo_report = self.state.seo_strategy_report
             niche_ctx = getattr(self.state, 'niche_context', None)
             niche_desc = getattr(niche_ctx, 'niche_description', '') if niche_ctx else ''
@@ -814,7 +838,9 @@ class ReportGenerator:
                     "be independently validated — treat them as directional, not measured."
                 )
 
-            traffic_monetization = traffic_monetization.model_copy(update=update_fields)
+            traffic_monetization = self._merge_legacy_traffic_projection(
+                traffic_monetization, update_fields
+            )
 
         # Generate market_validation based on actual metrics.
         # P0b: headline the BEACHHEAD demand (the selected solution's OWN validated keyword volume) — NOT
@@ -2271,6 +2297,9 @@ It differentiates through {diff_text}.
                 else:
                     estimated_cac_organic_val = None
 
+                from ..models.solution_idea import effective_red_team_state
+                red_team_verdict, red_team_findings = effective_red_team_state(solution)
+
                 alternative_solutions.append(AlternativeSolution(
                     # Existing fields (using pre-validated variables)
                     solution_name=solution.solution_name,
@@ -2342,8 +2371,9 @@ It differentiates through {diff_text}.
                     # Adversarial red-team pass (mirrors the preview-report threading in
                     # research_flow._materialize_preview_report — the final report was
                     # silently dropping these via AlternativeSolution's extra='ignore').
-                    red_team_verdict=getattr(solution, 'red_team_verdict', None),
+                    red_team_verdict=red_team_verdict,
                     red_team_caveats=list(getattr(solution, 'red_team_caveats', None) or []) or None,
+                    red_team_findings=red_team_findings,
                     # Lets the UI explain a missing acquisition-cost figure instead of
                     # hiding the row: a rebuilt product's old CAC describes a product that
                     # no longer exists, and the rebuild cannot re-ground a new one.
@@ -3681,7 +3711,8 @@ It differentiates through {diff_text}.
         # red-team weakened with devastating caveats). Runs before regulatory so the
         # structural-legal concern still outranks when both fire.
         from ..validators.score_validators import ScoreThresholds as _ST55, VerdictValidator as _VV55
-        _rt_v = getattr(solution, "red_team_verdict", None)
+        from ..models.solution_idea import effective_red_team_state as _effective_rt_state
+        _rt_v, _rt_findings = _effective_rt_state(solution)
         if ((_rt_v or "").strip().lower() == "killed"
                 and primary_concern == _GENERIC_CONDITIONAL_CONCERN):
             # Null the generic base concern so the killed concern can land — every floor
@@ -3693,6 +3724,7 @@ It differentiates through {diff_text}.
                 verdict=verdict, risk_level=risk_level, primary_concern=primary_concern,
                 red_team_verdict=_rt_v,
                 red_team_caveats=getattr(solution, "red_team_caveats", None),
+                red_team_findings=_rt_findings,
             )
         )
         if red_team_context:

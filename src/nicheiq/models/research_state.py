@@ -25,8 +25,10 @@ from .solution_idea import (
     CompetitiveEnhancements,
     IdeaGenerationResult,
     IdeaTags,
+    RedTeamFinding,
     SolutionIdea,
     SolutionSEORefinement,
+    effective_red_team_verdict,
 )
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SolutionSelection
@@ -548,6 +550,22 @@ class AlternativeSolution(BaseModel):
         default=None,
         description="Up to 3 evidence-cited red-team caveats (mirrors "
         "BaseSolutionIdea.red_team_caveats); None = idea not red-teamed")
+    red_team_findings: Optional[list[RedTeamFinding]] = Field(
+        default=None,
+        max_length=3,
+        description=(
+            "Typed red-team findings mirrored from BaseSolutionIdea; None on legacy "
+            "alternatives whose caveats predate classification."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _apply_typed_red_team_verdict(self):
+        self.red_team_verdict = effective_red_team_verdict(
+            self.red_team_verdict, self.red_team_findings
+        )
+        return self
+
     rebuild_origin: Optional[str] = Field(
         default=None,
         description="'parity_pivot' | 'variant_merge' | 'red_team_revision' when this idea "
@@ -1140,6 +1158,32 @@ class RevenueMilestone(BaseModel):
     total_potential: str = Field(..., description="Total revenue potential including all sources")
 
 
+class TrafficUnitValueEvidence(BaseModel):
+    """Attributed market price used by deterministic Stage-8 route economics."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    route: Literal[
+        "lead_generation", "sponsorship", "paid_upgrade_funnel", "affiliate"
+    ]
+    source_name: str
+    source_url: str
+    evidence_text: str
+    candidate_idea_id: Optional[str] = None
+    candidate_idea_revision: Optional[int] = Field(default=None, ge=1)
+    retrieved_quote: Optional[str] = None
+    retrieved_at: Optional[datetime] = None
+    verification_marker: Optional[Literal["exact_quote_in_fetched_public_content"]] = None
+    value_low: Optional[int] = None
+    value_high: Optional[int] = None
+    billing_basis: Literal[
+        "per_lead", "per_sponsored_listing_month", "per_paid_upgrade_month",
+        "affiliate_program",
+    ]
+    commission_pct_low: Optional[float] = None
+    commission_pct_high: Optional[float] = None
+
+
 # Stage 7: Pricing Strategy Validation
 class PricingStrategyResult(BaseModel):
     """Pricing strategy validation result from Stage 7."""
@@ -1259,8 +1303,15 @@ class TrafficMonetizationResult(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
-    monetization_model: Literal["Ad-Supported", "Affiliate", "Hybrid-Traffic", "Lead-Gen"] = Field(
-        ..., description="Primary monetization model: 'Ad-Supported', 'Affiliate', 'Hybrid-Traffic', 'Lead-Gen'"
+    monetization_model: Literal[
+        "Ad-Supported", "Affiliate", "Hybrid-Traffic", "Lead-Gen", "Free-Tool-Funnel"
+    ] = Field(
+        ...,
+        description=(
+            "Primary monetization model. Free-Tool-Funnel means the free traffic surface "
+            "creates qualified actions for a paid downstream offer rather than monetizing "
+            "the pageview itself."
+        ),
     )
 
     # Traffic Projections (from keyword data)
@@ -1272,11 +1323,11 @@ class TrafficMonetizationResult(BaseModel):
     )
 
     # Ad Revenue Estimates
-    estimated_cpm_rate: str = Field(
-        ..., description="Estimated CPM rate for this niche (e.g., '$3-8 CPM (lifestyle niche)')"
+    estimated_cpm_rate: Optional[str] = Field(
+        default=None, description="Code-owned CPM rate for this niche; None when not applicable"
     )
-    estimated_monthly_ad_revenue: str = Field(
-        ..., description="Estimated monthly ad revenue range (e.g., '$150 - $800')"
+    estimated_monthly_ad_revenue: Optional[str] = Field(
+        default=None, description="Code-owned monthly ad range; None when unmeasured"
     )
     recommended_ad_networks: list[str] = Field(
         default_factory=list,
@@ -1284,14 +1335,14 @@ class TrafficMonetizationResult(BaseModel):
     )
 
     # Affiliate Revenue Estimates
-    affiliate_commission_rate: str = Field(
-        ..., description="Typical affiliate commission rates (e.g., '5-15% (Amazon Associates)')"
+    affiliate_commission_rate: Optional[str] = Field(
+        default=None, description="Attributed exact-niche affiliate commission range"
     )
-    estimated_affiliate_ctr: str = Field(
-        ..., description="Estimated affiliate click-through rate (e.g., '2-5% of pageviews')"
+    estimated_affiliate_ctr: Optional[str] = Field(
+        default=None, description="Measured affiliate click-through rate, if available"
     )
-    estimated_monthly_affiliate_revenue: str = Field(
-        ..., description="Estimated monthly affiliate revenue (e.g., '$200 - $500')"
+    estimated_monthly_affiliate_revenue: Optional[str] = Field(
+        default=None, description="Code-owned affiliate revenue; None without sufficient inputs"
     )
     recommended_affiliate_programs: list[str] = Field(
         default_factory=list,
@@ -1310,25 +1361,59 @@ class TrafficMonetizationResult(BaseModel):
     )
 
     # Total Revenue Projection
-    estimated_monthly_revenue_range: str = Field(
-        ..., description="Total estimated monthly revenue range (e.g., '$500 - $2,000')"
+    estimated_monthly_revenue_range: Optional[str] = Field(
+        default=None, description="Code-owned total monthly route value; None when unknown/nonviable"
     )
-    estimated_annual_revenue_range: str = Field(
-        ..., description="Total estimated annual revenue range"
+    estimated_annual_revenue_range: Optional[str] = Field(
+        default=None, description="Code-owned annual route value; None when unknown/nonviable"
     )
-    break_even_traffic_threshold: str = Field(
-        ..., description="Traffic threshold for break-even (e.g., '25,000 monthly pageviews')"
+    break_even_traffic_threshold: Optional[str] = Field(
+        default=None, description="Measured break-even threshold; None when not established"
     )
 
     # Strategy
     monetization_rationale: str = Field(
         ..., description="Explanation of why this monetization mix was recommended"
     )
-    scaling_strategy: str = Field(
-        ..., description="How to grow revenue as traffic scales (network upgrades, affiliate optimization, etc.)"
+    scaling_strategy: Optional[str] = Field(
+        default=None, description="Code-owned scaling path; None for unknown/nonviable routes"
     )
     monetization_confidence: Literal["High", "Medium", "Low"] = Field(
         ..., description="Confidence level: 'High', 'Medium', 'Low'"
+    )
+    viability_verdict: Optional[Literal["viable", "conditional", "nonviable"]] = Field(
+        default=None,
+        description=(
+            "Code-enforced route-economics verdict. None means legacy record or insufficient "
+            "candidate-owned evidence; prose must not imply a stronger verdict."
+        ),
+    )
+    economics_evaluated: bool = Field(
+        default=False,
+        description=(
+            "True once deterministic Stage-8 route economics ran, including an unknown "
+            "result. False identifies legacy records eligible for report-time fallback."
+        ),
+    )
+    funnel_target: Optional[str] = Field(
+        default=None,
+        description="Paid downstream offer or buyer action the free traffic surface feeds",
+    )
+    qualified_actions: Optional[str] = Field(
+        default=None,
+        description="Deterministic range of qualified actions implied by traffic and conversion assumptions",
+    )
+    conversion_assumptions: Optional[list[str]] = Field(
+        default=None,
+        description="Explicit conversion assumptions used for qualified-action and funnel-value math",
+    )
+    estimated_funnel_value: Optional[str] = Field(
+        default=None,
+        description="Deterministic monthly value range of qualified downstream actions",
+    )
+    unit_value_evidence: Optional[TrafficUnitValueEvidence] = Field(
+        default=None,
+        description="Attributed competitor-market unit value consumed by deterministic economics",
     )
 
     # Comparison to SaaS (context for decision-making)

@@ -353,8 +353,8 @@
   const analystPickKeys = $derived(new Set(analystRecommendedSolutions.map(ideaKey)));
 
   // The one case that reads as broken without a sentence of help: the best-scoring idea
-  // carries the recommendation nowhere near it, because the adversarial review could not
-  // establish its premise. Scored on evidence the review DID accept, it is genuinely the
+  // carries the recommendation nowhere near it, because the adversarial review killed it.
+  // Scored on evidence the review DID accept, it is genuinely the
   // leader — so state the split rather than letting the user reconcile two numbers alone.
   // Keyed on score, not row position: the default sort floats recommendations to the top,
   // which is exactly what makes a higher score sitting in row 2 look like a bug.
@@ -383,7 +383,7 @@
     // Name the recommendation the user can actually act on: the first pick that itself
     // survived review, falling back to the analyst's leading pick when none did.
     const pick = analystRecommendedSolutions[0];
-    return recommendationSplitNote(solutionDisplayTitle(top), solutionDisplayTitle(pick));
+    return recommendationSplitNote(solutionDisplayTitle(top), solutionDisplayTitle(pick), top);
   });
 
   // ── Selection state ──

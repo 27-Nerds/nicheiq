@@ -173,6 +173,34 @@ describe('adversarial-review vocabulary', () => {
     expect(content).not.toContain('recorded risk');
   });
 
+  it('uses the sibling typed finding for a mixed gap-first seed review', async () => {
+    await createSeedAnalystFollowup({
+      jobId: 'job-1',
+      dispatchId: 'dispatch-1',
+      niche: 'test niche',
+      outcome: 'accepted',
+      idea: {
+        solution_name: 'Stored Candidate',
+        red_team_verdict: 'killed',
+        red_team_findings: [
+          { claim: 'No free tool was found.', kind: 'evidence_gap' },
+          {
+            claim: 'SuiteCo bundles the same workflow.',
+            kind: 'verified_free_or_bundled_alternative',
+          },
+        ],
+      },
+    });
+
+    expect(committedContent()).toContain(
+      'adversarial review: a verified free or bundled alternative',
+    );
+    await vi.waitFor(() => expect(mockChatComplete).toHaveBeenCalled());
+    const payload = mockChatComplete.mock.calls[0][0].messages[1].content as string;
+    expect(payload.indexOf('SuiteCo bundles the same workflow.'))
+      .toBeLessThan(payload.indexOf('No free tool was found.'));
+  });
+
   it('prefers the stored risk prose and does not restate the verdict as a risk', async () => {
     await createSeedAnalystFollowup({
       jobId: 'job-1',
@@ -222,6 +250,36 @@ describe('adversarial-review vocabulary', () => {
     const content = committedContent();
     expect(content).toContain('returned **Premise unproven**');
     expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+  });
+
+  it('uses the sibling typed finding and its own claim in a mixed report review', async () => {
+    await createReportAnalystFollowup({
+      jobId: 'job-1',
+      operationId: 'dispatch-typed',
+      niche: 'test niche',
+      report: {
+        selected_solution_name: 'Stored Candidate',
+        executive_dashboard: { go_no_go_verdict: { verdict: 'Conditional' } },
+        selected_solution_details: {
+          red_team_verdict: 'killed',
+          red_team_findings: [
+            { claim: 'No free tool was found.', kind: 'evidence_gap' },
+            {
+              claim: 'SuiteCo bundles the same workflow.',
+              kind: 'verified_free_or_bundled_alternative',
+            },
+          ],
+          red_team_caveats: ['No free tool was found.'],
+        },
+      },
+    });
+
+    const content = committedContent();
+    expect(content).toContain('returned **a verified free or bundled alternative**');
+    expect(content).toContain('SuiteCo bundles the same workflow.');
+    expect(content).not.toContain(
+      'a verified free or bundled alternative**: No free tool was found.',
+    );
   });
 
   // The enriched note replaces the deterministic one, and a model repeats the vocabulary it

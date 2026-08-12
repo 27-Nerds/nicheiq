@@ -93,6 +93,10 @@ describe("SharedDiscoveryView research topic header", () => {
       derived_buyer: "Independent Shopify merchants",
       competitors: [{ name: "Existing Helpdesk", what_they_ship: "Order-aware reply drafts", price_note: "$50/mo" }],
       red_team_verdict: "killed",
+      red_team_findings: [{
+        claim: "The incumbent already ships the same workflow.",
+        kind: "verified_incumbent_overlap",
+      }],
       kill_risks: [{ claim: "Existing helpdesks already cover much of the workflow.", source: "adversarial_review" }],
       pivot: { attempted: false, outcome: "not_attempted" },
       alternatives: { count: 1, top: [] },
@@ -129,9 +133,43 @@ describe("SharedDiscoveryView research topic header", () => {
     expect(view.getByRole("heading", { name: "Evidence for your idea" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Competitors and adjacent tools" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "What would kill it" })).toBeInTheDocument();
+    expect(view.getByText(/The adversarial review found verified incumbent overlap/))
+      .toBeInTheDocument();
+    expect(view.queryByText(/could not find evidence for this idea's premise/)).toBeNull();
     expect(view.getByRole("heading", { name: "Your idea, ranked with the alternatives" })).toBeInTheDocument();
     expect(view.queryByText(/Edit and rerun/)).not.toBeInTheDocument();
     expect(view.queryByText("Continue with your idea")).not.toBeInTheDocument();
+
+    cleanup();
+    const malformedValidation = { ...ideaValidation };
+    Object.assign(malformedValidation as unknown as Record<string, unknown>, {
+      incumbent_parity: 12,
+      red_team_caveats: [null, 7, {}, ""],
+      red_team_findings: [
+        { kind: "verified_incumbent_overlap", claim: 99 },
+        { kind: "invented_kind", claim: "Not a contract finding." },
+      ],
+    });
+    const malformedView = render(SharedDiscoveryView, {
+      props: {
+        data: {
+          ...validateShare,
+          previewReport: {
+            idea_validation: malformedValidation,
+          } as unknown as NonNullable<DiscoveryShareData["previewReport"]>,
+        },
+        shareToken: "share-token",
+      },
+    });
+
+    expect(malformedView.getByText(/decision-critical evidence incomplete/))
+      .toBeInTheDocument();
+    expect(malformedView.queryByText(/could not find evidence for this idea's premise/))
+      .not.toBeInTheDocument();
+    expect(malformedView.queryByText(/material concern/i)).not.toBeInTheDocument();
+    expect(malformedView.queryByText(/decision-critical objection/i)).not.toBeInTheDocument();
+    expect(malformedView.queryByText(/verified incumbent overlap/i)).not.toBeInTheDocument();
+    expect(malformedView.queryByText(/Not a contract finding/)).not.toBeInTheDocument();
   });
 
   it("wires checkpoint post counts into the rendered community order", () => {

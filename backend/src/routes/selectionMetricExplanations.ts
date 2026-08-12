@@ -112,8 +112,8 @@ const METRICS: SelectionMetricExplanation[] = [
     kind: 'evidence',
     range: 'text',
     summary: 'The strongest recorded reason the candidate may underperform or be difficult to execute.',
-    method: 'The comparison shows a "Premise unproven" adversarial-review verdict and its caveats first, then the realism critic\'s market-fit concern, a web-verified incumbent-parity finding, or data-acquisition notes.',
-    sourceFields: ['red_team_verdict', 'red_team_caveats', 'critic_concern', 'incumbent_parity', 'data_acquisition_notes'],
+    method: 'The comparison shows the adversarial review first: typed affirmative findings name verified counterevidence, while an evidence_gap means the decision-critical evidence is incomplete. Historical records without typed findings keep the exact "Premise unproven" fallback. It then uses the realism critic\'s market-fit concern, a web-verified incumbent-parity finding, or data-acquisition notes.',
+    sourceFields: ['red_team_verdict', 'red_team_findings', 'red_team_caveats', 'critic_concern', 'incumbent_parity', 'data_acquisition_notes'],
   },
 ];
 

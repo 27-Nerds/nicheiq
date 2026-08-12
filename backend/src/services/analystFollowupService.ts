@@ -9,7 +9,11 @@ import {
 // The enriched note is written by a model from this payload, and a model repeats whatever
 // vocabulary it is handed. Present stored verdicts and parity findings the way the product
 // does before either is read. See utils/selectionVocabulary.ts.
-import { adversarialReviewLabel, presentableRecord } from '../utils/selectionVocabulary.js';
+import {
+  adversarialReviewLabel,
+  presentableRecord,
+  resolveAdversarialReviewPrimaryFinding,
+} from '../utils/selectionVocabulary.js';
 // `quality_caveats` is producer prose, not copy. Read it the way the product reads it —
 // see utils/buyerFacingCaveat.ts, a held-by-test port of the frontend authority.
 import { buyerFacingCoverageNote } from '../utils/buyerFacingCaveat.js';
@@ -62,7 +66,7 @@ function ideaSignals(value: unknown): string | null {
     .slice(0, 2)
     .map(([label, score]) => `${label} ${score.toFixed(2)}`);
   const risk = text(row.key_risk) ?? text(row.risk_summary);
-  const review = adversarialReviewLabel(row.red_team_verdict);
+  const review = adversarialReviewLabel(row.red_team_verdict, row.red_team_findings);
   const parts = [
     scored.length ? `strongest stored dimensions: ${scored.join(' and ')}` : null,
     risk ? `recorded risk: ${risk.slice(0, 180)}` : null,
@@ -233,8 +237,13 @@ export async function createReportAnalystFollowup(args: {
     ?? 'Not stated';
   const riskLevel = text(verdictBlock.risk_level);
   const primaryConcern = text(verdictBlock.primary_concern);
-  const redTeamVerdict = adversarialReviewLabel(solution.red_team_verdict);
-  const redTeamCaveat = textList(solution.red_team_caveats)[0]
+  const redTeamPrimary = resolveAdversarialReviewPrimaryFinding(solution.red_team_findings);
+  const redTeamVerdict = adversarialReviewLabel(
+    solution.red_team_verdict,
+    solution.red_team_findings,
+  );
+  const redTeamCaveat = redTeamPrimary?.claim
+    ?? textList(solution.red_team_caveats)[0]
     ?? text(verdictBlock.red_team_context);
   // SANITISE BEFORE `conciseSentence`, NOT AFTER. That clip lands at 280 characters, and 43 of
   // the 163 distinct `quality_caveats` values under `output/` are longer than that — clipping
@@ -277,6 +286,9 @@ export async function createReportAnalystFollowup(args: {
       },
       red_team: {
         verdict: redTeamVerdict,
+        red_team_findings: presentableRecord({
+          red_team_findings: solution.red_team_findings,
+        }).red_team_findings,
         caveats: textList(solution.red_team_caveats).slice(0, 3),
       },
       quality_caveats: textList(quality.quality_caveats).slice(0, 3),

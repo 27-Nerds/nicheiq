@@ -60,6 +60,12 @@ from ..validators.report_consistency import parse_stamp_vendor
 from ..tools import CachedSerperDevTool, CompetitorQueryTool
 from ..utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
 from ..utils.idea_carryover import carry_forward_idea_fields
+from ..utils.commercial_route import (
+    CommercialLane,
+    assess_commercial_lane,
+    commercial_route_value,
+    has_credible_public_corpus,
+)
 from ..utils.data_access import (
     DATA_ACCESS_VOCAB,
     normalize_data_access,
@@ -88,6 +94,63 @@ _NAME_STOP_WORDS = {"the", "a", "an", "app", "tool", "pro", "hub", "io", "ai", "
 # truncates → whole pool's scoring is lost). The critic is per-concept, so batching
 # yields identical verdicts. See _score_pool_novelty.
 _CRITIC_BATCH = 8
+
+def _commercial_value_capture(item) -> str | None:
+    return commercial_route_value(item, "value_capture_mode")
+
+
+def _is_non_direct_commercial_route(item) -> bool:
+    return assess_commercial_lane(item) is CommercialLane.NON_DIRECT
+
+
+def _is_credible_distribution_lane(item) -> bool:
+    """Deterministic commercial lane; abstains on missing contracts or weak SEO surfaces.
+
+    This is intentionally stricter than "the model called it SEO": the feasibility critic must
+    have verified public data, the concept must name an enumerable route, and the keywords must
+    describe at least two distinct query surfaces rather than repeat one head-term collision.
+    """
+    if not _is_non_direct_commercial_route(item):
+        return False
+    project_type = (getattr(item, "project_type", None) or "").strip().lower()
+    return project_type in _DISTRIBUTION_PROJECT_TYPES and has_credible_public_corpus(item)
+
+
+_COMMERCIAL_ROUTE_GENERATION_DIRECTIVE = (
+    "For EACH concept, populate commercial_route explicitly: access_model "
+    "(paid/freemium/free), value_capture_mode (direct_user_payment/advertising/affiliate/"
+    "lead_generation/sponsorship/paid_upgrade_funnel), the actual payer, and "
+    "source_user_payment_required as a JSON boolean. Set it false ONLY when the source user "
+    "can use the front-door utility without paying; set it true when payment is required for "
+    "that use. A paid-upgrade funnel may use false only when its useful front door is genuinely "
+    "free/freemium; name the downstream upgrade payer separately. For a finite "
+    "organic page corpus also populate corpus_origin "
+    "(public_dataset/first_party/user_generated/licensed/none) and enumerable_dimensions as "
+    "2-8 distinct finite axes such as city and permit_type. A vendor/user-joins plan is "
+    "user_generated, never public_dataset. Use public_dataset only when data_access_model is "
+    "public and data_route names a mechanically enumerable public index/API/dataset. Free-text "
+    "content themes and query examples are not enumerable dimensions.\n"
+)
+
+
+def _auto_tournament_seed(candidates):
+    """Pure auto-mode pre-rank: allow zero and reserve an on-band commercial lane."""
+    usable = [
+        c for c in (candidates or [])
+        if not getattr(c, "critic_no_route", False)
+        and (getattr(c, "data_access_model", None) or "").strip().lower() != "blocked"
+    ]
+    if not usable:
+        return None
+
+    def _obv(c):
+        value = getattr(c, "obviousness_score", -1.0)
+        return value if isinstance(value, (int, float)) and value >= 0 else 0.5
+
+    best_obv = min(_obv(c) for c in usable)
+    band = [c for c in usable if _obv(c) <= best_obv + 0.1]
+    commercial_lane = [c for c in band if _is_credible_distribution_lane(c)]
+    return min(commercial_lane or band, key=_obv)
 
 
 def _tokenize_name(name: str) -> list[str]:
@@ -1541,6 +1604,16 @@ class UnifiedSolutionCrew:
         text = ""
         rows = getattr(self, "_incumbent_rows", None) or []
         if rows:
+            from ..utils.niche_difficulty import derive_market_crowding_brief
+            brief = getattr(self, "_market_crowding_brief", None)
+            if brief is None:
+                brief = derive_market_crowding_brief(
+                    getattr(getattr(self, "pain_point_analysis", None), "pain_points", None),
+                    getattr(getattr(self, "audience_mapping", None), "audience_segments", None),
+                    getattr(self, "_niche_wallet_brief", None),
+                    rows,
+                )
+                self._market_crowding_brief = brief
             lines = "\n".join(
                 f"- {r.get('name')} ({r.get('pricing') or 'pricing unknown'}): "
                 f"{r.get('focus') or 'n/a'} — weak at: {r.get('gap') or 'n/a'}"
@@ -1551,8 +1624,9 @@ class UnifiedSolutionCrew:
                 "MARKET REALITY (web-probed; thin early signals — Deep Research validates):\n"
                 f"{lines}\n"
                 + (f"Free routes: {free_density}\n" if free_density else "")
-                + "Your concept must attack a named gap or use the free route as distribution — "
-                  "head-on clones of a shipped product get capped."
+                + (brief.generator_directive or
+                   "Your concept must attack a named gap or use the free route as distribution — "
+                   "head-on clones of a shipped product get capped.")
             )
         self._market_reality_text = text
         return text
@@ -1729,6 +1803,35 @@ class UnifiedSolutionCrew:
         logger.info(f"[Payability] '{getattr(idea, 'solution_name', '?')}' segment "
                     f"'{getattr(idea, 'source_segment', None)}' unmatched — niche-mean fallback "
                     f"{idea.source_segment_payability}")
+
+    @staticmethod
+    def _stamp_commercial_route_from_source(idea, source) -> None:
+        """Reset then stamp the early commercial contract from code-owned concept provenance.
+
+        ``BaseSolutionIdea`` is an LLM output schema, so its own value is never trusted. A matched
+        RawConcept is the birth-path record; legacy/unmatched sources deliberately leave ``None``
+        and therefore retain the historical cap behavior.
+        """
+        idea.commercial_route = None
+        route = getattr(source, "commercial_route", None) if source is not None else None
+        if route is not None:
+            idea.commercial_route = route.model_copy(deep=True) if hasattr(route, "model_copy") else copy.deepcopy(route)
+
+    @staticmethod
+    def _align_tags_with_commercial_route(idea) -> None:
+        """Align the two unambiguous late monetization tags with the early contract.
+
+        The current tag vocabulary has no lead-generation or sponsorship value and cannot express
+        a paid-upgrade funnel's billing cadence. Those modes remain represented authoritatively by
+        ``commercial_route`` until the downstream tag vocabulary grows; guessing a nearby tag would
+        recreate the route ambiguity this contract removes.
+        """
+        tags = getattr(idea, "tags", None)
+        if tags is None:
+            return
+        mode = _commercial_value_capture(idea)
+        if mode in ("advertising", "affiliate"):
+            tags.monetization = mode
 
     @staticmethod
     def _mechanism_keywords(idea, max_words: int = 6, glossary: dict | None = None) -> str:
@@ -2445,13 +2548,80 @@ class UnifiedSolutionCrew:
         "github.com", "news.ycombinator", "linkedin.com",
     )
 
+    @staticmethod
+    def _serp_candidate_quality(idea) -> float:
+        values = [
+            getattr(idea, field, None)
+            for field in (
+                "market_fit_score", "technical_feasibility_score",
+                "novelty_score", "seo_scalability_score",
+            )
+        ]
+        present = [
+            float(value) for value in values
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        ]
+        return sum(present) / len(present) if present else -1.0
+
+    def _select_serp_probe_candidates(self, ideas: list) -> list:
+        """One active credible reserve plus a hard-capped classified distribution set."""
+        active = [
+            idea for idea in (ideas or [])
+            if (getattr(idea, "candidate_status", None) or "active") == "active"
+            and getattr(idea, "seo_scalability_score_refined", None) is None
+            and getattr(idea, "serp_competition", None) not in ("owned", "open", "unknown")
+        ]
+        ordered = sorted(
+            active,
+            key=lambda idea: (
+                -self._serp_candidate_quality(idea),
+                (getattr(idea, "solution_name", "") or "").strip().lower(),
+            ),
+        )
+        reserve = next((
+            idea for idea in ordered
+            if self._serp_candidate_quality(idea) >= settings.commercial_reserve_quality_floor
+            and _is_credible_distribution_lane(idea)
+        ), None)
+        selected = [reserve] if reserve is not None else []
+        classified = [
+            idea for idea in ordered
+            if idea is not reserve and getattr(idea, "winning_angle", None) == "distribution_seo"
+        ][:settings.serp_probe_distribution_candidate_cap]
+        selected.extend(classified)
+        return selected
+
+    @staticmethod
+    def _stamp_unprobed_serp_unknown(ideas: list) -> None:
+        """Make late-wave distribution uncertainty durable without spending a query.
+
+        Post-parity pivots, merges, backfills, and revisions are born after the one bounded
+        portfolio SERP pass. They may bypass shipped/partial product parity only after an
+        explicit ``open`` result, so an eligible unprobed route is stamped ``unknown`` for
+        checkpoint auditability before caps run.
+        """
+        for idea in ideas or []:
+            if (
+                (getattr(idea, "candidate_status", None) or "active") == "active"
+                and getattr(idea, "seo_scalability_score_refined", None) is None
+                and getattr(idea, "serp_competition", None) is None
+                and _is_non_direct_commercial_route(idea)
+                and (
+                    (getattr(idea, "winning_angle", None) or "").strip().lower()
+                    == "distribution_seo"
+                    or _is_credible_distribution_lane(idea)
+                )
+            ):
+                idea.serp_competition = "unknown"
+
     def _probe_serp_composition(self, ideas: list) -> None:
-        """Phase-1 SERP-composition peek (2026-07-09; live-motivated: seo 0.9 survived on an idea
-        whose actual SERPs are .gov + entrenched players). DISTRIBUTION_SEO ideas only, preview
-        path only, deterministic classification only — stamps `_serp_owned` (runtime attr) which
-        Rule D in cap_seo_realism_score reads to cap the STORED provisional score. Never touches
-        Phase 2 (Stage-12 keyword grounding supersedes provisional scores; also guarded on
-        seo_scalability_score_refined is None). Budgeted via _ma_search; fail-soft."""
+        """Bounded pre-ranking SERP-composition check for commercial distribution routes.
+
+        Eligibility is narrow: the one typed commercial-lane survivor or an already-classified
+        ``distribution_seo`` candidate. Results are persisted as a typed three-state field so
+        headless ranking sees the same evidence as preview; the runtime marker remains for the
+        existing stored-score realism cap. Stage-12 grounded SEO still supersedes this probe.
+        """
         import re as _re
         from urllib.parse import urlparse
 
@@ -2463,18 +2633,15 @@ class UnifiedSolutionCrew:
         #    the union of all queries instead of N sequential _ma_search calls.
         idea_queries = []
         all_queries: list[str] = []
-        for idea in ideas:
+        for idea in self._select_serp_probe_candidates(ideas):
             try:
-                if getattr(idea, "winning_angle", None) != "distribution_seo":
-                    continue
-                if getattr(idea, "seo_scalability_score_refined", None) is not None:
-                    continue
                 # Representative queries from the idea's own described page pattern.
                 pseo = (getattr(idea, "programmatic_seo_opportunity", "") or "").strip()
                 base = " ".join(pseo.split()[:8]) if pseo else self._mechanism_keywords(idea)
                 if not base:
                     continue
                 queries = [base, f"{base} guide"][:nq]
+                idea.serp_competition = "unknown"
                 idea_queries.append((idea, queries))
                 all_queries.extend(queries)
             except Exception as e:
@@ -2533,11 +2700,15 @@ class UnifiedSolutionCrew:
                 entrenched = {d for d, c in domain_hits.items() if c >= 2}
                 owned = len(authority) + len(entrenched)
                 if owned >= settings.serp_owned_domain_threshold:
+                    idea.serp_competition = "owned"
                     idea._serp_owned = True
                     logger.info(
                         f"[SerpProbe] '{getattr(idea, 'solution_name', '?')}' SERP owned "
                         f"(authority={len(authority)}, entrenched={len(entrenched)}) — "
                         "Rule D will cap provisional SEO")
+                else:
+                    idea.serp_competition = "open"
+                    idea._serp_owned = False
             except Exception as e:
                 logger.warning(f"[SerpProbe] idea skipped (non-fatal): {str(e)[:100]}")
 
@@ -3029,10 +3200,11 @@ class UnifiedSolutionCrew:
         number in partitioned mode, so a narrow generator is never told to make 8-12).
         """
         template = self.tasks_config["divergent_exploration"]["description"]
+        route_directive = _COMMERCIAL_ROUTE_GENERATION_DIRECTIVE + partitioned_mode_block
         return _interpolate_template(template, {
             **inputs,
             "lens_directive": lens,
-            "partitioned_mode_block": partitioned_mode_block,
+            "partitioned_mode_block": route_directive,
             "concept_count": concept_count,
         })
 
@@ -5159,7 +5331,9 @@ class UnifiedSolutionCrew:
         mf = getattr(idea, "market_fit_score", None)
         pay = getattr(idea, "source_segment_payability", None)
         cap = settings.payability_market_fit_cap
-        if (isinstance(mf, (int, float)) and isinstance(pay, (int, float))
+        non_direct_route = _is_non_direct_commercial_route(idea)
+        if (not non_direct_route
+                and isinstance(mf, (int, float)) and isinstance(pay, (int, float))
                 and pay < settings.payability_low_threshold and mf > cap):
             cls = getattr(idea, "source_segment_payability_class", None) or "low-payability"
             f.append(f"market_fit {mf:.2f} unsupported — segment payability {pay:.2f} "
@@ -5177,20 +5351,32 @@ class UnifiedSolutionCrew:
         if isinstance(mf, (int, float)) and par and not par.startswith("none"):
             pcap = None
             if par.startswith("shipped"):
-                pcap = settings.parity_shipped_market_fit_cap
+                # Direct products compete on product parity. Distribution-funded routes compete
+                # on the public substitute/page corpus. Only an explicit bounded ``open`` result
+                # can displace product-parity damage; absent/unknown/owned evidence stays capped.
+                if (not non_direct_route
+                        or getattr(idea, "serp_competition", None) != "open"):
+                    pcap = settings.parity_shipped_market_fit_cap
             elif par.startswith("partial"):
-                pcap = settings.parity_partial_market_fit_cap
+                if (not non_direct_route
+                        or getattr(idea, "serp_competition", None) != "open"):
+                    pcap = settings.parity_partial_market_fit_cap
             elif par.startswith("substitute"):
                 pay = getattr(idea, "source_segment_payability", None)
-                weak = (isinstance(pay, (int, float))
+                # Weak direct-user wallets worsen a paid substitute. For a distribution-funded
+                # route the user's wallet is not the payer, but the public substitute still
+                # competes for traffic and therefore keeps the ordinary substitute ceiling.
+                weak = (not non_direct_route and isinstance(pay, (int, float))
                         and pay < settings.payability_low_threshold)
                 pcap = (settings.parity_substitute_weak_wallet_cap if weak
                         else settings.parity_substitute_market_fit_cap)
             elif par.startswith("bundled_free"):
                 pcap = settings.parity_bundled_free_cap
             if pcap is not None and pcap > 0 and mf > pcap:
+                route_note = (f"distribution route; SERP={getattr(idea, 'serp_competition', None)}"
+                              if non_direct_route else "direct/legacy route")
                 f.append(f"market_fit {mf:.2f} unsupported — incumbent parity "
-                         f"({par[:60]}); cap {pcap:.2f}")
+                         f"({par[:60]}; {route_note}); cap {pcap:.2f}")
                 idea.market_fit_score = round(pcap, 2)
 
         # (f) market_fit ≤ selfissued_trust cap — recurring false-positive pre-filter, downgrade-
@@ -5680,12 +5866,8 @@ class UnifiedSolutionCrew:
                     usages.append(u)
             except Exception as e:
                 logger.warning(f"[CELL-SCORE] calibration skipped: {str(e)[:120]}")
-        try:
-            self._validate_idea_caps(winner)  # det; per-idea caps so tags read capped scores
-        except Exception as e:
-            logger.warning(f"[CELL-SCORE] cap validation skipped: {str(e)[:120]}")
-        # Angle classification (fail-soft). Runs AFTER caps (judges the calibrated scores) and BEFORE
-        # the enhance, so the angle is available to route an angle-appropriate enhance (Phase 2b).
+        # Angle classification is fail-soft. SERP evidence is selected once after the global union,
+        # never from this per-cell thread.
         try:
             _applied, u = self._classify_batch(batch=one)
             if u is not None:
@@ -5694,11 +5876,22 @@ class UnifiedSolutionCrew:
             logger.warning(f"[CELL-SCORE] angle classify skipped: {str(e)[:120]}")
         # P1a: apply idea_focus force-override (respecting the seo floor) + re-calibrate on angle flip.
         self._reconcile_angle_after_classify(winner, provisional_angle, usages)
+        try:
+            self._validate_idea_caps(winner)
+        except Exception as e:
+            logger.warning(f"[CELL-SCORE] cap validation skipped: {str(e)[:120]}")
         # Targeted novelty enhancement (accept-guarded). May REPLACE winner with a more
         # differentiated mechanism — but only when it scores strictly better (else returns the
         # original). Runs AFTER caps (needs the gating scores) and BEFORE seo/tags so those finalize
         # once, on the kept idea.
+        commercial_route = copy.deepcopy(getattr(winner, "commercial_route", None))
+        serp_competition = getattr(winner, "serp_competition", None)
         winner = self._novelty_enhance(winner, usages=usages)
+        # The enhance model can replace the BaseSolutionIdea, but it cannot replace the selected
+        # concept's commercial provenance. Preserve the code-stamped contract across revision.
+        winner.commercial_route = commercial_route
+        winner.serp_competition = serp_competition
+        winner._serp_owned = serp_competition == "owned"
         one = [winner]
         # SEO caps run in-cell ONLY on the live/preview path (skip_selection=True). On the legacy
         # one-shot path (skip_selection=False) ranking locks after this crew, so SEO stays deferred
@@ -5740,7 +5933,10 @@ class UnifiedSolutionCrew:
             usable = [c for c in (candidates or [])
                       if not getattr(c, "critic_no_route", False)
                       and (getattr(c, "data_access_model", None) or "").strip().lower() != "blocked"]
-            pool = usable or list(candidates or [])  # floor: a flagged idea beats no idea
+            # A blocked/no-route concept is not a product lane. Returning no winner is the honest
+            # allow-zero outcome; forcing one here spent the rest of the tournament polishing an
+            # idea the feasibility critic had already rejected.
+            pool = usable
             if not pool:
                 return None
 
@@ -5757,7 +5953,10 @@ class UnifiedSolutionCrew:
                 # tiebreaker among variants of the product the user actually described.
                 top = max(pool, key=lambda c: (seed_fidelity_score(seed_text, c), -_obv(c)))
             elif gen_focus == "auto":
-                top = min(pool, key=_obv)  # pure lowest-obviousness (most novel)
+                # Route survival under pure min(obviousness) is arbitrary: it can help or hurt a
+                # traffic shape depending on the cell. Reserve a verified commercial lane only
+                # inside a tight quality band; do not claim novelty itself disfavors that route.
+                top = _auto_tournament_seed(pool)
             else:
                 # Focus-aware, QUALITY-FLOORED tiebreaker: among candidates within a small obviousness
                 # band of the most-novel, prefer one whose project_type matches the focus. Never lets the
@@ -5768,6 +5967,17 @@ class UnifiedSolutionCrew:
                 preferred = [c for c in band
                              if _focus_matches_type(gen_focus, getattr(c, "project_type", None))]
                 top = min(preferred or band, key=_obv)
+
+            logger.info(
+                "[TOURNAMENT][commercial-route] cell={} candidates={} usable={} "
+                "credible_in_band={} selected={} route={}",
+                getattr(pain, "title", None) or frame,
+                len(candidates or []), len(pool),
+                len([c for c in pool if _is_credible_distribution_lane(c)
+                     and _obv(c) <= _obv(min(pool, key=_obv)) + 0.1]),
+                getattr(top, "concept_name", "?"),
+                _commercial_value_capture(top) or "legacy-unknown",
+            )
 
             seg = cell.get("segment")
             if frame == "pain":
@@ -5828,6 +6038,9 @@ class UnifiedSolutionCrew:
             for tag in ("project_type", "delivery_format", "mechanism_tag", "data_source_tag", "journey_tag"):
                 if not getattr(winner, tag, None) and getattr(top, tag, None):
                     setattr(winner, tag, getattr(top, tag))
+            # RESET-THEN-STAMP from the selected RawConcept. The refinement/tournament schemas can
+            # fabricate this code-owned field, so the BaseSolutionIdea birth output is never trusted.
+            self._stamp_commercial_route_from_source(winner, top)
             # Carry the critic's feasibility/obviousness (the tournament doesn't recompute them; it DID
             # re-verify data_access_model, so leave that as the verifier set it).
             for fld in ("obviousness_score", "data_feasibility_score", "build_feasibility_score"):
@@ -6153,6 +6366,7 @@ class UnifiedSolutionCrew:
             idea.mechanism_tag = concept.mechanism_tag
             idea.data_source_tag = concept.data_source_tag
             idea.journey_tag = concept.journey_tag
+            self._stamp_commercial_route_from_source(idea, concept)
             _obv = getattr(concept, "obviousness_score", -1.0)
             idea.obviousness_score = _obv if (_obv is not None and _obv >= 0) else None
             # novelty_score: the refine LLM occasionally omits it on the structured path.
@@ -6198,6 +6412,7 @@ class UnifiedSolutionCrew:
             logger.warning(f"[REINJECT] full refinement of '{concept.concept_name}' failed, "
                            f"using stub: {str(e)[:120]}")
             stub = _synthesize_idea_from_concept(concept, pain)
+            self._stamp_commercial_route_from_source(stub, concept)
             if frame != "pain":
                 stub.source_frame = frame
                 stub.source_pain = None
@@ -6449,6 +6664,7 @@ class UnifiedSolutionCrew:
             llm_facets = item.model_dump() if item is not None else None
             try:
                 idea.tags = derive_tag_facets(idea, llm_facets)
+                self._align_tags_with_commercial_route(idea)
             except Exception as e:
                 logger.warning(f"[TAGS] derive failed for '{idea.solution_name}': {str(e)[:120]}")
         return usage
@@ -6841,6 +7057,7 @@ class UnifiedSolutionCrew:
             "pain_points_addressed": pain_points_addressed,
             "source_pain": source_pain,
             "source_frame": frame,
+            "commercial_route": getattr(c, "commercial_route", None),
             "innovation_angle": getattr(c, "why_non_obvious", "") or "",
             "why_it_works": getattr(c, "why_non_obvious", "") or "",
             "technical_approach": f"{getattr(c, 'data_route', '') or ''}. "
@@ -8287,8 +8504,9 @@ class UnifiedSolutionCrew:
                 # angle classifier read the (now calibrated) scores. The wrapper skips ideas
                 # already calibrated and no-ops when enable_score_calibration is off.
                 ("calibrate", lambda: self._calibrate_idea_scores(wave)),
-                ("caps", lambda: [self._validate_idea_caps(w) for w in wave]),
                 ("angles", lambda: self._classify_idea_angles(wave)),
+                ("serp-audit", lambda: self._stamp_unprobed_serp_unknown(wave)),
+                ("caps", lambda: [self._validate_idea_caps(w) for w in wave]),
         ):
             try:
                 fn()
@@ -8653,7 +8871,7 @@ class UnifiedSolutionCrew:
           called AFTER `_sweep_demote` only, with NO backfill/pivot/merge/floor-restore and
           NO save.
 
-        Runs: adversarial red-team, SERP-composition probe + SEO-realism caps (preview path
+        Runs: adversarial red-team, SEO-realism caps (preview path
         only), pain-coverage transparency, evaluation-completeness accounting (once, on the
         visible subset), closed-vocabulary tag re-derivation (full re-tag from FINAL scores),
         phantom-name pruning against `solution_selection` (if provided), and the systemic-LLM
@@ -8683,12 +8901,6 @@ class UnifiedSolutionCrew:
         # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
         # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
         if skip_selection:
-            # SERP-composition peek first (stamps _serp_owned; Rule D in the cap reads it).
-            # Distribution_seo ideas only; angles are already classified above.
-            try:
-                self._probe_serp_composition(refined_solutions.solution_ideas)
-            except Exception as e:
-                logger.warning(f"SERP-composition probe skipped: {e}")
             try:
                 self._finalize_seo_realism(refined_solutions.solution_ideas)
             except Exception as e:
@@ -8799,6 +9011,11 @@ class UnifiedSolutionCrew:
         """
         from types import SimpleNamespace
 
+        # The seed path has its own one-item union and does not traverse execute_pipeline's global
+        # selector. Probe once here, after _score_wave classified it and before demotion reads caps.
+        self._probe_serp_composition(seed_ideas)
+        for idea in seed_ideas:
+            self._validate_idea_caps(idea)
         self._sweep_demote(seed_ideas)
         self._finalize_evaluator_passes(
             SimpleNamespace(solution_ideas=seed_ideas),
@@ -8864,7 +9081,15 @@ class UnifiedSolutionCrew:
                 self.cost_tracker.record_llm_usage(
                     "Stage 5 - Seed semantic identity", usage.to_dict(),
                 )
-            return verdict.same_product is True and not verdict.changed_axes
+            matches = verdict.same_product is True and not verdict.changed_axes
+            if not matches:
+                # The model already explains itself; discarding that left callers printing a
+                # verdict with no reason (the e1b42702 forensics problem).
+                logger.warning(
+                    f"[Seed] semantic identity: same_product={verdict.same_product} "
+                    f"changed_axes={verdict.changed_axes or []} — "
+                    f"{str(verdict.rationale or '')[:200]}")
+            return matches
         except Exception as exc:  # noqa: BLE001 — identity uncertainty must fail closed
             logger.error(f"[Seed] semantic identity verdict failed: {str(exc)[:160]}")
             return False
@@ -9108,6 +9333,7 @@ class UnifiedSolutionCrew:
                 or infer_delivery_format(getattr(c, "one_liner", None))
                 or "other"
             )
+            self._stamp_commercial_route_from_source(sol, c)
             obv = getattr(c, "obviousness_score", None)
             if obv is not None and obv >= 0:
                 sol.obviousness_score = obv
@@ -10060,7 +10286,8 @@ class UnifiedSolutionCrew:
         # CrewAI's interpolator raises KeyError on any missing {var}; supply the partitioned
         # var (legacy fallback never partitions, so it's always empty) and the concept-count
         # slot (legacy fallback wants the full pool-size target, "8-12").
-        out = crew.kickoff(inputs={**inputs, "lens_directive": "", "partitioned_mode_block": "",
+        out = crew.kickoff(inputs={**inputs, "lens_directive": "",
+                                   "partitioned_mode_block": _COMMERCIAL_ROUTE_GENERATION_DIRECTIVE,
                                    "concept_count": "8-12"})
         try:
             rcl = out.tasks_output[0].pydantic if getattr(out, "tasks_output", None) else None
@@ -10683,15 +10910,6 @@ class UnifiedSolutionCrew:
                 except Exception as e:
                     logger.warning(f"Score calibration skipped: {e}")
 
-            # Mechanism-parity probe (A/B-validated, always on): runs AFTER calibration so
-            # top-K selection uses calibrated composites; re-scores probed ideas with the
-            # web-verified parity evidence in critic context. Fail-soft inside the method.
-            self._emit_pipeline_progress("competition_check", "Checking competing products")
-            try:
-                self._probe_mechanism_parity(refined_solutions.solution_ideas)
-            except Exception as e:
-                logger.warning(f"Parity probe skipped: {e}")
-
             # Angle-classification straggler-finisher: the in-cell classifier labels every cell winner;
             # this finishes the leftovers — coverage re-injections, and ALL ideas on the non-tournament
             # fallback. Runs AFTER calibration so it judges final calibrated scores, and BEFORE ranking
@@ -10700,6 +10918,24 @@ class UnifiedSolutionCrew:
                 self._classify_idea_angles(refined_solutions.solution_ideas)
             except Exception as e:
                 logger.warning(f"Angle classification skipped: {e}")
+
+            # Headless and preview ranking share this bounded pre-rank evidence. The probe itself
+            # selects only the typed commercial survivor or classified distribution_seo ideas and
+            # is marker-cached, so this does not turn into an all-N search pass.
+            try:
+                self._probe_serp_composition(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"SERP-composition probe skipped: {e}")
+
+            # Mechanism-parity probe (A/B-validated, always on): runs AFTER calibration and the
+            # bounded route-specific SERP check. Product-parity evidence can therefore only have
+            # a hard distribution-route consequence when that candidate's public page corpus was
+            # actually classified as owned; direct routes retain the established consequence.
+            self._emit_pipeline_progress("competition_check", "Checking competing products")
+            try:
+                self._probe_mechanism_parity(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Parity probe skipped: {e}")
 
             # NOTE: the legacy late per-idea "mentor improvement loop" was removed — the per-cell
             # tournament (default path) IS that ideator↔judge loop, run once per (pain × segment) cell

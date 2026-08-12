@@ -105,4 +105,5 @@ graphify-out
 
 scripts/*
 !scripts/backfill_paying_wallet_assets.py
+!scripts/backfill_idea_validation_outcomes.py
 node_modules

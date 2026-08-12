@@ -33,6 +33,12 @@ from ..tools.cached_serper_dev_tool import CachedSerperDevTool
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import find_solution_by_name
+from ..utils.commercial_route import (
+    CommercialLane,
+    assess_commercial_lane,
+    commercial_route_value,
+    has_credible_public_corpus,
+)
 from ..utils.keyword_filtering import check_keyword_relevance
 from ..utils.segment_matching import match_pain_by_provenance, match_pain_to_segments, normalize_hub_name
 from ..utils.score_refinement import (
@@ -207,18 +213,14 @@ def _calculate_difficulty_adjusted_score(
 
     Returns:
         (adjusted_score, avg_difficulty, rankability_factor).
-        ``adjusted_score`` is ``None`` when ``validated_keywords`` is empty —
-        graded-and-empty (correction 1): the keywords were graded and NONE
-        individually passed, so demand is UNMEASURED. Returning the stale
-        pre-grading ``keyword_demand_score`` here rewarded validation failure.
+        ``adjusted_score`` is None only when graded rows are missing (unmeasured).
+        An explicitly empty graded list is measured zero demand.
     """
-    validated_keywords = validation.validated_keywords or []
-    if not validated_keywords:
-        # Graded-and-empty (or legacy checkpoint missing validated_keywords):
-        # no per-keyword evidence — emit None, never a fabricated scalar.
-        # Downstream skips the composite blend and two-tier ranks these below
-        # validated-with-keywords solutions.
+    if validation.validated_keywords is None:
         return None, None, None
+    validated_keywords = validation.validated_keywords
+    if not validated_keywords:
+        return 0.0, None, None
 
     # Extract difficulty values (may be None for some keywords)
     difficulties = [
@@ -276,6 +278,17 @@ def _calculate_difficulty_adjusted_score(
         adjusted_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
 
     return adjusted_score, avg_difficulty, rankability_factor
+
+
+def _keyword_demand_measurement_state(
+    validation: "CrewKeywordValidationResult",
+) -> tuple[float | None, bool]:
+    """Return the pre-magnitude demand value and its explicit measurement state."""
+    if validation.validated_keywords is None:
+        return None, True
+    if validation.validated_keywords == []:
+        return 0.0, False
+    return validation.keyword_demand_score, False
 
 
 @dataclass
@@ -754,6 +767,7 @@ RULES:
 
         # Ensure solution_name matches
         landscape.solution_name = solution_name
+        self._stamp_competitive_landscape_identity(landscape, solution_name)
 
         # Thread-safe: lock all shared state mutations (supports parallel execution)
         with self._competitive_lock:
@@ -803,6 +817,38 @@ RULES:
             "analyzed": True,
             "competitive_landscape": result_data,
         }
+
+    def _stamp_competitive_landscape_identity(self, landscape, solution_name: str) -> None:
+        """Bind a landscape only when its solution name resolves to one exact candidate."""
+        landscape.candidate_idea_id = None
+        landscape.candidate_idea_revision = None
+        ideas = list(
+            getattr(getattr(self.state, "idea_generation", None), "solution_ideas", None)
+            or []
+        )
+        needle = " ".join((solution_name or "").lower().split())
+        matches = [
+            idea for idea in ideas
+            if " ".join((getattr(idea, "solution_name", "") or "").lower().split())
+            == needle
+        ]
+        if len(matches) != 1:
+            logger.warning(
+                f"[Competitive] Cannot stamp candidate identity for '{solution_name}': "
+                f"expected one exact name match, found {len(matches)}"
+            )
+            return
+        candidate = matches[0]
+        idea_id = (getattr(candidate, "idea_id", None) or "").strip()
+        revision = getattr(candidate, "idea_revision", None)
+        if not idea_id or not isinstance(revision, int) or isinstance(revision, bool):
+            logger.warning(
+                f"[Competitive] Cannot stamp candidate identity for '{solution_name}': "
+                "durable id/revision is missing"
+            )
+            return
+        landscape.candidate_idea_id = idea_id
+        landscape.candidate_idea_revision = revision
 
     def _guard_landscape_on_niche(
         self,
@@ -2697,11 +2743,12 @@ say so — an honest empty landscape is correct, a foreign one is not.
                     from ..utils.calibration_notes import extract_criterion_reason
                     from ..utils.honest_brief import build_quotes_by_pain, demand_quotes_for
                     from ..utils.idea_tags import refresh_tag_facets
-                    from ..models.solution_idea import visible_ideas
+                    from ..models.solution_idea import effective_red_team_state, visible_ideas
                     quotes_by_pain = build_quotes_by_pain(
                         getattr(getattr(state, "pain_point_analysis", None), "pain_points", None))
 
                     for solution in visible_ideas(idea_gen.solution_ideas):
+                        red_team_verdict, red_team_findings = effective_red_team_state(solution)
                         description = getattr(solution, "description", "") or ""
                         tech_approach = getattr(solution, "technical_approach", "") or ""
                         diff_factors = getattr(solution, "differentiation_factors", []) or []
@@ -2815,8 +2862,13 @@ say so — an honest empty landscape is correct, a foreign one is not.
                             # killed verdict + evidence-cited caveats. Threaded through so the G3
                             # chat dossier (backend/src/routes/chat.ts) can cite it; not otherwise
                             # surfaced on the preview report UI.
-                            "red_team_verdict": getattr(solution, "red_team_verdict", None),
+                            "red_team_verdict": red_team_verdict,
                             "red_team_caveats": getattr(solution, "red_team_caveats", None),
+                            "red_team_findings": [
+                                finding.model_dump(mode="json")
+                                if hasattr(finding, "model_dump") else finding
+                                for finding in (red_team_findings or [])
+                            ] if red_team_findings is not None else None,
                             "source_segment_payability": getattr(solution, "source_segment_payability", None),
                             "source_segment_payability_class": getattr(solution, "source_segment_payability_class", None),
                             # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
@@ -7423,6 +7475,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 except Exception as e:
                     logger.warning(f"[SEO-KILL] skipped: {str(e)[:120]}")
 
+            self._stamp_seo_report_identity(seo_strategy, selected_solution)
             self.state.seo_strategy_report = seo_strategy
             # Q-049: volume-honesty degradation caveat (fires only when the band fields were
             # computed and the analyzed volume is dominated by category/off-topic reach).
@@ -7464,6 +7517,128 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         # Checkpoint: Save SEO strategy
         if self.state.seo_strategy_report:
             self.checkpoint_mgr.save_stage("stage_6_seo_strategy", self.state.seo_strategy_report)
+
+    _TRAFFIC_PROJECT_TYPES = frozenset({"directory", "aggregator", "comparison-tool"})
+
+    @staticmethod
+    def _stamp_seo_report_identity(report, solution) -> None:
+        """Stamp new SEO artifacts from code-owned selected-candidate identity."""
+        report.solution_name = getattr(solution, "solution_name", None)
+        report.candidate_idea_id = getattr(solution, "idea_id", None)
+        report.candidate_idea_revision = getattr(solution, "idea_revision", None)
+
+    @staticmethod
+    def _seo_report_matches_solution(report, solution) -> bool:
+        """Legacy unnamed reports pass only via the selected path; named mismatches never pass."""
+        if report is None or solution is None:
+            return False
+        report_name = getattr(report, "solution_name", None)
+        report_id = getattr(report, "candidate_idea_id", None)
+        report_revision = getattr(report, "candidate_idea_revision", None)
+        if report_name is not None and report_name != getattr(solution, "solution_name", None):
+            return False
+        if report_id is not None and report_id != getattr(solution, "idea_id", None):
+            return False
+        if (report_revision is not None
+                and report_revision != getattr(solution, "idea_revision", None)):
+            return False
+        return True
+
+    @staticmethod
+    def _commercial_route_value(solution, field: str) -> str:
+        """Compatibility wrapper over the one shared typed commercial authority."""
+        return commercial_route_value(solution, field) or ""
+
+    @staticmethod
+    def _route_has_structural_evidence(solution) -> bool:
+        """True only for a deterministic, enumerable organic surface.
+
+        A project-type label, free-text page plan, or vendor-joins plan is not evidence. The
+        typed contract must name a public dataset and at least two finite dimensions.
+        """
+        return has_credible_public_corpus(solution)
+
+    def _credible_non_direct_candidate(self, scores: list, excluded_names: set[str] | None = None):
+        """Best score with a credible non-direct route, or None (one reserve lane)."""
+        excluded = excluded_names or set()
+        ideas = (getattr(getattr(self.state, "idea_generation", None), "solution_ideas", None) or [])
+        for score in sorted(scores or [], key=lambda row: row.composite_score, reverse=True):
+            if score.solution_name in excluded:
+                continue
+            solution = find_solution_by_name(score.solution_name, ideas)
+            if (not solution
+                    or (getattr(solution, "candidate_status", None) or "active") != "active"
+                    or score.composite_score < settings.commercial_reserve_quality_floor
+                    or not self._route_has_structural_evidence(solution)):
+                continue
+            angle = (getattr(solution, "winning_angle", None) or "").strip().lower()
+            project_type = (getattr(solution, "project_type", None) or "").strip().lower()
+            if (assess_commercial_lane(solution) is CommercialLane.NON_DIRECT
+                    and (angle == "distribution_seo"
+                         or project_type in self._TRAFFIC_PROJECT_TYPES)):
+                return score
+        return None
+
+    def _validation_working_set(self, all_scores: list) -> list:
+        """One shared Stage-6/7/8 identity set: top-N + selected + one credible reserve."""
+        ranked = sorted(all_scores or [], key=lambda row: row.composite_score, reverse=True)
+        working = list(ranked[:settings.top_solutions_for_validation])
+        working = self._ensure_selected_in_topn(working, ranked)
+        names = {row.solution_name for row in working}
+        reserve = self._credible_non_direct_candidate(ranked)
+        self._validation_reserve_name = reserve.solution_name if reserve is not None else None
+        if reserve is not None and reserve.solution_name not in names:
+            working.append(reserve)
+            logger.info(
+                f"[Stage 6/7/8] Added credible non-direct reserve '{reserve.solution_name}' "
+                "to the shared validation set"
+            )
+        return working
+
+    def _keyword_probe_working_set(self, working_set: list) -> list:
+        """Hard-bounded paid Stage-6 probes, ordered by commercial priority."""
+        selected = getattr(getattr(self.state, "solution_selection", None), "selected_solution_name", None)
+        reserve = getattr(self, "_validation_reserve_name", None)
+        ideas = (getattr(getattr(self.state, "idea_generation", None), "solution_ideas", None) or [])
+        cap = settings.keyword_probe_candidate_cap
+        out = []
+        seen: set[str] = set()
+        by_name = {score.solution_name: score for score in working_set}
+
+        def append_named(name: str | None) -> None:
+            score = by_name.get(name) if name else None
+            if score is not None and score.solution_name not in seen and len(out) < cap:
+                seen.add(score.solution_name)
+                out.append(score)
+
+        # The actual recommendation is always measured first; the one structural commercial
+        # reserve is second. Remaining budget goes to already-classified distribution ideas in
+        # ranking order. Generic top-N membership never expands the paid set.
+        append_named(selected)
+        append_named(reserve)
+        for score in working_set:
+            if len(out) >= cap:
+                break
+            solution = find_solution_by_name(score.solution_name, ideas)
+            angle = (getattr(solution, "winning_angle", None) or "").strip().lower() if solution else ""
+            if angle != "distribution_seo":
+                continue
+            if score.solution_name not in seen:
+                seen.add(score.solution_name)
+                out.append(score)
+        return out
+
+    def _traffic_monetization_eligible(self, solution) -> bool:
+        lane = assess_commercial_lane(solution)
+        angle = (getattr(solution, "winning_angle", None) or "").strip().lower()
+        project_type = (getattr(solution, "project_type", None) or "").strip().lower()
+        if lane is CommercialLane.DIRECT:
+            return False
+        return (lane is CommercialLane.NON_DIRECT
+                or (lane is CommercialLane.UNKNOWN and (
+                    angle == "distribution_seo"
+                    or project_type in self._TRAFFIC_PROJECT_TYPES
+                )))
 
     def _ensure_selected_in_topn(self, top_n: list, all_scores: list) -> list:
         """Guarantee the selected winner stays in the Stage 7/8 working set.
@@ -7536,8 +7711,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             return
 
         # Sort by composite score and take top N (configurable)
-        top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
-        top_n_scores = self._ensure_selected_in_topn(top_n_scores, all_scores)
+        top_n_scores = self._validation_working_set(all_scores)
 
         logger.info(f"[Stage 7] Analyzing pricing for top {len(top_n_scores)} solutions (PARALLEL)")
 
@@ -7969,19 +8143,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             return
 
         # Sort by composite score and take top N (configurable)
-        top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
-
-        # Phase 2.2: Always include selected solution for validation (prevents data loss)
-        selected_name = self.state.solution_selection.selected_solution_name
-        top_n_names = {s.solution_name for s in top_n_scores}
-        if selected_name and selected_name not in top_n_names:
-            selected_score = next(
-                (s for s in all_scores if s.solution_name == selected_name),
-                None
-            )
-            if selected_score:
-                top_n_scores.append(selected_score)
-                logger.info(f"[Stage 6-KV] Added selected solution '{selected_name}' to validation set")
+        shared_working_set = self._validation_working_set(all_scores)
+        top_n_scores = self._keyword_probe_working_set(shared_working_set)
 
         logger.info(f"[Stage 6-KV] Validating keyword demand for {len(top_n_scores)} solutions (PARALLEL)")
 
@@ -8236,21 +8399,29 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Find corresponding solution score
             for solution_score in all_scores:
                 if solution_score.solution_name == validation.solution_name:
-                    if not validation.validated_keywords:
-                        # Graded-and-empty (flow-weakness fix plan 2026-08, correction 1):
-                        # the keywords were graded and NONE individually passed — demand is
-                        # UNMEASURED, not the stale pre-grading scalar. No fabricated demand,
-                        # no blend (adjusted = composite); rerank_solutions_by_adjusted_score
-                        # two-tiers these below validated-with-keywords solutions. Keyed off
-                        # the validated set itself so all three difficulty paths (normal /
-                        # resume-skip / API-failure) land here uniformly.
+                    raw_demand, demand_unmeasured = _keyword_demand_measurement_state(validation)
+                    if demand_unmeasured:
+                        # Legacy/missing graded rows: the measurement never happened.
                         solution_score.keyword_demand_score = None
                         solution_score.demand_unmeasured = True
                         solution_score.adjusted_composite_score = solution_score.composite_score
                         logger.info(
-                            f"[Stage 6-KV] {solution_score.solution_name}: graded-and-empty "
-                            f"validated set — demand unmeasured, adjusted = composite "
+                            f"[Stage 6-KV] {solution_score.solution_name}: keyword demand "
+                            f"unmeasured, adjusted = composite "
                             f"({solution_score.composite_score:.2f})"
+                        )
+                        break
+                    if raw_demand == 0.0 and validation.validated_keywords == []:
+                        # The grader ran and found no relevant demand. Zero is evidence, not None.
+                        solution_score.keyword_demand_score = 0.0
+                        solution_score.demand_unmeasured = False
+                        solution_score.adjusted_composite_score = blend_adjusted_composite(
+                            solution_score.composite_score, 0.0
+                        )
+                        logger.info(
+                            f"[Stage 6-KV] {solution_score.solution_name}: measured zero "
+                            f"idea-relevant demand, adjusted="
+                            f"{solution_score.adjusted_composite_score:.2f}"
                         )
                         break
                     # Reset-then-stamp: a measured solution must never carry a stale
@@ -8660,12 +8831,32 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         try:
             # Run traffic monetization analysis
+            own_keyword_results = [
+                validation for validation in (self.state.keyword_validation_results or [])
+                if validation.solution_name == solution_name
+            ]
+            selected_name = getattr(
+                getattr(self.state, "solution_selection", None), "selected_solution_name", None)
+            selected_seo = self.state.seo_strategy_report if solution_name == selected_name else None
+            if selected_seo is not None and not self._seo_report_matches_solution(
+                    selected_seo, solution):
+                logger.warning(
+                    f"[Parallel] Ignoring stale SEO report for {solution_name}: candidate identity mismatch"
+                )
+                selected_seo = None
+            if not own_keyword_results and selected_seo is None:
+                logger.warning(
+                    f"[Parallel] Traffic monetization unknown for {solution_name}: no "
+                    "candidate-owned keyword or SEO evidence"
+                )
+                return {"solution_name": solution_name, "result": None, "usage_metrics": None}
+
             result = traffic_crew.analyze(
                 selected_solution=solution,
-                keyword_validation_results=None,
+                keyword_validation_results=own_keyword_results,
                 competitive_analysis=self.state.competitive_analysis,
                 niche_description=self.niche_description,
-                seo_strategy_report=self.state.seo_strategy_report
+                seo_strategy_report=selected_seo,
             )
 
             if result:
@@ -8706,20 +8897,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info("=" * 80)
         self._emit_progress(8, "Traffic Monetization", "running")
 
-        # Traffic-based project types that use this crew
-        traffic_types = ['directory', 'aggregator', 'comparison-tool']
-
         # Check prerequisites
         if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
             logger.warning("[Stage 8] No solution ideas - skipping traffic monetization")
             self.state.current_stage = 9
             self._skip_stage(8, "Traffic Monetization", "No solution ideas for traffic analysis")
-            return
-
-        if not self.state.seo_strategy_report:
-            logger.warning("[Stage 8] No SEO strategy report - skipping traffic monetization")
-            self.state.current_stage = 9
-            self._skip_stage(8, "Traffic Monetization", "No SEO data for traffic estimation")
             return
 
         # Get solutions to analyze (same top N as keyword validation)
@@ -8730,12 +8912,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             return
 
         all_scores = self.state.solution_selection.all_solution_scores
-        top_n_scores = sorted(
-            all_scores,
-            key=lambda s: s.composite_score,
-            reverse=True
-        )[:settings.top_solutions_for_validation]
-        top_n_scores = self._ensure_selected_in_topn(top_n_scores, all_scores)
+        top_n_scores = self._validation_working_set(all_scores)
 
         # Filter to traffic-based solutions only
         traffic_solutions = []
@@ -8744,17 +8921,17 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 score.solution_name,
                 self.state.idea_generation.solution_ideas
             )
-            if solution and solution.project_type in traffic_types:
+            if solution and self._traffic_monetization_eligible(solution):
                 traffic_solutions.append((score, solution))
                 logger.info(
-                    f"[Stage 8] {solution.solution_name}: project_type='{solution.project_type}' "
+                    f"[Stage 8] {solution.solution_name}: route/angle/project evidence "
                     f"→ Traffic monetization eligible"
                 )
 
         if not traffic_solutions:
             logger.info(
                 f"[Stage 8] No traffic-based solutions found in top {len(top_n_scores)} "
-                f"(types: {traffic_types}). Skipping traffic monetization analysis."
+                "after route-aware filtering. Skipping traffic monetization analysis."
             )
             self.state.current_stage = 9
             self._skip_stage(8, "Traffic Monetization", "Not applicable \u2014 SaaS revenue model")

@@ -2395,6 +2395,65 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(systemPrompt).not.toContain('Adversarial review: killed');
   });
 
+  it('keeps the typed primary finding atomic in ranked and ruled-out dossier branches', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({
+        alternative_solutions: [
+          {
+            idea_id: 'idea-sol1',
+            idea_revision: 1,
+            solution_name: 'Sol1',
+            description: 'A tool',
+            red_team_verdict: 'killed',
+            red_team_findings: [
+              { claim: 'No free tool was found.', kind: 'evidence_gap' },
+              { claim: 'Injected false incumbent overlap.', kind: 'invented_kind' },
+              {
+                claim: 'SuiteCo bundles the same workflow.',
+                kind: 'verified_free_or_bundled_alternative',
+              },
+            ],
+            red_team_caveats: ['No free tool was found.'],
+          },
+        ],
+        examined_ruled_out: [
+          {
+            idea_name: 'Ruled Gap',
+            reason: 'The evidence remained incomplete.',
+            idea: {
+              solution_name: 'Ruled Gap',
+              red_team_verdict: 'weakened',
+              red_team_findings: [
+                { claim: 'Injected false payer mismatch.', kind: 'invented_kind' },
+                { claim: 'The review did not establish a reachable payer.', kind: 'evidence_gap' },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'compare the review findings' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain(
+      'Adversarial review: a verified free or bundled alternative — '
+      + 'SuiteCo bundles the same workflow.',
+    );
+    expect(systemPrompt).not.toContain(
+      'a verified free or bundled alternative — No free tool was found.',
+    );
+    expect(systemPrompt).not.toContain('No free tool was found.');
+    expect(systemPrompt).not.toContain('invented_kind');
+    expect(systemPrompt).not.toContain('Injected false incumbent overlap.');
+    expect(systemPrompt).not.toContain('Injected false payer mismatch.');
+    expect(systemPrompt).toContain(
+      'Adversarial review: incomplete decision-critical evidence — '
+      + 'The review did not establish a reachable payer.',
+    );
+  });
+
   // The selection screen groups the ranked list into one card per product thesis. Reading a
   // flat list, the analyst would describe four variants of one business as four opportunities.
   it('carries the thesis grouping and the uncovered buyer jobs the selection screen shows', async () => {

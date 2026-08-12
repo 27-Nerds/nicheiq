@@ -30,11 +30,16 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .data_access import DATA_ACCESS_VOCAB, normalize_data_access, note_route_label
 from .idea_carryover import carry_forward_idea_fields
 from .validation.niche_anchor import anchor_coverage
+from ..models.solution_idea import (
+    RedTeamFinding,
+    effective_red_team_verdict,
+    has_affirmative_red_team_findings,
+)
 
 # Minimum anchor_entities for the off-category guard to activate — below this the
 # guard fails OPEN (review proceeds). Mirrors QueryGenerator.MIN_ANCHORS_ACTIVE
@@ -43,27 +48,39 @@ _MIN_ANCHORS_ACTIVE = 3
 
 
 class _RedTeamVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     verdict: Literal["survives", "weakened", "killed"] = "survives"
-    caveats: list[str] = Field(default_factory=list, description="up to 3, each evidence-cited")
+    findings: list[RedTeamFinding] = Field(
+        default_factory=list,
+        max_length=3,
+        description="up to 3 typed, evidence-cited claims",
+    )
     uplift: Optional[str] = Field(None, description="up to 1 pro-idea note")
 
+    @model_validator(mode="after")
+    def _require_findings_for_adverse_verdict(self):
+        if self.verdict in ("weakened", "killed") and not self.findings:
+            raise ValueError("weakened/killed verdicts require at least one typed finding")
+        return self
 
-# Keywords that mark a caveat as naming a FREE/BUNDLED alternative rather than a plain shipped
-# commercial competitor — an escapable finding, so it is worth a revision attempt.
-_KILL_ALTERNATIVE_WORDS = ("free", "bundled", "included in", "built into", "built-in", "loss-leader")
 
-# A caveat is "actionable" (worth attempting a revision for) when it names a free/bundled
-# alternative (the kill-alternative words) OR flags a modal-case miss.
-_ACTIONABLE_WORDS = _KILL_ALTERNATIVE_WORDS + (
-    "modal", "common form", "most common", "doesn't handle", "does not handle", "edge case",
-)
+def _finding_claims(result: _RedTeamVerdict) -> list[str]:
+    return [finding.claim for finding in (result.findings or [])]
+
+
+def _normalize_verdict(result: _RedTeamVerdict) -> _RedTeamVerdict:
+    """Prevent absence-of-evidence from becoming a kill decision."""
+    effective = effective_red_team_verdict(result.verdict, result.findings)
+    if result.verdict != effective:
+        return result.model_copy(update={"verdict": effective})
+    return result
 
 
 def _is_actionable(result) -> bool:
     if result.verdict not in ("killed", "weakened"):
         return False
-    blob = " ".join(result.caveats or []).lower()
-    return any(w in blob for w in _ACTIONABLE_WORDS)
+    return has_affirmative_red_team_findings(result.findings)
 
 
 def _build_queries(crew, idea, niche_short: str, budget: int) -> list[str]:
@@ -163,7 +180,7 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
             data_feasibility_score: float = 0.7
             programmatic_seo_opportunity: str = ""
 
-        caveats = result.caveats or []
+        caveats = _finding_claims(result)
         prompt = (
             "You are improving an idea that an adversarial reviewer just attacked.\n"
             f"RED-TEAM VERDICT: {result.verdict}\n"
@@ -456,9 +473,16 @@ def run_red_team_review(crew, refined_solutions) -> None:
                   "any urgency mechanics the scores can't see (deadline/race dynamics) — the "
                   "one PRO-idea question; (5) WHO PAYS and why — if the honest answer is "
                   "'nobody; it pressures a platform or serves users who won't pay', say so. "
-                  "Cite only what the evidence actually shows — never "
-                  "invent products or features. Verdict: survives | weakened | killed, plus up "
-                  "to 3 evidence-cited caveats and up to 1 uplift note. Return JSON."
+                  "Cite only what the evidence actually shows — never invent products or "
+                  "features. Return up to 3 typed findings. AFFIRMATIVE kinds are "
+                  "verified_incumbent_overlap, verified_free_or_bundled_alternative, "
+                  "verified_payer_mismatch, and verified_modal_failure: use one only when "
+                  "the supplied evidence affirmatively establishes that claim. evidence_gap "
+                  "means the evidence is incomplete or did not establish the claim. Phrases "
+                  "such as 'not found', 'no proof', 'does not appear', 'did not establish', "
+                  "or any absence-of-evidence claim MUST always be evidence_gap and can never "
+                  "by itself justify killed. Verdict: survives | weakened | killed, plus up "
+                  "to 3 findings and up to 1 uplift note. Return JSON."
             )
 
             result, usage = LLMService.invoke_structured(
@@ -473,14 +497,18 @@ def run_red_team_review(crew, refined_solutions) -> None:
             if usage is not None and getattr(crew, "cost_tracker", None):
                 crew.cost_tracker.record_llm_usage("Stage 7 - Red Team", usage.to_dict())
 
+            result = _normalize_verdict(result)
+            claims = _finding_claims(result)
             idea.red_team_verdict = result.verdict
-            idea.red_team_caveats = result.caveats or None
+            idea.red_team_findings = result.findings or None
+            # Compatibility surface for legacy consumers; typed findings remain authoritative.
+            idea.red_team_caveats = claims or None
             reviewed += 1
 
             if result.verdict == "killed":
-                logger.info(f"[RedTeam] '{name}' killed: {result.caveats[:1]}")
+                logger.info(f"[RedTeam] '{name}' killed: {claims[:1]}")
             elif result.verdict == "weakened":
-                logger.info(f"[RedTeam] '{name}' weakened: {result.caveats[:1]}")
+                logger.info(f"[RedTeam] '{name}' weakened: {claims[:1]}")
 
             if _is_actionable(result):
                 revised += 1

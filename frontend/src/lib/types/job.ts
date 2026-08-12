@@ -152,6 +152,18 @@ export interface SelectionDecisionProfile {
   hardConstraints: string;
 }
 
+export type RedTeamFindingKind =
+  | 'verified_incumbent_overlap'
+  | 'verified_free_or_bundled_alternative'
+  | 'verified_payer_mismatch'
+  | 'verified_modal_failure'
+  | 'evidence_gap';
+
+export interface RedTeamFinding {
+  claim: string;
+  kind: RedTeamFindingKind;
+}
+
 export interface SolutionPreview {
   idea_id?: string;
   idea_revision?: number;
@@ -205,11 +217,11 @@ export interface SolutionPreview {
   incumbent_parity?: string | null;
   adjacent_market_parity?: string | null;
   // Adversarial review. A killed idea stays visible, selectable and ranked, and its scores
-  // are NOT capped for it (that coupling was removed 2026-08-02) — the verdict says the
-  // premise is unproven, while the scores describe the idea if the premise holds. The UI
-  // renders `killed` as "Premise unproven" (see utils/adversarialReview.ts).
+  // are NOT capped for it. Typed findings distinguish verified counterevidence from an
+  // evidence gap; legacy killed records retain the "Premise unproven" presentation.
   red_team_verdict?: string | null; // survives | weakened | killed
   red_team_caveats?: string[] | null;
+  red_team_findings?: RedTeamFinding[] | null;
   // Buyer-segment payability (0-1) stamped from the segment map; drives the market_fit
   // payability cap in _validate_idea_caps rule (d).
   source_segment_payability?: number | null;

@@ -284,6 +284,24 @@ describe("SolutionDetail lifecycle and provenance", () => {
     expect(view.queryByText("Direct incumbents")).not.toBeInTheDocument();
   });
 
+  it("renders a malformed runtime parity value without crashing score rationale", () => {
+    for (const incumbentParity of [42, { unexpected: true }, null]) {
+      const malformed = solution({
+        market_fit_score: 0.45,
+        why_it_works_short: "Strong pain signal.",
+      });
+      Object.assign(malformed as unknown as Record<string, unknown>, {
+        incumbent_parity: incumbentParity,
+      });
+
+      const view = renderDetail({ solution: malformed });
+
+      expect(view.getByText("Signal Desk")).toBeInTheDocument();
+      expect(view.queryByText(/verified incumbent already provides/i)).not.toBeInTheDocument();
+      cleanup();
+    }
+  });
+
   it("explains that a premise-unproven idea's other scores assume the premise holds", async () => {
     const view = renderDetail({
       solution: solution({
@@ -304,6 +322,53 @@ describe("SolutionDetail lifecycle and provenance", () => {
 
     // Full detail: the score list says outright what the numbers are conditional on.
     expect(view.getByText(/These scores assume the premise holds/)).toBeInTheDocument();
+  });
+
+  it("describes a typed affirmative kill as counterevidence, not missing evidence", async () => {
+    const view = renderDetail({
+      solution: solution({
+        market_fit_score: 0.78,
+        technical_feasibility_score: 0.71,
+        red_team_verdict: "killed",
+        red_team_findings: [{
+          claim: "The incumbent already ships the same workflow.",
+          kind: "verified_incumbent_overlap",
+        }],
+      }),
+    });
+
+    expect(view.getByText("Adversarial review: Verified incumbent overlap"))
+      .toBeInTheDocument();
+    expect(view.getByText(/This is verified counterevidence, not missing evidence/))
+      .toBeInTheDocument();
+    expect(view.queryByText(/This is a verdict on the premise, not on the idea/)).toBeNull();
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+
+    expect(view.getByText(/These scores do not erase the verified counterevidence/))
+      .toBeInTheDocument();
+    expect(view.queryByText(/These scores assume the premise holds/)).toBeNull();
+  });
+
+  it("renders a raw typed gap-only kill as an eligible weakening", async () => {
+    const view = renderDetail({
+      solution: solution({
+        market_fit_score: 0.78,
+        technical_feasibility_score: 0.71,
+        red_team_verdict: "killed",
+        red_team_findings: [{
+          claim: "The review did not establish a reachable payer.",
+          kind: "evidence_gap",
+        }],
+      }),
+    });
+
+    expect(view.getByText("Adversarial review: Evidence incomplete")).toBeInTheDocument();
+    expect(view.getByText(/This candidate remains available/)).toBeInTheDocument();
+    expect(view.queryByText(/This is a verdict on the premise, not on the idea/)).toBeNull();
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+    expect(view.queryByText(/These scores assume the premise holds/)).toBeNull();
   });
 
   it("leaves the scoring card unqualified when the review raised nothing", async () => {

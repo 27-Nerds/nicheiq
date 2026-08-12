@@ -1964,6 +1964,16 @@ report (computed once, read from state). Null when there are no pains and no ide
 
 ## Version History
 
+- **v2.20** - Typed red-team findings (2026-08-12)
+  - Ideas and `alternative_solutions[*]` gain optional `red_team_findings` (maximum three
+    `{claim, kind}` records). `kind` is exactly one of `verified_incumbent_overlap`,
+    `verified_free_or_bundled_alternative`, `verified_payer_mismatch`,
+    `verified_modal_failure`, or `evidence_gap`.
+  - New producer output derives legacy `red_team_caveats` from finding claims. A requested
+    `killed` verdict with no affirmative verified finding is normalized to `weakened`.
+    Legacy records lacking `red_team_findings` remain unclassified and retain their existing
+    verdict/caveat behavior.
+
 - **v2.19** - Delivery-format durability (2026-08-12)
   - New optional `delivery_format` on solution previews, selected solution details, Phase-1 and
     final-report alternatives, and the executive solution snapshot. It records the primary
@@ -2194,9 +2204,31 @@ Key fields (full field list + rationale: `docs/VALIDATION_METHODOLOGY.md`; TS mi
 
 - `provisional: true` — always; the paid report's `go_no_go_verdict` stays authoritative.
 - `outcome`: `worth_testing | occupied | premise_unproven | ruled_out | not_evaluated`.
+  `resolve_idea_validation_outcome()` is the single producer and migration authority. Its
+  precedence is exact and first-match-wins: a non-active seed is `ruled_out`; otherwise
+  `incumbent_parity` beginning `shipped` or `partial` is `occupied`; otherwise an
+  `unanchored_hypothesis` is `premise_unproven`; otherwise `red_team_verdict=killed` is
+  `premise_unproven`; otherwise `red_team_verdict=weakened` is `worth_testing`; all
+  remaining evaluated states are `worth_testing`. `not_evaluated` is reserved for a
+  preview with no durable evaluated seed. Raw red-team diagnostics remain present, but
+  consumers must render this resolved outcome as the top-line decision.
 - `parts[]`: fixed keys `problem_real` (`supported|thin|not_found`), `space_occupied`
-  (`shipped|partial|adjacent|none_found|not_checked`), `demand` (constant
+  (`shipped|partial|adjacent|none_found|review_concerns|not_checked`), `demand` (constant
   `not_measured` — Phase 2 measures it), each with `answer` + `detail` strings.
+  `review_concerns` means the direct-equivalent probe produced no result while adversarial
+  review returned `killed` or `weakened`; it directs the reader to `kill_risks[]` and must
+  not be interpreted as a second outcome authority.
+
+Historical registered preview assets can be measured read-only from the API image with:
+
+```bash
+/opt/commercial-backfill/bin/python \
+  /app/maintenance/backfill_idea_validation_outcomes.py \
+  --database-url "$DATABASE_URL" --asset-root /app
+```
+
+The command is dry-run by default. Review its registered count and matches before adding
+the explicit `--apply` flag; the container never runs this backfill automatically.
 - `evidence_confidence` (`Low|Moderate|High`) + `evidence_confidence_reason` — rates the
   ANALYSIS, computed deterministically from `breadth` (posts / distinct_authors /
   distinct_communities / months_spanned) with an upward-only parity adjustment.
@@ -2209,7 +2241,9 @@ Key fields (full field list + rationale: `docs/VALIDATION_METHODOLOGY.md`; TS mi
   accepted|rejected|not_attempted`, `trigger_finding`, `keeps/changes/because`,
   `reason_not_shown`, `ries_label`, idea refs). Written regardless of outcome.
 - `alternatives` (`count`, `same_buyer_count`, `top[]`), `kill_risks[]`,
-  `red_team_verdict`, `anchored_pains[]`, `unanchored_hypothesis`.
+  `red_team_verdict`, optional typed `red_team_findings[]`, `anchored_pains[]`,
+  `unanchored_hypothesis`. Gap-only new reviews remain `worth_testing` and describe
+  incomplete evidence; affirmative killed reviews describe verified counterevidence.
 - `seed_candidate_status` / `seed_idea_id` / `seed_idea_revision` / `seed_purchasable`
   (computed backend-side; gates the continue CTA) / `demotion_reason`.
 - `desk_limits[]`, `experiment_ladder[]` (rung/action/kill_number/cost_note),

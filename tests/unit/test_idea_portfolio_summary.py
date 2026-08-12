@@ -272,6 +272,32 @@ class TestGenerateSummary:
         assert "SubmittedStockCheck" in summary
         assert "Generated Search Headline" not in summary
 
+    def test_assigned_gap_only_kill_remains_the_grounded_recommendation(self):
+        gap = _typed_idea(
+            "Gap",
+            headline="Gap Candidate",
+            product="Reconciles public records for buyers.",
+            mechanism="Matches public records to buyer workflows",
+            market_fit=0.8,
+        )
+        gap.red_team_verdict = "killed"
+        gap.red_team_findings = [{
+            "kind": "evidence_gap", "claim": "Search did not establish a buyer",
+        }]
+        clean = _typed_idea(
+            "Clean",
+            headline="Clean Candidate",
+            product="Tracks a smaller operational workflow.",
+            mechanism="Tracks workflow events",
+            market_fit=0.6,
+        )
+
+        summary, usage = generate_idea_portfolio_summary([gap, clean])
+
+        assert usage is None
+        assert summary is not None
+        assert "validate Gap Candidate first" in summary
+
     def test_typed_candidate_without_mechanism_fails_closed_without_llm(self, monkeypatch):
         from nicheiq.utils import llm_service
 

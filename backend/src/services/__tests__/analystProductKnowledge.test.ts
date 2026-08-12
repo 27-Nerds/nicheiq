@@ -34,6 +34,11 @@ describe('ANALYST_PRODUCT_KNOWLEDGE', () => {
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('HOW THE SCORES AND THE RECOMMENDATION RELATE');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('"Premise unproven"');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Never say an idea was killed');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Typed affirmative findings name verified counterevidence');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('red_team_findings kind is the source');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('stored kind is evidence_gap');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('A typed evidence gap means evidence is incomplete');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('never classify a finding from words in its claim');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('renderings of ONE business');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('UNMEASURED rather than zero');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Never present a tie or a near tie');

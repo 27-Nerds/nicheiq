@@ -151,6 +151,28 @@ describe("compare page evidence note", () => {
     expect(view.queryByText("The moat may be thin.")).toBeNull();
   });
 
+  it("renders malformed runtime verdict values without calling string methods on them", () => {
+    for (const verdict of [42, { unexpected: true }, null]) {
+      const view = render(ComparePage, {
+        props: {
+          data: data([
+            idea({
+              idea_id: "idea-a",
+              solution_name: "Candidate A",
+              incumbent_parity: "shipped by evidence: the source does not cover the buyer",
+              red_team_verdict: verdict,
+            }),
+            idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+          ]),
+        },
+      });
+
+      expect(view.getByText(/Adversarial review.*the source does not cover the buyer/i))
+        .toBeInTheDocument();
+      cleanup();
+    }
+  });
+
   // The finding only reached the evidence-note row far below the fold, so a candidate the
   // review could not confirm read as a peer of the survivors in its own column head.
   it("marks a premise-unproven candidate in its column head and leaves survivors unmarked", () => {
@@ -178,6 +200,53 @@ describe("compare page evidence note", () => {
     expect(within(headings[0] as HTMLElement).getByText("Premise unproven")).toBeInTheDocument();
     expect(within(headings[1] as HTMLElement).queryByText("Premise unproven")).toBeNull();
     expect(view.container.textContent).not.toMatch(/\bkilled\b/i);
+  });
+
+  it("names typed counterevidence in the killed candidate heading", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "Candidate A",
+            red_team_verdict: "killed",
+            red_team_findings: [{
+              claim: "The incumbent already ships the same workflow.",
+              kind: "verified_incumbent_overlap",
+            }],
+          }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    const heading = view.container.querySelector(".candidate-heading") as HTMLElement;
+    expect(within(heading).getByText("Incumbent overlap")).toBeInTheDocument();
+    expect(within(heading).queryByText("Premise unproven")).toBeNull();
+  });
+
+  it("does not mark a raw typed gap-only kill as premise-unproven", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "Candidate A",
+            red_team_verdict: "killed",
+            red_team_findings: [{
+              claim: "The review did not establish a reachable payer.",
+              kind: "evidence_gap",
+            }],
+          }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    const heading = view.container.querySelector(".candidate-heading") as HTMLElement;
+    expect(heading.querySelector(".premise-flag")).toBeNull();
+    expect(within(heading).queryByText("Premise unproven")).toBeNull();
+    expect(view.getByText(/Adversarial review: Evidence incomplete/)).toBeInTheDocument();
   });
 
   it("does not label positive calibration prose as a known concern", () => {

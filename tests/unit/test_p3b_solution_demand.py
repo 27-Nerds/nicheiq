@@ -5,9 +5,9 @@ The ratio-based keyword_demand_score ignores magnitude, so a thin-but-clean beac
 a log-scaled niche-relevant volume so demand tracks real magnitude, floored (not zeroed) for thin ideas.
 
 Note (flow-weakness fix plan 2026-08, correction 1): graded-and-empty solutions (empty
-validated_keywords) no longer reach this function at all — the flow emits demand=None,
-stamps demand_unmeasured, and skips the blend. The nrv==0 no-op below remains the guard
-for the residual case of a NON-empty validated set whose relevant volume sums to zero.
+validated_keywords) no longer reach this function at all — the flow emits measured demand=0
+and blends that zero. The nrv==0 no-op below remains the guard for the residual case of a
+NON-empty validated set whose relevant volume sums to zero.
 """
 
 import pytest
@@ -42,14 +42,14 @@ def test_falls_back_to_total_when_niche_relevant_missing():
 
 def test_noop_when_no_volume():
     assert demand_with_beachhead_magnitude(0.98, None, 0) == 0.98
-    assert demand_with_beachhead_magnitude(0.98, 0, 0) == 0.98
+    assert demand_with_beachhead_magnitude(0.98, 0, 0) == 0.0
 
 
-def test_explicit_zero_nrv_gets_no_magnitude_credit():
+def test_explicit_zero_nrv_is_no_demand_evidence():
     """Bug-fix 2026-07-02 (cottage-food run): nrv == 0 means graded-and-NOTHING-passed — total_volume is
-    then the drifted category number and must NOT be blended (it lifted demand 0.88→0.94 live). Neutral
-    no-op instead."""
-    assert demand_with_beachhead_magnitude(0.88, niche_relevant_volume=0, total_volume=1_628_480) == 0.88
+    then the drifted category number and must NOT be blended (it lifted demand 0.88→0.94 live).
+    A ratio derived from those irrelevant terms is not independent evidence either."""
+    assert demand_with_beachhead_magnitude(0.88, niche_relevant_volume=0, total_volume=1_628_480) == 0.0
 
 
 def test_none_nrv_still_falls_back_to_total():
