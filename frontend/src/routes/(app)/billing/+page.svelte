@@ -20,6 +20,7 @@
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import AccountSidebar from "$lib/components/layout/AccountSidebar.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import HelpLink from "$lib/components/ui/HelpLink.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
   import PlanCard from "$lib/components/ui/PlanCard.svelte";
   import StatStrip, {
@@ -773,6 +774,7 @@
   <section class="wb-section wb-section--colophon">
     <div class="wb-head">
       <h2 class="wb-title">How credits work</h2>
+      <HelpLink href="/help/credits-and-refunds" label="Charges and refunds" />
     </div>
     <div class="grid gap-6 sm:grid-cols-3 mt-2">
       <div class="flex items-start gap-3">

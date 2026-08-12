@@ -1586,12 +1586,9 @@
   }
 
   .chat-head {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    /* Wraps rather than overflows: in narrow hosts (the 24rem "Ask analyst"
-       sheet) the identity block and the question counter cannot share a line,
-       and without wrapping the grounding chip overran the counter's digit. */
-    flex-wrap: wrap;
     gap: var(--space-3);
     min-height: 3.5rem;
     padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
@@ -1631,7 +1628,6 @@
     display: grid;
     gap: 0.125rem;
     min-width: 0;
-    margin-right: auto;
   }
   .chat-title-line {
     display: flex;
@@ -1684,7 +1680,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    margin-left: var(--space-1-5);
+    justify-self: end;
   }
   .chat-head-btn {
     display: inline-flex;
@@ -2760,15 +2756,18 @@
 
   @media (max-width: 420px) {
     .chat-head {
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: var(--space-2);
       padding-left: var(--space-3);
+    }
+    .chat-head-count {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-self: end;
     }
     .chat-subtitle,
     .chat-head-count-noun {
       display: none;
-    }
-    .chat-head-actions {
-      margin-left: 0;
     }
     .chat-thread--main .entry,
     .chat-thread--main .chat-status,

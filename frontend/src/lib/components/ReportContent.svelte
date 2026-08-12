@@ -20,6 +20,7 @@
   import AlternativesSection from "$lib/components/sections/AlternativesSection.svelte";
   import EvidenceAppendix from "$lib/components/sections/EvidenceAppendix.svelte";
   import CoverageNotes from "$lib/components/CoverageNotes.svelte";
+  import HelpLink from "$lib/components/ui/HelpLink.svelte";
   import {
     humanizeReportProse,
     leadSentence,
@@ -584,6 +585,12 @@
             </a>
           </div>
         {/if}
+        <div class="report-help" aria-label="Related help">
+          <HelpLink
+            href="/help/reading-and-sharing-reports"
+            label="Guide to reading and sharing reports"
+          />
+        </div>
       </div>
 
     </header>
@@ -1494,6 +1501,11 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-text-muted);
+  }
+
+  .report-help {
+    display: flex;
+    margin-top: var(--space-3);
   }
 
   /* Working-name eyebrow — record-line recipe (DESIGN_SYSTEM §2): the run's slug

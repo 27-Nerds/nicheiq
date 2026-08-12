@@ -17,6 +17,7 @@
   } from "lucide-svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import HelpLink from "$lib/components/ui/HelpLink.svelte";
   import EntryModeCards from "$lib/components/new-research/EntryModeCards.svelte";
   import CatalogTrendingGrid from "$lib/components/new-research/CatalogTrendingGrid.svelte";
   import ProcessTimeline from "$lib/components/new-research/ProcessTimeline.svelte";
@@ -52,6 +53,15 @@
   let entryMode = $state<EntryMode>("idea");
   let chatMode = $state(false);
   const isValidateMode = $derived(entryMode === "validate_idea");
+  const entryHelp = $derived.by(() => {
+    if (entryMode === "validate_idea") {
+      return { href: "/help/idea-check", label: "How the idea check works" };
+    }
+    if (entryMode === "audience") {
+      return { href: "/help/starting-research", label: "How to choose a starting point" };
+    }
+    return { href: "/help/choosing-a-niche", label: "How to write a useful niche brief" };
+  });
   const maxNicheLength = $derived(isValidateMode ? VALIDATE_NICHE_MAX : STANDARD_NICHE_MAX);
   const minNicheLength = $derived(isValidateMode ? VALIDATE_NICHE_MIN : STANDARD_NICHE_MIN);
   // Guided research is not available for idea checks (the backend rejects the combination).
@@ -672,6 +682,9 @@
     <div class="mode-section max-w-3xl mx-auto mb-6 px-4 sm:px-6">
       <SectionDivider label="Starting point" />
       <EntryModeCards selected={entryMode} onselect={(mode) => entryMode = mode} />
+      <div class="mt-2 flex justify-end">
+        <HelpLink href={entryHelp.href} label={entryHelp.label} />
+      </div>
     </div>
 
     <!-- Focused form area -->

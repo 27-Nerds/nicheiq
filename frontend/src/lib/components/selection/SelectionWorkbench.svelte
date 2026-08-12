@@ -102,6 +102,7 @@
     type IdeaReference,
   } from "$lib/utils/ideaReferences";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import HelpLink from "$lib/components/ui/HelpLink.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import DecisionBrief from "$lib/components/selection/DecisionBrief.svelte";
@@ -3196,6 +3197,13 @@
           Open a row for full detail and vote for the idea you like most.
         </p>
       {/if}
+      <nav class="context-help-row" aria-label="Related help">
+        <HelpLink href="/help/idea-generation" label="How ideas are generated" />
+        <HelpLink href="/help/methodology" label="How scoring works" />
+        {#if interactive}
+          <HelpLink href="/help/deep-research" label="What Deep Research checks" />
+        {/if}
+      </nav>
     </div>
     {#if !interactive}
       <aside class="cmd-status cmd-status--votes" aria-label="Vote status">
@@ -3580,6 +3588,7 @@
 
         <!-- Score -->
         <span class="cell-metric metric-score" role="cell">
+          <span class="metric-score-label">Score</span>
           <span class="metric-num" style:color={scoreColor(m.score)}>
             {m.score == null ? "--" : Math.round(m.score * 100)}
           </span>
@@ -4288,6 +4297,7 @@
      table, then stacked a wall of chat into the page below 1440px.) */
   .workbench-shell {
     display: block;
+    container: selection-workbench / inline-size;
     /* The dock is itself inset by --space-4 from the viewport bottom, so reserving only
        its height left the last row's pain line flush against (and under) its shadow.
        Clear the dock's own inset as well, plus a gap. */
@@ -4482,6 +4492,13 @@
   }
   .cmd-coverage {
     margin: 0.3rem 0 0;
+  }
+  .context-help-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-4);
+    margin-top: var(--space-1);
   }
   /* Inherits the record line's mono/uppercase treatment so the tally reads as part of
      the stat run, not a button parked in it — only the underline marks it as openable. */
@@ -5696,6 +5713,7 @@
   .fit-warning { color: var(--color-text-primary); }
   .fit-muted { color: var(--color-text-muted); }
   .metric-score { align-items: flex-end; }
+  .metric-score-label { display: none; }
   .metric-score .metric-num { font-size: var(--text-base); }
   .metric-build-num {
     max-width: 5.8rem;
@@ -5792,6 +5810,127 @@
     color: var(--color-text-muted);
     cursor: wait;
   }
+
+  /* The Analyst dock narrows the workbench without narrowing the viewport. Key the
+     ranked list to the space it actually owns so its desktop metric columns never
+     crush the idea title. This same compact row also serves ordinary small screens. */
+  @container selection-workbench (max-width: 56rem) {
+    .opp-row {
+      grid-template-columns: 2rem minmax(0, 1fr) 4.25rem;
+      grid-template-areas:
+        "rank title score"
+        "pick pick pick";
+      gap: var(--space-3) var(--space-3);
+      padding: var(--space-4);
+      border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 54%, transparent);
+      border-radius: var(--radius-lg, 0.875rem);
+      background: var(--color-bg-elevated);
+    }
+    .opp-list--grouped .opp-row {
+      grid-template-columns: minmax(0, 1fr) 4.25rem;
+      grid-template-areas:
+        "title score"
+        "pick pick";
+    }
+    .opp-list {
+      gap: var(--space-2);
+      overflow: visible;
+      background: transparent;
+      border: 0;
+      border-radius: var(--radius-none);
+      box-shadow: none;
+    }
+    .opp-row-head { display: none; }
+    .cell-metric.metric-fit,
+    .cell-metric:not(.metric-score):not(.metric-fit),
+    .cell-metric.metric-build {
+      display: none;
+    }
+    .cell-rank {
+      grid-area: rank;
+      align-self: start;
+      padding-top: var(--space-1);
+      text-align: left;
+    }
+    .cell-select {
+      grid-area: pick;
+      justify-self: end;
+      width: auto;
+    }
+    .cell-title { grid-area: title; }
+    .metric-score {
+      grid-area: score;
+      align-self: start;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: var(--space-1);
+    }
+    .metric-score-label {
+      display: block;
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .metric-score .metric-num { font-size: var(--text-lg); }
+    .opp-summary {
+      margin-top: var(--space-1);
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+    .mobile-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2) 0;
+      margin-top: var(--space-2);
+      color: var(--color-text-muted);
+      font-size: var(--text-11);
+      line-height: 1.2;
+    }
+    .mobile-metrics > span {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-1);
+      margin-right: var(--space-3);
+      padding-right: var(--space-3);
+      border-right: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+    .mobile-metrics > span:last-child {
+      margin-right: 0;
+      padding-right: 0;
+      border-right: 0;
+    }
+    .mobile-metrics strong {
+      color: var(--color-text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--text-13);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .opp-evidence { margin-top: var(--space-1); }
+    .opp-tags { margin-top: var(--space-2); }
+    .tag { max-width: 13rem; }
+    .select-control {
+      width: auto;
+      min-width: 7.75rem;
+      min-height: 2.25rem;
+      padding-inline: var(--space-3);
+      font-size: var(--text-sm);
+    }
+    .select-control.maxed { min-width: 13.5rem; }
+    /* Visitor mode: preserve a comfortable vote target without turning the whole
+       card footer into another bordered surface. */
+    .cell-action :global(> div) { width: auto; }
+    .cell-action :global(button) {
+      width: auto;
+      min-height: 2.25rem;
+    }
+  }
+
   /* ── Responsive ── */
   @media (max-width: 859px) {
     .workbench { padding: var(--space-3) var(--space-3) var(--space-5); }
@@ -5838,89 +5977,6 @@
     }
     .variant-note-action {
       width: 100%;
-    }
-    .opp-row {
-      grid-template-columns: 2rem minmax(0, 1fr) 4.5rem;
-      grid-template-areas:
-        "rank title score"
-        "pick pick pick";
-      gap: 0.7rem 0.75rem;
-      padding: 0.92rem;
-      border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 54%, transparent);
-      border-radius: var(--radius-lg, 0.875rem);
-      background: var(--color-bg-elevated);
-    }
-    .opp-list--grouped .opp-row {
-      grid-template-columns: minmax(0, 1fr) 4.5rem;
-      grid-template-areas:
-        "title score"
-        "pick pick";
-    }
-    .opp-list {
-      gap: 0.55rem;
-      overflow: visible;
-      background: transparent;
-      border: 0;
-      border-radius: var(--radius-none);
-      box-shadow: none;
-    }
-    .opp-row-head { display: none; }
-    .cell-metric.metric-fit,
-    .cell-metric:not(.metric-score):not(.metric-fit),
-    .cell-metric.metric-build {
-      display: none;
-    }
-    .cell-rank {
-      grid-area: rank;
-      align-self: start;
-      padding-top: 0.1rem;
-      text-align: left;
-    }
-    .cell-select {
-      grid-area: pick;
-    }
-    .cell-title {
-      grid-area: title;
-    }
-    .metric-score {
-      grid-area: score;
-      align-self: start;
-    }
-    .metric-score { align-items: flex-end; }
-    .opp-summary {
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-    }
-    .mobile-metrics {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.28rem 0.56rem;
-      margin-top: 0.08rem;
-      color: var(--color-text-muted);
-      font-size: var(--text-11);
-      line-height: 1.2;
-    }
-    .mobile-metrics strong {
-      color: var(--color-text-secondary);
-      font-family: var(--font-mono);
-      font-weight: 800;
-      font-variant-numeric: tabular-nums;
-    }
-    .tag { max-width: 13rem; }
-    .select-control {
-      width: 100%;
-      min-height: 2.25rem;
-      font-size: var(--text-sm);
-    }
-    /* visitor mode: anchor the vote pill as a full-width tap target (same
-       affordance as the owner's full-width Shortlist control above) */
-    .cell-action :global(> div) {
-      width: 100%;
-    }
-    .cell-action :global(button) {
-      width: 100%;
-      justify-content: center;
-      min-height: 2.25rem;
     }
   }
 
