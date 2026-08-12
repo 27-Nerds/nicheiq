@@ -27,6 +27,7 @@ COPY backend/tsconfig.json ./
 # Python contract + authoritative migration runner. PYTHONPATH points at the package root.
 COPY src/nicheiq ./python-src/nicheiq/
 COPY scripts/backfill_paying_wallet_assets.py ./maintenance/backfill_paying_wallet_assets.py
+COPY scripts/backfill_idea_validation_outcomes.py ./maintenance/backfill_idea_validation_outcomes.py
 ENV PYTHONPATH=/app/python-src
 
 # Copy maintenance scripts (run via `docker compose exec api npm run <script>`),
