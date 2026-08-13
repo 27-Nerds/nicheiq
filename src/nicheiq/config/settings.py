@@ -427,7 +427,19 @@ class Settings(BaseSettings):
             "complaints). Match uses PainPoint.evidence_segments (provenance) else affected_segments "
             "overlap with resolved_primary_audience/user_target_audience; requires a REAL overlap — no "
             "stated audience or no match = no-op. 0 disables (byte-identical legacy). A/B: "
-            "scripts/stated_audience_floor_ab.py. env DIVERGENT_STATED_AUDIENCE_FLOOR_COUNT."
+            "scripts/stated_audience_floor_ab.py. env DIVERGENT_STATED_AUDIENCE_FLOOR_COUNT. "
+            "NOTE (2026-08-13): this count is now a LOWER BOUND, not the whole mechanism. When the "
+            "stated audience RESOLVES to one of the run's audience segments (resolved_primary_audience "
+            "equals a segment_name verbatim — see research_flow._resolve_primary_audience), a FINAL "
+            "round (`_top_up_stated_share`, after every other allocation round) tops that segment up "
+            "toward its PROPORTIONAL SHARE, ceil(target/distinct_segments) — the same number "
+            "per_seg_cap already caps every other segment at. Raising THIS count is not a substitute: "
+            "measured on run bab9f696 (audience 'local businesses in London'), 1 -> 2 -> 3 left the "
+            "per-segment distribution completely unchanged (1/4/2/1) and 4 only started demoting a "
+            "third segment. Effective share = max(this count, per_seg_cap), and it is BEST-EFFORT: "
+            "the top-up only rewrites a surplus cell (segment keeps another, pain is not pinned or "
+            "floor-guaranteed, family keeps a cell, theme coverage does not shrink), so a prior "
+            "round's guarantee always outranks it. 0 still disables the whole mechanism."
         ),
     )
     synthesis_max_bundles: int = Field(

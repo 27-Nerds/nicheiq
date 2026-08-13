@@ -174,6 +174,19 @@ _SUPPORTING_ROUTE_FIELDS = (
     "data_acquisition_notes",
 )
 
+# Fields a REQUIRED-route assertion may be minted FROM (see
+# `_required_external_route_assertions`). Deliberately excludes
+# `data_acquisition_notes`: by its model contract that field is a DISCLOSURE — "access
+# model + rough cost; for 'unofficial'/'paywalled' name the tool + the ToS/cost risk" —
+# so honest cost/ToS prose there ("… requires paid OpenAI and Anthropic API access, …
+# api pricing, rate limits, and terms must be monitored") was being read as the product
+# PROMISING a new core dependency, and killed a live "Check my idea" run at the birth
+# identity lock. Matches this module's own contract: "a source mentioned only in
+# data/technical fields … is not product identity". The field stays in
+# `_SUPPORTING_ROUTE_FIELDS` so it can still say whether an ALREADY-declared route is
+# required or optional — it just cannot invent one.
+_ROUTE_ASSERTION_FIELDS = (*_CORE_PROMISE_FIELDS, "technical_approach")
+
 _ROUTE_ACCESS_WORDS = (
     "api credential credentials customer external key provided supplied third party "
     "token uploaded user clinic"
@@ -552,7 +565,7 @@ def _required_external_route_assertions(candidate: Any) -> list[str]:
     import re
 
     assertions: list[str] = []
-    fields = dict.fromkeys((*_CORE_PROMISE_FIELDS, *_SUPPORTING_ROUTE_FIELDS))
+    fields = dict.fromkeys(_ROUTE_ASSERTION_FIELDS)
     external_cues = tuple(cue.strip() for cue in _EXTERNAL_ROUTE_CUES)
     for field in fields:
         text = _flatten(getattr(candidate, field, None))

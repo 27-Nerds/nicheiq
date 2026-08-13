@@ -643,3 +643,45 @@ def test_inferred_and_termless_clauses_are_skipped():
     # audience is inferred -> skipped; every other clause has no terms -> skipped.
     assert seed_clause_drift(terms, cand, inferred_fields=["audience"]) == []
     assert seed_clause_drift(None, cand) == []
+
+
+def test_cost_and_tos_disclosure_notes_cannot_mint_a_core_dependency():
+    """Live d213f348 ("Check my idea", London AI-visibility seed): refinement fell back to a
+    stub, `_repair_blank_idea_fields` filled the blanks, and its `data_acquisition_notes`
+    prose was read as the product PROMISING a new core route — killing the run at the birth
+    identity lock. That field's model contract is a disclosure: "access model + rough cost;
+    for 'unofficial'/'paywalled' name the tool + the ToS/cost risk". Naming a cost or ToS
+    risk there is the field working, not an identity violation."""
+    cand = _candidate(
+        data_acquisition_notes=(
+            "AI response sampling requires paid OpenAI and Anthropic API access, while "
+            "Google Business Profile data requires owner authorization, api pricing, rate "
+            "limits, model changes, and terms must be monitored."
+        ),
+    )
+    assert unpitched_core_dependencies(
+        "Ai visibility for local businesses in London. Solve the problem what Ai models "
+        "answer about them.",
+        cand,
+    ) == []
+
+
+def test_core_promise_copy_still_mints_an_unpitched_dependency():
+    """The narrowing is scoped to the disclosure field: the SAME sentence in buyer-facing
+    copy is still a required external route the pitch never made."""
+    cand = _candidate(
+        description=(
+            "AI response sampling requires paid OpenAI and Anthropic API access."
+        ),
+    )
+    assert unpitched_core_dependencies(
+        "Ai visibility for local businesses in London.", cand,
+    ) != []
+
+
+def test_technical_approach_still_mints_an_unpitched_dependency():
+    """`technical_approach` describes the mechanism, so it keeps minting assertions."""
+    cand = _candidate(
+        technical_approach="Every match requires the USDA APHIS accreditation directory.",
+    )
+    assert unpitched_core_dependencies("Reconcile uploaded invoices", cand) != []

@@ -14,7 +14,7 @@
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
   import { IDEA_ICON, PAIN_ICON } from "$lib/config/entity-icons";
-  import { getVisibleStageProgress } from "$lib/utils/stages";
+  import { getVisibleStageProgress, VISIBLE_TOTAL_STAGES } from "$lib/utils/stages";
   import type { SelectionDraftItem, SolutionPreview } from "$lib/types/job";
 
   interface Props {
@@ -56,7 +56,6 @@
     niche = "",
     entryMode = null,
     userEmail = null,
-    progressPercent = 0,
     stagesCompleted = 0,
     totalStages = 0,
     currentStage = 0,
@@ -107,10 +106,11 @@
   });
   const isIdeaCheck = $derived(entryMode === "validate_idea");
 
-  const pct = $derived(Math.round(progressPercent ?? 0));
+  const DISCOVERY_VISIBLE_STAGES = 4;
+  const DEEP_RESEARCH_VISIBLE_STAGES = VISIBLE_TOTAL_STAGES - DISCOVERY_VISIBLE_STAGES;
 
-  // Same hidden-stage adjustment as the dashboard's in-progress rows and the job
-  // page, so every surface shows identical "Stage N / M" numbers for the same job.
+  // Start from the shared end-to-end projection used by other progress surfaces;
+  // this focused screen converts it to phase-local progress immediately below.
   const stageProgress = $derived(
     getVisibleStageProgress({
       stagesCompleted,
@@ -120,6 +120,24 @@
       status: jobStatus,
     }),
   );
+  // This screen presents Research and Deep Research as separate phases, so its
+  // count and percentage must be phase-local. The shared projection has 14
+  // visible steps end to end: 4 in Research (stages 3 + 4 are one public step)
+  // and 10 in Deep Research (the optional landing-page build is excluded).
+  const phaseStageProgress = $derived.by(() => {
+    const offset = isDiscovery ? 0 : DISCOVERY_VISIBLE_STAGES;
+    const total = isDiscovery ? DISCOVERY_VISIBLE_STAGES : DEEP_RESEARCH_VISIBLE_STAGES;
+    return {
+      completed: Math.max(0, Math.min(total, stageProgress.completed - offset)),
+      current: Math.max(1, Math.min(total, stageProgress.current - offset)),
+      total,
+      label: isDiscovery ? "Research" : "Deep Research",
+    };
+  });
+  const phasePct = $derived.by(() => {
+    if (isQueued) return 0;
+    return Math.round((phaseStageProgress.completed / phaseStageProgress.total) * 100);
+  });
   const stageSubprogress = $derived.by(() => {
     if (currentStage !== 5 || !stageProgress.currentName || !stageArtifact) return null;
     if (
@@ -142,8 +160,8 @@
         ? `Queue position ${queuePosition}`
         : "The run is queued and will start automatically."
       : stageProgress.currentCallbackIsComplete || !stageProgress.currentName
-        ? `${stageProgress.completed} of ${stageProgress.total} stages complete`
-        : `Stage ${stageProgress.current} of ${stageProgress.total}`,
+        ? `${phaseStageProgress.label}: ${phaseStageProgress.completed} of ${phaseStageProgress.total} steps complete`
+        : `${phaseStageProgress.label} step ${phaseStageProgress.current} of ${phaseStageProgress.total}`,
   );
 
   // Purchased lifecycle only. "Build" is an optional post-report deliverable, not
@@ -165,7 +183,7 @@
           : "active"
         : "pending";
   const phaseFill = (i: number): number =>
-    i < activePhase ? 100 : i === activePhase && !isQueued ? Math.max(pct, 4) : 0;
+    i < activePhase ? 100 : i === activePhase && !isQueued ? Math.max(phasePct, 4) : 0;
 
   // Precompute scaled severity so the template doesn't call scaleSeverity twice.
   const painRows = $derived(
@@ -203,41 +221,50 @@
       </p>
     {/if}
 
-    <p class="sr-only" role="status" aria-live="polite">{liveTitle}. {liveDetail}.</p>
-    <div class="rp-live">
-      <span class="rp-live-mark" data-state={isQueued ? "queued" : "running"} aria-hidden="true"></span>
-      <span class="rp-live-copy">
-        <strong>{liveTitle}</strong>
-        <span>{liveDetail}</span>
-      </span>
-      <span class="rp-live-value">{isQueued ? "Queued" : `${pct}%`}</span>
-    </div>
-
-    {#if connectionState !== "live"}
-      <div class="rp-connection" role="status">
-        <span>
-          {connectionState === "reconnecting"
-            ? "Reconnecting live updates…"
-            : "Live updates paused. The research continues in the background."}
+    <div class="rp-status-panel">
+      <p class="sr-only" role="status" aria-live="polite">
+        {isQueued ? `${liveTitle}. ${liveDetail}.` : `${liveDetail}. Current activity: ${liveTitle}.`}
+      </p>
+      <div class="rp-live">
+        <span class="rp-live-mark" data-state={isQueued ? "queued" : "running"} aria-hidden="true"></span>
+        <span class="rp-live-copy">
+          {#if isQueued}
+            <strong>{liveTitle}</strong>
+            <span>{liveDetail}</span>
+          {:else}
+            <span class="rp-live-context">{liveDetail}</span>
+            <strong>{liveTitle}</strong>
+          {/if}
         </span>
-        {#if connectionState === "paused" && onRefresh}
-          <button type="button" onclick={onRefresh}>Refresh status</button>
-        {/if}
+        <span class="rp-live-value">{isQueued ? "Queued" : `${phasePct}%`}</span>
       </div>
-    {/if}
 
-    <div class="rp-track" role="group" aria-label="Research progress">
-      {#each phases as label, i}
-        <div class="rp-seg" data-state={phaseState(i)}>
-          <div class="rp-seg-meta">
-            <span class="rp-seg-idx">{String(i + 1).padStart(2, "0")}</span>
-            <span class="rp-seg-label">{label}</span>
-          </div>
-          <div class="rp-seg-bar">
-            <div class="rp-seg-fill" style="width:{phaseFill(i)}%"></div>
-          </div>
+      {#if connectionState !== "live"}
+        <div class="rp-connection" role="status">
+          <span>
+            {connectionState === "reconnecting"
+              ? "Reconnecting live updates…"
+              : "Live updates paused. The research continues in the background."}
+          </span>
+          {#if connectionState === "paused" && onRefresh}
+            <button type="button" onclick={onRefresh}>Refresh status</button>
+          {/if}
         </div>
-      {/each}
+      {/if}
+
+      <div class="rp-track" role="group" aria-label="Research progress">
+        {#each phases as label, i}
+          <div class="rp-seg" data-state={phaseState(i)}>
+            <div class="rp-seg-meta">
+              <span class="rp-seg-idx">{String(i + 1).padStart(2, "0")}</span>
+              <span class="rp-seg-label">{label}</span>
+            </div>
+            <div class="rp-seg-bar">
+              <div class="rp-seg-fill" style="width:{phaseFill(i)}%"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
     </div>
 
     <!-- The stage line that used to sit here restated what `.rp-live` already shows
@@ -346,7 +373,8 @@
 
 <style>
   .research-progress {
-    max-width: 640px;
+    width: 100%;
+    max-width: none;
     margin: 0 auto;
   }
   .research-progress--embedded {
@@ -432,6 +460,10 @@
     text-wrap: pretty;
   }
 
+  .rp-status-panel {
+    display: contents;
+  }
+
   /* Queue/execution truth from the job record, not an ambiguous spinner. */
   .rp-live {
     display: grid;
@@ -477,6 +509,13 @@
     font-size: var(--text-11);
     color: var(--color-text-secondary);
   }
+  .rp-live-copy .rp-live-context {
+    font-family: var(--font-mono);
+    font-size: var(--text-10);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
   .rp-live-value {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
@@ -504,6 +543,21 @@
     font: inherit;
     font-weight: 700;
     cursor: pointer;
+    transition:
+      border-color var(--duration-fast) ease,
+      color var(--duration-fast) ease,
+      transform var(--duration-fast) ease;
+  }
+  .rp-connection button:hover {
+    border-color: var(--color-border-accent);
+    color: var(--color-accent-dark);
+  }
+  .rp-connection button:active {
+    transform: translateY(1px);
+  }
+  .rp-connection button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   /* ── Pipeline track (Discovery / Deep Research / Build) ── */
@@ -732,6 +786,11 @@
   .rp-row:hover {
     background: var(--color-bg-surface);
   }
+  .rp-row:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    background: var(--color-bg-surface);
+  }
   .rp-row-title {
     font-family: var(--font-display);
     font-size: var(--text-base);
@@ -760,6 +819,177 @@
   }
   .rp-row:hover .rp-row-meta :global(.rp-row-arrow) {
     color: var(--color-accent);
+  }
+
+  /* The standalone job page gives this component a 56rem canvas. On wide screens,
+     use that room for an editorial lead + a compact live-status rail instead of
+     nesting a 40rem page and 30rem progress blocks inside it. Embedded research
+     owns a separate card treatment and intentionally keeps its existing layout. */
+  @media (min-width: 840px) {
+    .research-progress:not(.research-progress--embedded) .rp-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
+      grid-template-areas:
+        "kicker status"
+        "title status"
+        "provenance status"
+        "method status"
+        "body status"
+        "actions status";
+      column-gap: var(--space-12);
+      align-items: start;
+      padding: clamp(var(--space-10), 5vw, var(--space-16)) 0 var(--space-12);
+      text-align: left;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-kicker {
+      grid-area: kicker;
+      margin-bottom: var(--space-3);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-niche {
+      grid-area: title;
+      max-width: 23ch;
+      margin-bottom: var(--space-4);
+      font-size: clamp(var(--text-4xl), 2.5vw, 2.25rem);
+      line-height: 1.08;
+      letter-spacing: var(--tracking-tight);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-provenance {
+      grid-area: provenance;
+      justify-self: start;
+      margin-bottom: var(--space-5);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-method {
+      grid-area: method;
+      max-width: 58ch;
+      margin: 0 0 var(--space-6);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-status-panel {
+      grid-area: status;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+      min-width: 0;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-live {
+      max-width: none;
+      margin: 0;
+      padding: var(--space-4);
+      background: color-mix(in srgb, var(--color-bg-surface) 88%, transparent);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-connection {
+      margin: calc(-1 * var(--space-3)) 0 0;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-track {
+      flex-direction: column;
+      gap: 0;
+      max-width: none;
+      margin: 0;
+      padding-inline: var(--space-1);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg {
+      position: relative;
+      display: grid;
+      grid-template-columns: var(--space-4) minmax(0, 1fr);
+      min-height: var(--space-12);
+      gap: var(--space-3);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg:last-child {
+      min-height: auto;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg::before {
+      content: "";
+      grid-column: 1;
+      align-self: start;
+      width: var(--space-2);
+      height: var(--space-2);
+      margin-top: 0.125rem;
+      border: 1px solid var(--color-border-emphasis);
+      border-radius: var(--radius-full);
+      background: var(--color-bg-elevated);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 0.875rem;
+      bottom: 0.25rem;
+      left: calc(var(--space-1) - 0.5px);
+      width: 1px;
+      background: color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg[data-state="active"]::before,
+    .research-progress:not(.research-progress--embedded) .rp-seg[data-state="done"]::before {
+      border-color: var(--color-accent);
+      background: var(--color-accent);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg[data-state="active"]::before {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 12%, transparent);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg[data-state="done"]::after {
+      background: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg-meta {
+      grid-column: 2;
+      align-self: start;
+      min-width: 0;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg-label {
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-seg-bar {
+      display: none;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-body {
+      grid-area: body;
+      max-width: 58ch;
+      margin-bottom: var(--space-6);
+      font-size: var(--text-md);
+      text-wrap: pretty;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-actions {
+      grid-area: actions;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-nav {
+      justify-content: flex-start;
+      gap: var(--space-5);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-nav :global(.btn-secondary) {
+      min-height: var(--space-10);
+      padding: var(--space-2) var(--space-1);
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      box-shadow: none;
+      color: var(--color-text-secondary);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-nav :global(.btn-secondary:hover) {
+      background: transparent;
+      color: var(--color-accent-dark);
+    }
+    .research-progress:not(.research-progress--embedded) .rp-cancel-gate {
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-cancel-gate :global(.gate-trigger) {
+      min-width: 0;
+      min-height: var(--space-8);
+      padding: 0 var(--space-1);
+      border: 0;
+      border-radius: var(--radius-sm);
+      color: var(--color-text-muted);
+      font-weight: 600;
+      text-decoration: underline;
+      text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+      text-underline-offset: 0.2em;
+    }
+    .research-progress:not(.research-progress--embedded) .rp-cancel-gate :global(.gate-trigger:hover:not(:disabled)) {
+      color: var(--color-error-text);
+      text-decoration-color: currentColor;
+    }
   }
 
   @media (max-width: 480px) {

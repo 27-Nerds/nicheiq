@@ -123,9 +123,8 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
       },
     });
 
-    // ONE reading of the stage, in the live block. A second line under the progress bar
-    // used to restate it as "Stage 2 / 14 · N%" — the same fact twice, ~12rem apart.
-    expect(view.getByText("Stage 2 of 14")).toBeInTheDocument();
+    // The focused screen reports progress within Research, not across later Deep Research.
+    expect(view.getByText("Research step 2 of 4")).toBeInTheDocument();
     expect(view.queryByText(/Stage 2 \/ 14/)).toBeNull();
     expect(view.queryByText("Build")).toBeNull();
     expect(view.getByText("Pick ideas")).toBeInTheDocument();
@@ -145,7 +144,7 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
 
     expect(view.queryByText("Pain Point Analysis")).toBeNull();
     expect(view.getByText("Research worker active")).toBeInTheDocument();
-    expect(view.getByText("2 of 14 stages complete")).toBeInTheDocument();
+    expect(view.getByText("Research: 2 of 4 steps complete")).toBeInTheDocument();
   });
 
   it("folds the hidden audience stage into the combined public stage", () => {
@@ -162,7 +161,7 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
 
     expect(view.queryByText("Audience Mapping")).toBeNull();
     expect(view.getByText("Pain Point & Audience Analysis")).toBeInTheDocument();
-    expect(view.getByText("Stage 3 of 14")).toBeInTheDocument();
+    expect(view.getByText("Research step 3 of 4")).toBeInTheDocument();
   });
 
   it("uses neutral progress when a callback has no coherent stage number", () => {
@@ -178,7 +177,7 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
 
     expect(view.queryByText("Pain Point Analysis")).toBeNull();
     expect(view.getByText("Research worker active")).toBeInTheDocument();
-    expect(view.getByText("3 of 14 stages complete")).toBeInTheDocument();
+    expect(view.getByText("Research: 3 of 4 steps complete")).toBeInTheDocument();
   });
 
   it("shows a persisted Stage 5 substep without changing the public stage count", () => {
@@ -193,13 +192,33 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
         stageArtifact: {
           type: "stage_subprogress",
           stage: 5,
-          code: "candidate_refinement",
-          label: "Refining candidate solutions",
+          code: "final_review",
+          label: "Running final quality review",
         },
       },
     });
 
-    expect(view.getByText("Refining candidate solutions")).toBeInTheDocument();
-    expect(view.getByText("Stage 4 of 14")).toBeInTheDocument();
+    expect(view.getByText("Running final quality review")).toBeInTheDocument();
+    expect(view.getByText("Research step 4 of 4")).toBeInTheDocument();
+    expect(view.getByText("75%")).toBeInTheDocument();
+    expect(view.getByRole("status")).toHaveTextContent(
+      "Research step 4 of 4. Current activity: Running final quality review.",
+    );
+  });
+
+  it("reports Deep Research progress within its ten-step phase", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "deep_research" as const,
+        jobStatus: "RUNNING_PHASE2",
+        currentStage: 5.5,
+        currentStageName: "Competitive Analysis",
+        stagesCompleted: 5,
+        totalStages: 16,
+      },
+    });
+
+    expect(view.getByText("Deep Research step 1 of 10")).toBeInTheDocument();
+    expect(view.getByText("0%")).toBeInTheDocument();
   });
 });

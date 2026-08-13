@@ -655,6 +655,76 @@ def _stated_audience_floor_pains(all_pains: list, stated_audience: str | None, c
                   key=lambda p: getattr(p, "severity_score", 0) or 0, reverse=True)[:count]
 
 
+def _resolved_audience_segment(stated_audience: str | None, segments: list):
+    """The ONE audience segment the user's stated audience resolved to, or None.
+
+    `research_flow._resolve_primary_audience` sets `niche_context.resolved_primary_audience` to a
+    verbatim `audience_segments[].segment_name` when the stated audience fuzzy-matched one
+    (>=0.40), and falls back to the RAW user string when nothing cleared. So normalized string
+    equality against the segment names is not a heuristic — it is exactly the "did resolution
+    succeed?" bit, read back. No match (raw-string fallback, community/too_broad scope, or a G2
+    pass that filtered the segment out) => None => every share rule below is a no-op.
+
+    Why not token overlap (the Round 0c pain matcher's basis): measured on the two 2026-08-13
+    reference runs it does not discriminate at segment level. Run bab9f696 ("local businesses in
+    London"): the stated string token-overlaps 3 of 5 segments (the target at Jaccard 1.00, but
+    also "Professional-Service Firms…" on the generic token 'service' and "Multi-Location…
+    Local AI Recommendations" on 'local'). Run e1b42702: the BEST token overlap is "Freelance
+    Developers Building Portfolio Apps for Passive Income" (3 tokens, 0.21) — a segment that
+    received ZERO cells — while the actual primary, "Solo Technical SaaS Founders…", ties at one
+    generic token ('product'). A share keyed on token overlap would have pushed cells INTO the
+    empty segment and OUT of the correctly-served one.
+    """
+    key = (stated_audience or "").strip().lower()
+    if not key:
+        return None
+    for s in segments:
+        if (getattr(s, "segment_name", "") or "").strip().lower() == key:
+            return s
+    return None
+
+
+def _pains_evidencing_segment(pains: list, segment) -> list:
+    """Pains carrying a REAL provenance edge to `segment`, severity-ordered.
+
+    Basis = `evidence_segments` when the pain HAS them, `affected_segments` only when it does
+    not — the same precedence `_stated_audience_floor_pains` uses, and the precedence
+    `pain_point.py` documents (`evidence_segments` = provenance-grounded, `affected_segments` =
+    lexical, `None` = not computed). A pain whose provenance WAS computed and points elsewhere
+    is not evidence for this segment, so it must not be read through its lexical field.
+
+    This replaced a UNION of the two fields (round 1, 2026-08-13). The union was justified as
+    unavoidable — "on run bab9f696 the segment appears in `evidence_segments` exactly once, so
+    under precedence any share above 1 is unreachable and the fix no-ops on the run that
+    motivated it". The premise is true and the conclusion is false: precedence keeps bab9f696's
+    1 -> 2, because the other union-only pains there were already placed by an earlier round.
+
+    THE PRICE, MEASURED (round 3 restated this — round 2's version of it said the whole-census
+    gain was "unchanged", which is true at one budget and not the other). Both arms over the
+    30-run census on production-shaped inputs
+    (`scripts/stated_audience_floor_ab.py --census`, union re-applied to `_linked` for the
+    contrast):
+
+        target=6:  union +12 cells / owner's ask 27 of 30 / 2 cells contradicting their own
+                             computed provenance
+                   precedence +11 cells / 26 of 30 / 0 contradicting
+        target=4:  identical on every metric (+8, 28 of 30, 0 contradicting)
+
+    So the union buys exactly one extra cell on one budget, and pays for it with two placements
+    that assert a segment their own provenance denies. That trade is the reason for the rule, and
+    it is a trade rather than a free win — do not restate it as costless.
+    """
+    name = (getattr(segment, "segment_name", "") or "").strip().lower()
+    if not name:
+        return []
+
+    def _linked(p):
+        segs = getattr(p, "evidence_segments", None) or getattr(p, "affected_segments", None) or []
+        return any(str(s).strip().lower() == name for s in segs)
+    return sorted([p for p in pains if _linked(p)],
+                  key=lambda p: getattr(p, "severity_score", 0) or 0, reverse=True)
+
+
 def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int,
                             relevance: dict | None = None, severity_floor: int = 0,
                             commercial_floor: int = 0, commercial_min_intent: float = 0.6,
@@ -663,7 +733,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
                             family_of: dict | None = None) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
-    One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
+    One cell per real (pain × segment) edge, de-clustered by BUILD-TIME per-segment
     AND per-theme caps (a dominant segment OR pain theme can't take more than ceil(target/distinct)
     cells before another segment/theme is tried — the theme cap prevents one theme's near-duplicate
     pains, e.g. 3 "verify peptide purity" variants, from monopolizing the pool), filling toward
@@ -679,7 +749,20 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
     doing one job, which is why a 9-generator budget still produced 3 product families. It
     re-allocates a FIXED budget: a family with no allocatable pain is left uncovered rather than
     manufactured, and every cell carries its intended `family_id` for telemetry. `family_of=None`
-    => byte-identical legacy allocation (no extra round, no stamp)."""
+    => byte-identical legacy allocation (no extra round, no stamp).
+
+    WHAT COUNTS AS AN EDGE IS NOT UNIFORM ACROSS THE ROUNDS (correction, round 3 2026-08-13 — this
+    docstring said "one cell per real (pain × AFFECTED-segment) edge", which the audience rounds
+    have not obeyed since Round 0c landed). The ordinary fill reads `affected_segments` only, via
+    `_candidate_segments_for_pain`. The two audience rounds read `evidence_segments` FIRST and fall
+    back to `affected_segments` only when a pain has none — Round 0c through
+    `_stated_audience_floor_pains` + `_pick(preferred_segment=...)`, Round 3 through
+    `_pains_evidencing_segment` + a direct `_take`. Both therefore bypass the candidate list, and a
+    pain whose PROVENANCE names a segment its lexical field does not can be placed there by an
+    audience round and by no other. That asymmetry is deliberate (provenance is the stronger claim,
+    see `_pains_evidencing_segment`) and it is measurable: over the 30-run census at both budgets
+    (`scripts/stated_audience_floor_ab.py --census`), 6 of the 19 cells the share adds sit on a
+    segment the pain's `affected_segments` never names."""
     if not pains:
         return []
     def _rel(p):
@@ -763,6 +846,11 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             family_count[fam] = family_count.get(fam, 0) + 1
 
     floored: set = set()
+    # PAIN-level guarantees only (severity / commercial / stated-audience floors and the
+    # pinned-title round): "THIS pain must hold a cell". Deliberately excludes Round 0e,
+    # whose guarantee is "this FAMILY must hold a cell" — that one is enforced on
+    # `family_count` instead, so a family with several cells can still spare one.
+    guaranteed: set = set()
     if severity_floor and segments:         # Round 0: guarantee the top-N pains by severity a cell
         # Cell selection is opportunity/theme/affinity driven, NOT severity — so a top-severity pain
         # with thin/unmatched segment affinity can be crowded out. Claim a cell for the most severe
@@ -776,6 +864,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             if s is not None:
                 _take(p, s)
                 floored.add(id(p))
+                guaranteed.add(id(p))
     if commercial_floor and segments:       # Round 0b: guarantee the top-K MONETIZABLE pains a cell
         # Mirrors the severity floor for commercial_intent (0-1 buying-signal strength) — the ranking
         # key never reads the raw scalar (only its opportunity_level bucket), so the most monetizable
@@ -792,6 +881,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             if s is not None:
                 _take(p, s)
                 floored.add(id(p))
+                guaranteed.add(id(p))
     if stated_audience_floor and stated_audience and segments:  # Round 0c: guarantee top-N pains
         # matching the user's STATED audience a cell. Mirrors the severity/commercial floors: the
         # ranking key never reads the stated audience, so a pain the user explicitly asked about
@@ -810,6 +900,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
 
         def _aud_match(p):
             return bool(_aud_match_segments(p))
+
         eligible = [p for p in pains if id(p) not in floored and _aud_match(p)]
         seg_by_name = {(getattr(s, "segment_name", "") or "").strip().lower(): s for s in segments}
         for p in sorted(eligible, key=_sev, reverse=True)[:stated_audience_floor]:
@@ -824,6 +915,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             if s is not None:
                 _take(p, s)
                 floored.add(id(p))
+                guaranteed.add(id(p))
     if pinned_titles:                        # Round 0d: G2 guided-mode gate — unconditional
         # guarantee (no threshold, unlike the floors above) for user-pinned pain titles. Mirrors
         # the severity floor's bypass-the-theme-cap placement; skips a pain already floored by an
@@ -838,6 +930,7 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
                 if s is not None:
                     _take(p, s)
                     floored.add(id(p))
+                    guaranteed.add(id(p))
     if family_of:                            # Round 0e: BUYER-JOB FAMILY coverage
         # The load-bearing diversity round (docs/DIVERSITY_DECISION_2026-08.md). One cell per
         # family, taken in `pains_ordered` order so each family is represented by its best-ranked
@@ -888,7 +981,212 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
                 relax_theme = True
                 continue
             break
+
+    # --- Round 3 (2026-08-13): the stated audience's proportional SHARE, as a bounded SWAP. ----
+    # `divergent_stated_audience_floor_count` is a MINIMUM: it guarantees N pains a cell and hands
+    # the rest of the budget to the audience-BLIND ranking, so the ONE segment the user asked for
+    # can finish below the equal share every other segment is CAPPED at. Measured on run bab9f696
+    # ("local businesses in London") it took 1 of 8 cells while a non-target segment took 4 — and
+    # raising that constant 1 -> 2 -> 3 changed the distribution by NOTHING (at 4 it began demoting
+    # a third segment while the stated audience still held 1). A bigger constant is not the fix.
+    #
+    # The share: `per_seg_cap` (ceil(target / distinct_segments)) is already every segment's
+    # proportional entitlement; the allocator just spends it as a ceiling only. For the resolved
+    # stated-audience segment it becomes a floor as well — scaling with the budget and with how
+    # many segments the run found.
+    #
+    # It does NOT categorically stop at what any other segment may take (correction, round 3): the
+    # effective share passed below is `max(stated_audience_floor, per_seg_cap)`, so a floor SETTING
+    # above `per_seg_cap` raises the stated segment past every other segment's cap — e.g.
+    # `divergent_stated_audience_floor_count=2` on a run where target <= distinct_segments makes
+    # per_seg_cap 1 and the share 2. At the shipped default of 1 that branch is unreachable
+    # (per_seg_cap is >= 1 by construction), which is why the claim this replaces ("never exceeding
+    # what any other segment may take") held in practice while being false in general. The setting's
+    # own docstring states the `max()` correctly; this comment did not. Behaviour is unchanged —
+    # the ceiling belongs to whoever raises the floor setting, deliberately.
+    #
+    # WHY IT RUNS LAST, AS A SWAP (round 2 rewrite, 2026-08-13). Round 1 of this work inserted the
+    # share UPSTREAM, between Round 0c and the pinned-title round, where it CLAIMED cells the later
+    # rounds were going to place. Measured over the 30-run census
+    # (`scripts/stated_audience_floor_ab.py --census`, target=6): buyer-job family coverage
+    # regressed in 2 runs, pain-theme coverage in 2, another segment was zeroed in 5 — and at a
+    # narrow budget (pain_target=4) it EVICTED a `pinned_titles` pain that legacy placed, in 75 of
+    # 463 pin probes across 9 runs, while the G2 pin is documented UNCONDITIONAL. Guarding the
+    # ENTRY condition could not have fixed any of that: the damage is all downstream of the entry.
+    #
+    # So the share no longer competes for budget. Every guarantee round has already run and been
+    # paid, and this one only REWRITES a cell that is provably surplus — its segment keeps another
+    # cell, its pain is neither pinned nor floor-guaranteed (or holds a second cell), its buyer-job
+    # family keeps a cell, and pain-theme coverage does not shrink. When no surplus cell exists the
+    # share simply stops short — it is a best-effort entitlement, and a prior round's guarantee
+    # outranks it. Census after the rewrite, re-run on production-shaped inputs (round 3): 0 family
+    # regressions, 0 theme-COUNT regressions, 0 zeroed segments, 0 total-cell losses, 0 pin
+    # evictions in 463 probes at BOTH budgets; the stated audience reaches its whole-budget
+    # entitlement in 26 of 30 runs at target=6 (15 legacy, +11 cells) and 28 of 30 at target=4
+    # (20 legacy, +8), and of the 4 shortfalls at target=6, 3 have no unused provenance-linked pain
+    # at all. (Rounds 1-2 read 27/30 at both budgets; the difference is the harness, which until
+    # round 3 passed `extra_pains=[]` and so never ran the widening loop — see the `--census`
+    # header in `scripts/stated_audience_floor_ab.py`. Not a behaviour change.)
+    #
+    # KNOWN HAZARD, recorded because it is real and not because it has been seen. Rounds 1-2
+    # claimed here that "cell COUNT is invariant (one out, one in), so no round can be starved by
+    # this one". That is FALSE for `_top_up_stated_share`'s FIRST loop, the spare-budget path,
+    # which APPENDS while `len(cells) < limit` and gives nothing up. Two consequences follow, and
+    # they are not the same:
+    #   * Inside one allocation the append is harmless — it fills budget nobody else could reach,
+    #     is bounded by `limit`, and removes no cell. The 400-shape sweep in
+    #     tests/unit/crews/test_stated_audience_share_cells.py finds 6 shapes where it fires and
+    #     0 where any arm loses a cell.
+    #   * Across `_build_partition_cells`'s WIDENING loop it is not provably harmless: that loop
+    #     calls `_alloc()` again per step and evaluates `_needs_widening()` on this round's output,
+    #     so a cell this round appended can change whether the next step widens at all. A case was
+    #     constructed through the real `_build_partition_cells` where the run loses a theme that
+    #     way — legacy 6 cells / 5 pains / 5 themes vs share 6 cells / 4 pains / 4 themes.
+    # It does NOT reproduce on production data: over 60 production-shaped census rows (30 runs ×
+    # 2 budgets) the widening loop ran in BOTH arms on 60/60 and took the SAME number of steps in
+    # both on 60/60, with 0 theme-count regressions. Status: real in mechanism, unobserved in
+    # practice. Do not delete this note as "already handled" — nothing handles it.
+    #
+    # It also bounds the OUTCOME, not just the entry. Round 1 gated on a pre-computed audience-blind
+    # pass and then let the ordinary cap-relaxation stack on top of the topped-up segment: youth
+    # soccer run f7863089 went 1 -> 3 against a share of 2 and zeroed "Youth Baseball". Nothing runs
+    # after this round, and it stops at `share`, so the final count is share-bounded by construction.
+    if stated_audience_floor and stated_audience and segments:
+        stated_seg = _resolved_audience_segment(stated_audience, segments)
+        if stated_seg is not None:
+            _top_up_stated_share(cells, stated_seg,
+                                 share=max(stated_audience_floor, per_seg_cap), limit=limit,
+                                 pains=pains, seg_count=seg_count, theme_count=theme_count,
+                                 family_count=family_count, per_pain_used=per_pain_used,
+                                 guaranteed=guaranteed, pinned_titles=pinned_titles,
+                                 fam_of=_fam, take=_take)
     return cells[:max_gen]
+
+
+def _top_up_stated_share(cells: list, stated_seg, *, share: int, limit: int, pains: list,
+                         seg_count: dict, theme_count: dict, family_count: dict,
+                         per_pain_used: dict, guaranteed: set, pinned_titles: set | None,
+                         fam_of, take) -> None:
+    """Raise the resolved stated-audience segment toward `share` by swapping SURPLUS cells for
+    provenance-linked ones — never by taking a cell a prior round guaranteed.
+
+    Mutates `cells` and the allocator's bookkeeping in place. Called once, after every other round
+    of `_assign_generator_cells` has finished; see the block comment there for why. A swap is only
+    made when ALL of these hold for the donor cell, which is exactly the list of guarantees the
+    rounds above establish:
+
+      * its segment keeps at least one other cell        (no segment the run found is zeroed)
+      * its pain is not `pinned_titles`, or keeps another cell   (Round 0d, unconditional)
+      * its pain is not floor-guaranteed, or keeps another cell   (Rounds 0 / 0b / 0c)
+      * its buyer-job FAMILY keeps a cell                (Round 0e, docs/DIVERSITY_DECISION_2026-08.md)
+      * pain-THEME coverage does not shrink              (Round 1's spreading key)
+
+    The family and pain-level rules are separate on purpose. Rounds 0/0b/0c/0d guarantee that a
+    PAIN holds a cell, so their pains are only spendable if they hold a second. Round 0e guarantees
+    that a FAMILY holds a cell — a different, weaker claim on any individual cell — so it is
+    enforced on `family_count`, which lets a family with several cells spare one. Reading both off
+    the same `floored` set (round 2's first attempt) blocked every swap on the very run that
+    motivated the work: bab9f696 has 6 pain cells over 4 families and 3 floors, so `floored`
+    covered all of them and the share could not move.
+
+    PRECISELY WHAT THE FAMILY RULE PROTECTS (correction, round 3): the SET of covered family IDs,
+    not which pain represents a family. Measured over the 30-run census at both budgets on
+    production-shaped inputs, 0 of 60 rows lose a family and 1 of 60 RE-GROUNDS one — on bab9f696
+    the family `crawler-access-extraction` goes from "AI crawlers cannot retrieve pages blocked by
+    technical controls" to "Marketing-heavy pages hide answers from AI extraction". That is the
+    same move that takes London 1 -> 2, and it is a SWAP, not a relocation: donor and recipient are
+    two DIFFERENT pains that happen to share a family (which is exactly why the family survives),
+    the donor sat on "Multi-Location Franchises…" and left an evidence-grounded survivor behind,
+    and both pains are evidence-grounded for the segment they end on. "Family identity is protected
+    absolutely" would be the wrong reading of the 0/60.
+
+    THEME coverage is evaluated on the SWAP, not the donor alone: giving up a theme's only cell is
+    allowed exactly when the incoming pain brings a theme that had none, because the covered-set
+    SIZE is Round 1's diversity property and the incoming theme is the stated audience's own.
+    Deterministic: donors are scanned in reverse placement order (last placed = least justified)
+    and recipients in unplaced-first, severity-descending order."""
+    sname = getattr(stated_seg, "segment_name", "") or ""
+    if not sname or share <= 0:
+        return
+
+    def _th(p):
+        return getattr(p, "parent_theme_id", None)
+
+    def _keeps_coverage(counts: dict, out_key, in_key) -> bool:
+        if out_key == in_key:
+            return True
+        lost = out_key is not None and counts.get(out_key, 0) <= 1
+        gained = in_key is not None and counts.get(in_key, 0) == 0
+        return gained or not lost
+
+    def _donor_index(recip):
+        for i in range(len(cells) - 1, -1, -1):
+            c = cells[i]
+            p = c.get("pain")
+            if p is None:                            # frame cell — not this allocator's to spend
+                continue
+            name = getattr(c.get("segment"), "segment_name", "") or ""
+            if name == sname or seg_count.get(name, 0) <= 1:
+                continue
+            if sum(1 for x in cells if x.get("pain") is p) <= 1:
+                if pinned_titles and getattr(p, "title", None) in pinned_titles:
+                    continue
+                if id(p) in guaranteed:
+                    continue
+            fam = fam_of(p)
+            if fam is not None and fam != fam_of(recip) and family_count.get(fam, 0) <= 1:
+                continue                             # a family's LAST cell is never spendable
+            if not _keeps_coverage(theme_count, _th(p), _th(recip)):
+                continue
+            return i
+        return None
+
+    def _own_cell_index(recip):
+        """RELOCATION, the cheapest correction: the recipient already holds a cell, on a segment
+        that keeps another. Moving THAT cell changes only which segment the pain is ideated for —
+        same pain, same theme, same family, same cell count — and it is the most defensible move
+        available, because the pain's own provenance names the stated segment. Tried before any
+        swap, so the expensive kind is only reached when no relocation is left."""
+        for i in range(len(cells) - 1, -1, -1):
+            c = cells[i]
+            if c.get("pain") is not recip:
+                continue
+            name = getattr(c.get("segment"), "segment_name", "") or ""
+            if name == sname or seg_count.get(name, 0) <= 1:
+                continue
+            return i
+        return None
+
+    placed = {id(c["pain"]) for c in cells if c.get("pain") is not None}
+    # Stable sort on a bool: pains with no cell yet first (a second cell for an already-placed pain
+    # adds no pain diversity), severity order preserved within each group.
+    recipients = sorted(_pains_evidencing_segment(pains, stated_seg), key=lambda p: id(p) in placed)
+
+    for recip in recipients:                         # spare budget — nothing has to be given up
+        if seg_count.get(sname, 0) >= share or len(cells) >= limit:
+            break
+        if sname not in per_pain_used.get(id(recip), set()):
+            take(recip, stated_seg)
+
+    for _find_donor in (_own_cell_index, _donor_index):
+        for recip in recipients:
+            if seg_count.get(sname, 0) >= share:
+                return
+            if sname in per_pain_used.get(id(recip), set()):
+                continue                             # already holds a cell on the stated segment
+            i = _find_donor(recip)
+            if i is None:
+                continue
+            out = cells.pop(i)
+            op = out["pain"]
+            oname = getattr(out.get("segment"), "segment_name", "") or ""
+            seg_count[oname] = seg_count.get(oname, 1) - 1
+            if _th(op) is not None:
+                theme_count[_th(op)] = theme_count.get(_th(op), 1) - 1
+            if fam_of(op) is not None:
+                family_count[fam_of(op)] = family_count.get(fam_of(op), 1) - 1
+            per_pain_used.get(id(op), set()).discard(oname)
+            take(recip, stated_seg)
 
 
 # Interpolate only `{identifier}` tokens (CrewAI's _VARIABLE_PATTERN), leaving JSON
