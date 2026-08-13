@@ -1123,9 +1123,13 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   // Portfolio-funnel: findings examined but not carried forward (demoted winners, rejected
   // backfill candidates) + groups of surviving ideas that are variants of one product.
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
+  // Drives ONLY the docked-analyst layout clearance, so it tracks whether a workbench —
+  // and therefore its analyst — is MOUNTED, not whether its body is on screen. In
+  // "Check my idea" the workbench now mounts collapsed (analystOnly), so gating this on
+  // the disclosure would let a docked analyst overlap the verdict.
   const selectionWorkbenchVisible = $derived(
     isSelectionPhase && (
-      (isValidation && Boolean(ideaValidation) && showAlternatives)
+      (isValidation && Boolean(ideaValidation))
       || (!isValidation && (
         displaySolutions.length > 0
         || examinedRuledOut.length > 0
@@ -1855,11 +1859,18 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                       {ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.{/if}
                   </p>
                 </div>
-              {:else}
-                <div id="validate-alternatives-content">
+              {/if}
+              <!-- The workbench stays mounted while the disclosure is collapsed, in
+                   `analystOnly` mode: no table, no DecisionRail dock over the verdict —
+                   just its analyst window. It is the SAME full-capability instance rather
+                   than a second, lighter one, and keeping ONE across the toggle means
+                   expanding never remounts an open conversation. -->
+              <div id="validate-alternatives-content">
+                {#if showAlternatives}
                   <h2 class="sr-only" tabindex="-1" bind:this={alternativesHeadingEl}>
                     How your idea was graded
                   </h2>
+                {/if}
                   <SelectionWorkbench
                   jobId={jobId ?? ''}
                   solutions={displaySolutions}
@@ -1902,6 +1913,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   {solutionVotesById}
                   {voteRationales}
                   {decisionTools}
+                  analystOnly={!showAlternatives}
                   groupByThesis={false}
                   pinnedIdeaKeys={validationPinnedKeys}
                   headerTitle="Your idea, ranked with the alternatives"
@@ -1919,8 +1931,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                         'Add any of these to the Deep Research scope.',
                       ].filter(Boolean).join(' ')}
                   />
-                </div>
-              {/if}
+              </div>
             </section>
           {:else if previewFetchFailed}
             <div class="card p-8 text-center mb-6">

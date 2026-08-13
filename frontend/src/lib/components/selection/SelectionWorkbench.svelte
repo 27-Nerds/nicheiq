@@ -204,6 +204,14 @@
     /** Visitor (read-only) mode: shortlist/Deep-Research affordances are replaced by
      *  the per-row actionSlot (vote button on the shared view). */
     interactive?: boolean;
+    /** Render ONLY the analyst window (overlay + launcher), suppressing the workbench
+     *  body — table, DecisionRail commit dock and fixed tray. "Check my idea" mounts the
+     *  workbench this way while the alternatives disclosure is still collapsed, so the
+     *  analyst is reachable from the verdict without a dock covering it. The analyst
+     *  keeps its full toolset because it is the SAME instance, not a second lighter one.
+     *  Body-triggered overlays (regenerate, detail modal) stay mounted but can't open —
+     *  their state is only set from the suppressed body. */
+    analystOnly?: boolean;
     /** Admin-granted optional decision tools (build limits, evidence check, questions to
      *  resolve, tests, fit, branch). Fails CLOSED — a caller that doesn't pass it gets
      *  the required path only. The shortlist, ranked table, compare and review are
@@ -268,6 +276,7 @@
     onShortlistVersionChange,
     onSeedSettled,
     interactive = true,
+    analystOnly = false,
     decisionTools = false,
     poolMutationLocked = false,
     totalVotes = 0,
@@ -3161,6 +3170,9 @@
   }
 </script>
 
+<!-- `analystOnly` suppresses the whole body (table + DecisionRail + fixed tray) and leaves
+     the analyst window below it standing — see the prop docs. -->
+{#if !analystOnly}
 <div class="workbench-shell" data-annotation-anchor="research-workbench">
 <div class="workbench" id="opportunities">
   <span id="solution-selector" class="workbench-anchor" aria-hidden="true"></span>
@@ -4037,6 +4049,7 @@
 </div>
 
 </div>
+{/if}
 
 <!-- ═══ Analyst window (G3 — chatMode-independent; never in the visitor view) ═══
      An OVERLAY, not a column: the candidate table keeps the whole page, and the
@@ -4310,8 +4323,17 @@
     right: clamp(0.75rem, 2vw, 1.5rem);
     /* Track the dock's measured height rather than guessing it.
        --decision-rail-height is published by DecisionRail; the constant stays as
-       the fallback for surfaces that render no dock. */
-    bottom: calc(var(--decision-rail-height, var(--space-16)) + var(--space-4));
+       the fallback for surfaces that render no dock.
+       That variable is the dock's HEIGHT ONLY — the dock is itself inset
+       --analyst-dock-inset from the viewport bottom (see DecisionRail's own note about
+       scroll padding). Clearing height + inset lands the pill exactly ON the dock's top
+       edge, which is what it used to do; --space-3 is the actual visible gap. Same
+       height + inset + gap math WorkspaceOverlay uses for the docked panel. */
+    bottom: calc(
+      var(--decision-rail-height, var(--space-16))
+      + var(--analyst-dock-inset)
+      + var(--space-3)
+    );
     z-index: var(--z-overlay, 30);
     display: inline-flex;
     align-items: center;
