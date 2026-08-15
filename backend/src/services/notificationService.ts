@@ -1,8 +1,84 @@
 import { prisma } from './db.js';
 import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail, sendLandingPageReadyEmail, sendGateReachedEmail } from './emailService.js';
-import type { PhaseContextForEmail } from './emailService.js';
+import type { IdeaCheckEmailContext, PhaseContextForEmail } from './emailService.js';
+import { loadCurrentSelectionContext } from './currentSelectionContext.js';
 
 export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
+
+/**
+ * What an AWAITING_SELECTION email may say about the idea the user submitted.
+ *
+ * THE SEVENTEENTH SURFACE (2026-08-14). A refused `validate_idea` run is non-fatal by
+ * design: Phase 1 finishes, the pool ships, the job reaches AWAITING_SELECTION — and that
+ * fires `notifySolutionsReady`, then up to three `notifySelectionReminder` sends at 24h,
+ * 72h and 120h. On a `validate_idea` run `Job.niche` IS the user's raw pitch, so the
+ * reminder read "you have N VALIDATED solutions waiting for your review FOR '<their own
+ * pitch>'" — the most direct assertion in the codebase that their submitted idea was
+ * evaluated, arriving up to four times over five days for a run that refused to evaluate
+ * it. Sixteen rounds of sweeps missed it because every one of them was applied to a
+ * rendered page; this surface leaves the product, and no page fix can reach an inbox.
+ *
+ * Deliberately the same four states as `ideaCheckFraming` (routes/chat.ts), read from the
+ * same artifact field, because both answer the same question: what may we assert about the
+ * user's idea? It is not shared code — that function's input is the analyst dossier bundle
+ * — but the two must never disagree about the mapping, so the states and their meanings are
+ * kept identical on purpose.
+ *
+ * - `none`          — not an idea-check run. Every email is byte-identical to before.
+ * - `evaluated`     — a spec was built and graded. Also byte-identical: the claim is true.
+ * - `not_evaluated` — the run refused to grade it (six typed causes, all ours). The email
+ *                     says so, in the artifact's own words, and drops every validation claim.
+ * - `unavailable`   — an idea-check run whose verified artifact did not load. Asserting
+ *                     either of the two states above would be a guess, so the email states
+ *                     neither and simply reports the pool. Same doctrine as
+ *                     `ResearchProgressScreen`'s "unknown" default.
+ */
+export type IdeaCheckEmailState = IdeaCheckEmailContext['state'];
+
+/**
+ * Resolve what this job's AWAITING_SELECTION emails may claim about the submitted idea.
+ *
+ * Reads the SAME `PREVIEW_REPORT` artifact the page reads, through the same verifier, so
+ * the inbox and the page can never disagree. Any failure resolves to `unavailable`, which
+ * asserts nothing — a notification must never block or crash a run.
+ */
+export async function resolveIdeaCheckEmailContext(
+  jobId: string,
+): Promise<IdeaCheckEmailContext> {
+  try {
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { entryMode: true, niche: true },
+    });
+    if (job?.entryMode !== 'validate_idea') return { state: 'none' };
+
+    const context = await loadCurrentSelectionContext(prisma, jobId);
+    const artifacts = context?.runArtifacts;
+    if (!artifacts || artifacts.verification !== 'verified') return { state: 'unavailable' };
+
+    const iv = artifacts.previewReport.idea_validation;
+    if (!iv || typeof iv !== 'object' || Array.isArray(iv)) return { state: 'unavailable' };
+
+    const block = iv as Record<string, unknown>;
+    if (String(block.outcome ?? '') !== 'not_evaluated') return { state: 'evaluated' };
+
+    // Both sentences come VERBATIM from the artifact, which sources them from
+    // `SEED_FAILURE_COPY` (src/nicheiq/report/idea_validation_block.py) — the single
+    // source for the failure story. This program has already found a FOURTH
+    // independently-authored refusal sentence; a fifth written here would be the same
+    // defect. If the artifact carries neither, the email says the check did not complete
+    // and stops there rather than inventing a reason.
+    return {
+      state: 'not_evaluated',
+      headline: typeof block.headline === 'string' ? block.headline : null,
+      nextStep: typeof block.failure_next_step === 'string' ? block.failure_next_step : null,
+      pitch: typeof job.niche === 'string' ? job.niche : null,
+    };
+  } catch (err) {
+    console.error(`[Notification] idea-check state unresolved for job ${jobId}:`, err);
+    return { state: 'unavailable' };
+  }
+}
 
 const CATALOG_JOB_MODES = ['catalog_pain_points', 'catalog_ideas'] as const;
 
@@ -136,7 +212,9 @@ export async function notifySolutionsReady(
     console.log(`[Notification] Skipping solutions-ready email for job ${jobId} - disabled by preference`);
     return;
   }
-  await sendSolutionsReadyEmail(email, jobId, niche, solutionCount);
+  await sendSolutionsReadyEmail(
+    email, jobId, niche, solutionCount, await resolveIdeaCheckEmailContext(jobId),
+  );
 }
 
 /**
@@ -208,7 +286,12 @@ export async function notifySelectionReminder(
     console.log(`[Notification] Skipping selection reminder email for job ${jobId} - disabled by preference`);
     return;
   }
-  await sendSelectionReminderEmail(email, jobId, niche, solutionCount);
+  // Resolved HERE, not passed in by the reminder service: the reminder runs on a schedule
+  // off the DB, up to five days after the run ended, so it has no in-memory knowledge of
+  // the outcome and must read the persisted artifact like every other consumer.
+  await sendSelectionReminderEmail(
+    email, jobId, niche, solutionCount, await resolveIdeaCheckEmailContext(jobId),
+  );
 }
 
 /**

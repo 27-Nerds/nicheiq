@@ -91,4 +91,11 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "-v --cov=src/nicheiq --cov-report=term-missing"
+# `-m "not integration"` is a SPEND guard, not a speed one. `testpaths = ["tests"]` collects
+# `tests/integration/` too, and the `integration` marker does not exclude a test — conftest uses
+# it only to LIFT the `_no_live_llm` network block (tests/conftest.py:305,364). So before this
+# line, a bare `pytest` — the command CLAUDE.md documents as "All tests" — ran the seed-identity
+# judge-eval against the live provider: ~30 real API calls, roughly 20c, silently, on every run.
+# Measured 2026-08-15: bare collection was 5918 items, of which 5 were the paid file.
+# To run them deliberately, pass `-m integration` on the command line; it overrides this.
+addopts = "-v -m \"not integration\" --cov=src/nicheiq --cov-report=term-missing"

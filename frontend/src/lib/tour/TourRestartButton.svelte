@@ -4,9 +4,16 @@
   /**
    * Manual re-entry into the current surface's chapter.
    *
-   * Renders only while a `TourHost` is mounted, which means it is automatically absent
-   * on surfaces with no chapter and for users without the decision-tools grant — no
-   * separate gating needed here.
+   * Renders only while a mounted `TourHost` has REGISTERED with the launcher, which it
+   * does while it has a chapter, the decision-tools grant, and no suppression — so this
+   * control is absent on surfaces with no chapter, for users without the grant, and on a
+   * surface whose chapter has been withheld. No separate gating needed here.
+   *
+   * That last clause was false until 2026-08-14: the host registered unconditionally at
+   * mount, so a "Show me around again" button sat on a `not_evaluated` idea check and
+   * replayed the tour's "run it again in your own words" — the exact sentence the verdict
+   * card had been fixed to stop saying. If a call site needs this control gone, the lever
+   * is `TourHost`'s `suppressed`, never its `ready`.
    */
 </script>
 

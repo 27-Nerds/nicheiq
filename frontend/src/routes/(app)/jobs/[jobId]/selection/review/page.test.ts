@@ -60,6 +60,7 @@ function data(options: {
   sampleReportAvailable?: boolean;
   solutionsUnavailable?: boolean;
   invalidSolutionCount?: number;
+  validationNotEvaluated?: boolean;
 } = {}) {
   const ideas = options.ideas ?? [idea];
   const draftItems = options.saved === false
@@ -78,6 +79,7 @@ function data(options: {
     },
     // The risk-check summary inside /review is a decision tool; /review itself is not.
     decisionTools: options.decisionTools ?? true,
+    validationNotEvaluated: options.validationNotEvaluated ?? false,
     sampleReportAvailable: options.sampleReportAvailable ?? true,
     workspace: {
       ideas,
@@ -312,6 +314,35 @@ describe("selection review page", () => {
     expect(start).toBeDisabled();
     await fireEvent.click(view.getByRole("button", { name: "Yes, research Same-Day Careboard" }));
     await waitFor(() => expect(start).toBeEnabled());
+  });
+
+  it("does not claim a saved check when the run refused to grade the idea", async () => {
+    // A refused run has no seed candidate at all, so it ALWAYS lands in this branch — and
+    // the neutral wording above told a user whose check never ran that "your idea's check
+    // stays saved", which is the same claim-of-a-grading the verdict card was fixed for.
+    const alternative = {
+      idea_id: "idea-alt",
+      idea_revision: 1,
+      solution_name: "Same-Day Careboard",
+      short_description: "A current alternative.",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [alternative],
+          catalogIdeas: [alternative],
+          validationNotEvaluated: true,
+        }),
+      },
+    });
+
+    const warning = view.getByRole("heading", { name: "You're researching a different idea" })
+      .closest("section");
+    expect(warning).toHaveTextContent("This run couldn't grade your idea");
+    expect(warning).toHaveTextContent("no version of it to research");
+    expect(warning).not.toHaveTextContent("Your idea's check stays saved");
+    expect(warning).not.toHaveTextContent("submitted idea isn't available");
   });
 
   it("keeps a stale or missing shortlist blocked instead of treating the seed fallback as paid scope", () => {

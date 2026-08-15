@@ -15,6 +15,7 @@ Copy constants live at module top so tests assert them exactly.
 from __future__ import annotations
 
 import re
+from typing import NamedTuple
 
 from loguru import logger
 
@@ -60,6 +61,149 @@ EXPERIMENT_LADDER = [
 
 _MARKER_SEED = "validate"
 _MARKER_PIVOT = "validate_pivot"
+
+# The pivot record a block carries when there is nothing to say about a revision of the
+# user's idea. Named because THREE states emit it and they must be indistinguishable: no
+# pivot was attempted, the state carries none, and a refusal withdrew the one that was.
+NO_PIVOT: dict = {
+    "attempted": False, "outcome": "not_attempted", "trigger_finding": None,
+    "because": None, "keeps": None, "changes": None, "reason_not_shown": None,
+    "ries_label": None, "name": None,
+}
+
+# ── typed refusal causes → user-facing copy ──
+# One generic sentence used to cover every refusal cause, so three different defects in one
+# week were indistinguishable in the report. The key is the typed cause stamped by
+# `UnifiedSolutionCrew.execute_seed_pipeline` on `_seed_failure_reason` and carried to
+# `state.user_idea_failure_reason`; each entry says which guarantee could not be met, in the
+# user's terms, and none of them blames the user's writing.
+#
+# TWO SENTENCES PER CAUSE, ONE MAP (2026-08-14). `headline` is the verdict line; `next_step`
+# is what the page's "Next" card tells the user to DO. They ship together because they were
+# allowed to drift apart: the report block rendered the honest per-cause headline while
+# `ValidationVerdict.svelte` rendered a HARDCODED next step for every cause — "Run it again,
+# or rephrase it in your own words" — so a user whose run died to OUR outage read "that is a
+# fault on our side, not with your idea" and was told one card down to rewrite their idea.
+# The frontend now renders `failure_next_step` from this map verbatim and holds no copy of
+# its own; a hand-written Svelte branch would be a THIRD copy of the same decision.
+#
+# EVERY typed cause must have an entry here. `tests/unit/crews/test_seed_pipeline.py` derives
+# the live set by parsing the crew's `_seed_failure_reason` assignments, so a NEW cause
+# without copy fails the suite rather than silently rendering the generic pair — which is what
+# happened to `identity_judge_unavailable`, the one cause that is OUR fault and therefore the
+# worst one to describe generically. That same test pins the enumeration in
+# `ResearchState.user_idea_failure_reason`'s own description, the third surface that listed
+# these causes and had already drifted (it named a deleted cause and omitted the live one).
+#
+# NONE of these may tell the user to rephrase. Every cause below is a failure of OUR build or
+# OUR infrastructure; the only user-side lever that exists at all is extra detail on the one
+# cause where generation produced nothing to grade, and that is offered as detail to build
+# from, never as "say it differently".
+SEED_FAILURE_GENERIC = "We could not evaluate your idea in this market on this run."
+SEED_FAILURE_GENERIC_NEXT = (
+    "Your submission is saved. Run the check again — nothing you wrote needs to change first.")
+
+
+class SeedFailureCopy(NamedTuple):
+    """The complete user-facing pair for one typed refusal cause."""
+
+    headline: str
+    next_step: str
+
+
+SEED_FAILURE_COPY: dict[str, SeedFailureCopy] = {
+    "generation_produced_no_candidate": SeedFailureCopy(
+        headline="We could not build a working version of your idea to grade on this run.",
+        next_step=(
+            "Your submission is saved. Run it again — the build starts from scratch each "
+            "time. If it stops the same way twice, one extra sentence on who it is for and "
+            "what it does gives us more to build from."),
+    ),
+    "identity_judge_unavailable": SeedFailureCopy(
+        # One line, like every other headline here. It ran three sentences and spent the
+        # third restating the retry the Next card gives one screen down; the verdict slot
+        # says WHAT HAPPENED, `next_step` says what to do. What could not be dropped is the
+        # attribution — this cause is our outage, and the user must not read it as a
+        # judgement on their idea.
+        #
+        # THIS CAUSE IS THE LLM JUDGE BEING UNREACHABLE, and nothing else. "Wait a few
+        # minutes first" is advice about a REMOTE SERVICE under load; it is only true here.
+        # Round 8 routed a deterministic, network-free field diff onto this same key
+        # (research_flow's `except` around `changed_seed_identity_fields`), which made the
+        # sentence a transplant: waiting cannot help a code defect. That path now has its
+        # own cause below.
+        headline=(
+            "Our own check that we were still grading your idea could not run, so we "
+            "stopped rather than report a verdict we had not verified — a fault on our "
+            "side, not with your idea."),
+        next_step=(
+            "Your submission is saved, and nothing in it caused this — there is nothing to "
+            "change before you retry. Run the check again; if it stops the same way "
+            "immediately, wait a few minutes first."),
+    ),
+    "identity_check_could_not_run": SeedFailureCopy(
+        # The flow's own pre-injection comparison RAISED. Deterministic and network-free (a
+        # field diff between the birth snapshot and the finished candidate), so there is no
+        # outage to wait out and telling the user to wait would be advice we know is wrong.
+        headline=(
+            "Our last comparison against the idea you submitted could not finish, so we "
+            "stopped rather than report a verdict we had not checked — a fault in our "
+            "code, not in your idea."),
+        next_step=(
+            "Your submission is saved, and nothing you wrote caused this. Run the check "
+            "again straight away — there is nothing to wait for here. If it stops the same "
+            "way a second time, it needs a fix from us rather than another attempt."),
+    ),
+    "judged_a_different_product": SeedFailureCopy(
+        headline=(
+            "What we built drifted into a different product, so we stopped rather than grade "
+            "something you did not describe."),
+        next_step=(
+            "Your submission is saved. The drift is in our build, not in what you sent, so "
+            "run it again as it stands — we rebuild your idea from scratch on each run."),
+    ),
+    "identity_changed_at_birth": SeedFailureCopy(
+        headline=(
+            "What we built no longer matched your idea, so we stopped rather than grade a "
+            "different product."),
+        next_step=(
+            "Your submission is saved. That mismatch happened on our side while building, so "
+            "run the check again unchanged — a fresh build usually holds to your idea."),
+    ),
+    "identity_changed_during_scoring": SeedFailureCopy(
+        headline=(
+            "Your idea changed while it was being scored, so we stopped rather than report a "
+            "verdict on a changed version."),
+        next_step=(
+            "Your submission is saved. A later scoring pass of ours edited the product, not "
+            "you — run the check again exactly as you wrote it."),
+    ),
+    "identity_changed_in_final_evaluation": SeedFailureCopy(
+        headline=(
+            "Your idea changed during the final checks, so we stopped rather than report a "
+            "verdict on a changed version."),
+        next_step=(
+            "Your submission is saved. Our final checks rewrote the product after it had "
+            "already been graded — run it again as submitted."),
+    ),
+}
+
+
+def seed_failure_headline(reason: str | None) -> str:
+    """User-facing verdict line for a typed seed-refusal cause; the generic line for anything
+    unrecognised (a resumed run from before a cause existed, or `unknown`)."""
+    entry = SEED_FAILURE_COPY.get(str(reason or ""))
+    return entry.headline if entry else SEED_FAILURE_GENERIC
+
+
+def seed_failure_next_step(reason: str | None) -> str:
+    """What the page's Next card tells the user to DO for a typed seed-refusal cause.
+
+    Rendered verbatim by `ValidationVerdict.svelte`, which deliberately keeps no copy of its
+    own for this — see the map's note.
+    """
+    entry = SEED_FAILURE_COPY.get(str(reason or ""))
+    return entry.next_step if entry else SEED_FAILURE_GENERIC_NEXT
 
 
 _PRICE_UNKNOWNS = {
@@ -322,6 +466,32 @@ def _verdict_evidence_fragment(vendor: str, evidence: str) -> str | None:
 
 
 def _find_marked(ideas: list, marker: str):
+    """The seed/pivot lookup, keyed on the OPERATION id, not on `source_frame` alone.
+
+    THE CONTRACT: `outcome == "not_evaluated"` does NOT imply "this run carries no
+    `user_seed` candidate". This function only fails to find one whose operation id is
+    `validate`. The chat seed endpoint (`backend/src/routes/jobs.ts`, POST .../seed) has no
+    `entryMode` check, so a user who seeds an idea from chat on a REFUSED `validate_idea`
+    job at AWAITING_SELECTION mints a `user_seed` candidate under a `seed_idea_N` id — and
+    this still, correctly, returns None. Any consumer that shortcuts to "refused ⇒ no
+    user_seed anywhere in the pool" is reading a property this function does not provide.
+
+    RECORDED AS A FORWARD HAZARD 2026-08-14; REALISED AND CLOSED 2026-08-15. Two consumers
+    were making exactly that shortcut, and both were user-facing on a paid surface:
+
+      * `_alternatives` excluded the candidates THIS function returns, so a chat seed was
+        counted among "N approaches from this market's evidence. None of them is your
+        idea." It now excludes on `source_frame`, which needs no lookup and cannot miss an
+        operation id.
+      * the job page's workbench header told that user "Your idea isn't in this list" with
+        their own idea rendered four rows below it. It now branches on whether the LIST
+        carries a `user_seed` row, which is the question it was actually asking.
+
+    The hazard was real, the docstring was right, and being right in a docstring did not
+    stop either consumer from being written. Two escapes and no third mechanism: what
+    changed in both cases is that the consumer stopped asking this function a question it
+    had already said it could not answer.
+    """
     for idea in ideas or []:
         frame = (getattr(idea, "source_frame", None) or "").strip().lower()
         if frame == "user_seed" and getattr(idea, "generation_operation_id", None) == marker:
@@ -757,21 +927,23 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
         "desk_limits": list(DESK_LIMITS),
         "experiment_ladder": [dict(r) for r in EXPERIMENT_LADDER],
         "next_experiment_index": 0,
-        "pivot": dict(getattr(state, "user_idea_pivot", None) or {
-            "attempted": False, "outcome": "not_attempted", "trigger_finding": None,
-            "because": None, "keeps": None, "changes": None, "reason_not_shown": None,
-            "ries_label": None, "name": None,
-        }),
+        "pivot": dict(getattr(state, "user_idea_pivot", None) or NO_PIVOT),
     }
     if block["pivot"].get("trigger_finding"):
         block["pivot"]["trigger_finding"] = _display_parity(
             block["pivot"]["trigger_finding"])
 
     if seed is None:
+        # Typed cause -> its own verdict line AND its own next step; see SEED_FAILURE_COPY at
+        # module top. `failure_next_step` exists because the page used to hardcode one next
+        # step for all six causes and contradicted the headline it rendered two cards above.
+        _reason = str(getattr(state, "user_idea_failure_reason", None) or "unknown")
         block.update({
             "outcome": "not_evaluated",
             "idea_name": None,
-            "headline": "We could not evaluate your idea in this market on this run.",
+            "headline": seed_failure_headline(_reason),
+            "failure_reason": _reason,
+            "failure_next_step": seed_failure_next_step(_reason),
             "parts": [],
             "evidence_confidence": "Low",
             "evidence_confidence_reason":
@@ -782,13 +954,59 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
             "incumbent_parity": None, "existing_equivalent": None, "competitors": [],
             "duplicate_of": None, "red_team_verdict": None,
             "red_team_findings": None, "kill_risks": [],
-            "alternatives": _alternatives(ideas, seed=None, pivot=None),
+            "alternatives": _alternatives(ideas),
             "seed_candidate_status": None, "seed_idea_id": None,
             "seed_idea_revision": None, "seed_purchasable": False,
             "seed_display_composite_score": None,
             "demotion_reason": None,
             "evaluated_idea": None, "refinement": None,
             "original_mechanism_parity": None,
+            # ── The three fields the base block stamps ABOVE, reset here. ──
+            # They were the sixteenth surface of this program: set before this branch and
+            # never cleared by it, so a run that refused to grade the pitch still shipped a
+            # four-rung experiment ladder with rung 1 flagged as the recommended NEXT ACTION
+            # ("Run 5 problem interviews with the buyer you named" — there is no named buyer;
+            # no spec was built), and a caveat list that qualifies findings this branch has
+            # just emptied. `desk_limits` reads "No one has paid... for this idea" and
+            # "Severity and mention counts describe this run's captured discussions" — the
+            # first caveats an evaluation that did not happen, the second caveats numbers
+            # that live in `anchored_pains`/`breadth`, both cleared four lines up. A limits
+            # list beside no findings manufactures the impression that findings exist.
+            #
+            # Emptied, not rewritten: a refusal already says what happened three times
+            # (`headline`, `failure_next_step`, and the progress screen's caption), all
+            # sourced from SEED_FAILURE_COPY. A fourth phrasing here would be a fourth place
+            # to drift. `next_experiment_index` is None rather than 0 so "no next test" is
+            # representable instead of being an index into nothing.
+            #
+            # THE ARTIFACT IS THE AUTHORITY, not the renderer: this block is persisted and
+            # served to the owner's page, the read-only share, and any future consumer.
+            # ValidationVerdict.svelte withholds the same two cards independently, because
+            # reports materialized before 2026-08-14 carry the full ladder in their stored
+            # JSON and only the renderer can protect those.
+            "desk_limits": [],
+            "experiment_ladder": [],
+            "next_experiment_index": None,
+            # "provisional" hedges a verdict that could still upgrade. There is no verdict.
+            "provisional": False,
+            # ── The FOURTH field the base block stamps above, reset for the same reason. ──
+            # Same shape as the sixteenth surface, found in round 8. `state.user_idea_pivot`
+            # is written by `_attempt_validate_pivot`'s `finally` (research_flow.py) BEFORE
+            # the two post-birth refusal returns, and neither clears it — so a block stamped
+            # `outcome: not_evaluated` shipped `trigger_finding`, `rejected_name` and
+            # `rejected_composite: 61 / original_composite: 58`: a SCORE FOR THE USER'S IDEA
+            # on a run that refused to score it, plus a named revision of a product this
+            # branch says was never built. Latent only because two renderers happen to
+            # withhold the panels; the doctrine four lines up is that the artifact, not the
+            # renderer, is the authority.
+            #
+            # `NO_PIVOT` rather than a fifth phrasing: this is now the SAME record the base
+            # block emits when the state carries none, so all three refusal paths — the
+            # crew's birth refusal (state never written), the post-birth drift refusal and
+            # the post-birth check-failed refusal — are byte-identical here. A consumer
+            # cannot tell how far a refused run got from its pivot record, which is exactly
+            # the guarantee wanted: it got nowhere it may speak about.
+            "pivot": dict(NO_PIVOT),
         })
         return block
 
@@ -981,7 +1199,7 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
             for finding in (red_team_findings or [])
         ] if red_team_findings is not None else None,
         "kill_risks": kill_risks,
-        "alternatives": _alternatives(ideas, seed=seed, pivot=pivot_idea),
+        "alternatives": _alternatives(ideas),
         "seed_candidate_status": getattr(seed, "candidate_status", None),
         "seed_idea_id": getattr(seed, "idea_id", None),
         "seed_idea_revision": getattr(seed, "idea_revision", None),
@@ -999,9 +1217,34 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
     return block
 
 
-def _alternatives(ideas: list, seed, pivot) -> dict:
+def _alternatives(ideas: list) -> dict:
+    """The MARKET's approaches: every active candidate this run's research produced,
+    minus everything the USER submitted. The page's own words — "N approaches from this
+    market's evidence. None of them is your idea." — are what this pool has to be true of.
+
+    The exclusion is `source_frame == "user_seed"`, NOT identity against the seed/pivot
+    pair. Those two parameters were the defect's shape: they excluded the candidates
+    `_find_marked` can FIND, and `_find_marked` keys on the OPERATION id (see its
+    docstring, which recorded this as a forward hazard). The chat seed endpoint has no
+    `entryMode` check, so a user who seeds an idea from chat on a REFUSED validate_idea
+    job mints a `user_seed` under a `seed_idea_N` id — invisible to both parameters, so
+    it landed in the pool and was counted as one of the market's alternatives on the very
+    page telling the user nothing of theirs was graded. Measured on the 056b2c68 run:
+    count 10 -> 11 and `named_buyer_count` 0 -> 1. It also reached `top`, but only when
+    fewer than five other candidates were active (a chat seed is APPENDED, and `top` is
+    `pool[:5]`) — and `top` has no reader in the frontend today, so the two counts were
+    the whole of the user-visible damage here.
+
+    `source_frame` SUBSUMES the two parameters — the seed and the pivot are `user_seed`
+    by definition (module docstring) — so this is one predicate where there were three,
+    and neither call site can carry a different one. It is also the durable field:
+    `generation_operation_id` is nulled for everything but the two validate markers each
+    time a later operation re-enters `_finalize_idea_pool` over a merged pool, while
+    `source_frame` survives (`user_seed` is in `FRAME_REGISTRY`, so the closed-vocab
+    normalization leaves it alone).
+    """
     pool = [i for i in ideas
-            if i is not seed and i is not pivot
+            if (getattr(i, "source_frame", None) or "").strip().lower() != "user_seed"
             and (getattr(i, "candidate_status", "active") or "active") == "active"]
     # named_buyer_count: alternatives whose audience_fit judgment says they primarily
     # serve the buyer the USER NAMED — the same field the workbench's "Adjacent

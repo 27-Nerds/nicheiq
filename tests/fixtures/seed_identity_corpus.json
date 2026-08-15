@@ -1,0 +1,736 @@
+{
+  "honest": [
+    {
+      "id": "056b2c68",
+      "provenance": "checkpoint_*056b2c68*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "worth_testing",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "candidate": {
+        "solution_name": "ReplyMatch Policy-Safe Reddit Response Desk",
+        "headline": "Policy-Safe Answers for High-Stakes Reddit Questions",
+        "short_description": "Retrieve current, approved Reddit answer cards for sensitive SaaS questions, or escalate when no defensible response exists.",
+        "description": "ReplyMatch is a Chrome extension and lightweight approval ledger for the moment a SaaS operator is about to answer a Reddit question about pricing, security, integrations, outages, roadmap commitments, eligibility, or regulated/compliance-sensitive claims. Rather than trying to automate every Reddit reply or compete with bundled inboxes, it retrieves a versioned, owner-approved answer card only when the visible thread satisfies a narrow policy/topic match. Each card carries source links, product/version scope, required qualifiers, an expiry/review date, and an accountable approver. If the match is weak, stale, contradicted by thread context, or outside policy, ReplyMatch blocks one-click reuse and creates a compact approval request with the exact question and deadline. The operator can paste a cited, on-brand response in seconds, or route the exception before an inaccurate public commitment is made.",
+        "value_proposition": "Help small SaaS teams respond quickly to high-stakes Reddit questions with the current, approved product answer—and force an escalation when no defensible answer exists—instead of offering another generic social inbox or AI reply writer.",
+        "core_features": [
+          "Reddit composer detection that extracts the question, parent context, subreddit, and optional highlighted text without requiring a Reddit publishing API",
+          "Versioned approved-answer cards for high-risk SaaS topics: pricing/plan limits, security and privacy, integrations, uptime/incidents, support boundaries, roadmap language, and eligibility",
+          "Conservative match gate combining topic classifiers, semantic similarity, product/version tags, required-context checks, and freshness thresholds; no one-click answer below threshold",
+          "Mandatory-answer constraints: approved wording, required caveats, prohibited claims, canonical evidence links, card owner, and expiry/re-certification date",
+          "Context conflict detection that flags mismatched plan, region, product version, or claim and routes to review rather than reusing a superficially similar reply",
+          "One-click paste of a short approved response plus optional public documentation link; no autonomous posting",
+          "Slack/email/webhook escalation packet containing the Reddit permalink, extracted context, proposed card, missing facts, approver, and response-SLA countdown",
+          "Audit trail showing what was pasted, which approved card/version supported it, who approved exceptions, and which cards are expiring or repeatedly requested",
+          "Request analytics that identify unanswered public objections and obsolete documentation, not vanity inbox metrics"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "thresholded-approved-reply-retrieval",
+        "why_it_works": "The modal operational risk is not that every Reddit question repeats verbatim; it is that questions recur as variable phrasings around a small set of consequential claims. Topic and scope routing can reliably identify these classes even when exact-answer retrieval cannot. For high-confidence, current matches, a pre-approved answer eliminates search and copy-editing delay. For the larger ambiguous tail, the product does not pretend retrieval is enough: it captures the complete context, enforces a response deadline, and sends the decision to the accountable owner. This directly uses the urgency in faster, on-brand, compliant, error-free replies while avoiding commoditized inbox, reporting, and generic AI-drafting capabilities.",
+        "innovation_angle": "The wedge is not reply management or generic retrieval. It is a browser-native 'claim safety gate' for public Reddit responses: approved knowledge is treated as expiring, scoped policy evidence, and uncertainty is an explicit workflow outcome. ReplyMatch wins only on the risky long-tail questions where a fast but unverified answer can create a pricing promise, security misstatement, roadmap commitment, or compliance problem.",
+        "differentiation_factors": [
+          "Unlike generic social inboxes, it activates only for narrow high-stakes Reddit questions rather than attempting to manage every channel and interaction.",
+          "Unlike AI reply writers, it retrieves versioned, owner-approved answer cards and blocks unsupported reuse instead of generating an unaccountable claim.",
+          "The differentiation lives at the pre-posting decision point: thread-aware policy matching, expiry checks, contradiction detection, and mandatory escalation.",
+          "A lightweight Chrome extension and approval ledger fit small SaaS teams that need governance without adopting a full social media suite."
+        ],
+        "differentiation_locus": "The browser-extension interception of the Reddit composer, combined with a team-owned knowledge base of expiring, scoped approved answers that forces escalation when no defensible answer exists. Rivals like KWatch.io and F5Bot monitor Reddit but don't integrate into the response workflow; broad suit",
+        "technical_approach": "Build a Manifest V3 extension with a Reddit-specific content script and a local extraction layer for composer text, parent/comment-tree context, permalink, subreddit, and explicit user selection. Send minimized context to a tenant backend. Model approved cards as structured records with claim class, product/plan/version/region scope, answer text, mandatory qualifiers, forbidden language, citations, owner, approval state, and expiry. Use deterministic eligibility filters first (scope, freshness, required entities and exclusions), then embeddings plus a lightweight reranker to propose candidates. A calibrated confidence policy permits paste only when the best card clears semantic, scope, and freshness thresholds and no conflict detector fires. Otherwise, generate an escalation request rather than a draft. Store immutable event records and card versions. Integrate with a team's existing Slack/email and documentation system; initial ingestion is manual CSV/Notion/help-center import with explicit approval, avoiding dependence on social-platform APIs. Security controls include tenant isolation, encryption, role-based card approvals, short retention for captured thread context, and user-visible confirmation before any text is pasted.",
+        "target_personas": [
+          "Small SaaS community manager handling repetitive product questions",
+          "SaaS founder or support lead responsible for maintaining approved public answers"
+        ],
+        "requires_data_aggregation": false,
+        "data_sources": [
+          "Reddit page context",
+          "Customer-provided approved reply library",
+          "Customer-provided product documentation",
+          "Customer-provided help center URLs"
+        ],
+        "data_source_tag": "customer-approved-replies-plus-visible-Reddit-context",
+        "data_access_model": "public",
+        "data_acquisition_notes": "The extension reads the publicly visible Reddit thread and explicitly selected composer context through the browser page; no Reddit API or bulk scraping is required. Customers supply the approved answer cards, citations, scope, and approval metadata, so the core route is public page context plus tenant-provided data with no external licensing cost.",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "5144763b",
+      "provenance": "checkpoint_*5144763b*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "worth_testing",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "candidate": {
+        "solution_name": "RedditReplyRadar",
+        "headline": "Reddit Discovery Badge and Reply Drafts",
+        "short_description": "See new matches for saved Reddit searches in a toolbar badge, then open each thread and draft a response from your approved private reply vault.",
+        "description": "A community manager installs the Chrome extension and adds saved Reddit searches such as a product name plus “bug,” “review,” or “alternative.” When the user opens Reddit, the extension checks those saved queries, compares returned post identifiers with the last seen snapshot, and places the number of newly matching posts in the browser toolbar badge; clicking it opens a compact list of matching posts for triage. From any opened conversation, the manager can use the existing private reply vault to retrieve approved, context-matched reply drafts, edit them, and post manually. The extension never auto-posts, crawls Reddit continuously, or sends background alerts: it provides a passive “anything new?” check during the manager’s normal Reddit workflow, then turns discovery into response.",
+        "value_proposition": "Give small SaaS community managers a passive Reddit discovery check and approved-reply drafts in one Chrome extension, so relevant conversations stop hiding in babysat searches and are answered faster.",
+        "core_features": [
+          "Chrome toolbar badge showing new matches across saved Reddit searches",
+          "Saved query setup with product, bug, review, competitor, and alternative keywords",
+          "On-open Reddit refresh and comparison against the last seen result snapshot",
+          "Compact new-match inbox linking directly to matching Reddit posts",
+          "Private approved-reply vault with semantic and keyword retrieval",
+          "Context-matched editable reply drafts with source-reply references",
+          "Tags for product area, audience, sentiment, and response type",
+          "Manual mark-seen, snooze, and query pause controls",
+          "Human review required before any Reddit submission",
+          "Workspace privacy, export, deletion, and retention controls"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "on-open-query-diff-plus-private-reply-retrieval",
+        "why_it_works": "The validated pain specifically describes community managers babysitting saved searches and manually checking platforms because dependable alerting is missing. A toolbar badge gives them a low-friction new-match checkpoint whenever they open Reddit, while the existing reply vault converts discovered threads into faster, more consistent responses.",
+        "innovation_angle": "Instead of starting with an always-on social listening dashboard or a standalone AI writer, RedditReplyRadar makes the browser extension itself a passive discovery checkpoint: saved queries produce a new-match badge only when the manager opens Reddit, and the same click-through flow leads directly to private approved-reply retrieval.",
+        "differentiation_factors": [
+          "Saved-query new-match counts appear in the Chrome toolbar before the user starts triaging replies.",
+          "Discovery and drafting share one Reddit-native workflow: badge, matching thread, approved reply draft.",
+          "No auto-posting, feed crawling, or always-on alert infrastructure; the product respects a deliberate human review loop.",
+          "The reply vault is grounded in the team’s own approved Reddit responses rather than generic AI output."
+        ],
+        "differentiation_locus": "The end-to-end workflow of passive Reddit thread discovery plus approved-reply drafting, packaged as a lightweight tool for small SaaS community managers who are priced out of enterprise social listening platforms.",
+        "technical_approach": "Use a Manifest V3 Chrome extension with a toolbar badge, options page for saved queries, and a side panel for new matches and reply drafting. On Reddit page activation, fetch or inspect the relevant public search results, normalize visible post URLs or identifiers, compare them with a per-query snapshot, and update the badge; isolate this route behind a replaceable adapter if Reddit’s page structure or access policy changes. Store workspaces, query snapshots, captured replies, permissions, and audit events in a small authenticated backend with PostgreSQL; use pgvector or equivalent retrieval for the private vault. Send only the selected thread context and retrieved approved replies to a hosted language model for drafting, never for autonomous posting. Add rate limits, encrypted storage, tenant authorization, deletion/export controls, and an explicit terms/privacy review before launch.",
+        "target_personas": [
+          "Small SaaS community manager monitoring product mentions, bugs, reviews, and alternatives",
+          "Consumer app support lead who needs a lightweight check for new public conversations without adopting a full social listening suite"
+        ],
+        "requires_data_aggregation": true,
+        "data_sources": [
+          "Reddit public search pages",
+          "User-captured Reddit page content",
+          "User-authored Reddit replies"
+        ],
+        "data_source_tag": "public-reddit-search-and-user-owned-library",
+        "data_access_model": "unverified",
+        "data_acquisition_notes": "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. Reddit search/API documentation confirms Reddit search exists, but snippets do not verify sta",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "a6e0d001",
+      "provenance": "checkpoint_*a6e0d001*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "worth_testing",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "candidate": {
+        "solution_name": "RedditReplyGuard",
+        "headline": "Draft Rule-Safe Reddit Replies From Alerts",
+        "short_description": "Chrome extension turns Reddit alerts into rule-aware, contextual reply drafts so small SaaS teams respond faster without losing approval control.",
+        "description": "A community manager installs the Chrome extension and connects the Reddit accounts or alert feeds they already use. When a relevant alert appears, RedditReplyGuard surfaces the post title, surrounding context, author intent, and applicable subreddit rules in a compact browser panel. The manager selects a response goal, reviews an AI-generated draft grounded in the thread and the company’s approved facts, and can edit, regenerate, or dismiss it. The extension flags rule-sensitive language and claims, then opens the native Reddit composer with the approved draft for final human posting. A lightweight history view records alerts, drafts, approvals, dismissals, and response-time analytics so the team can improve coverage over time.",
+        "value_proposition": "Help small SaaS community teams turn Reddit alerts into timely, contextual, rule-aware replies without automating risky posts or removing human approval.",
+        "core_features": [
+          "Chrome extension panel that captures and surfaces Reddit alert titles and relevant thread context",
+          "Official subreddit rule-page retrieval and cached rule summaries",
+          "Contextual reply drafting based on thread text, author intent, brand voice, and approved company facts",
+          "Response goals such as answer, clarify, recommend, troubleshoot, or acknowledge",
+          "Rule-risk and unsupported-claim warnings before copying a draft into Reddit",
+          "One-click insertion into Reddit’s native reply composer with mandatory human approval",
+          "Saved brand voice, product facts, prohibited claims, and escalation instructions",
+          "Alert queue with urgency, relevance, subreddit, and draft-status filters",
+          "Draft history, approval records, dismissals, and basic response-time analytics",
+          "Team workspace with shared guidance and role-based access on paid plans"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "llm-content-extraction",
+        "why_it_works": "The validated pain describes a 50-plus-alert bottleneck where managers lack time to write contextual replies, while Reddit’s public alert and rule surfaces provide timely context without requiring a full publishing platform. Moving drafting into the existing browser review moment reduces workflow switching, and rule-aware warnings directly address the trust risk that makes teams hesitant to automate community responses.",
+        "innovation_angle": "RedditReplyGuard is a browser-native, human-in-the-loop drafting layer that combines the live thread, official subreddit rules, and approved SaaS facts before producing a reply, rather than treating every alert as a generic social post.",
+        "differentiation_factors": [
+          "Drafts replies inside the browser at the moment a Reddit alert is reviewed rather than requiring a separate social dashboard",
+          "Uses the target subreddit’s official rule pages as drafting constraints and displays the relevant rule evidence",
+          "Combines thread context with a small SaaS team’s approved product facts and prohibited-claim guidance",
+          "Keeps Reddit posting human-approved through the native composer instead of offering risky autonomous automation",
+          "Optimizes for the 50-alert evening bottleneck with triage, relevance scoring, and fast draft review"
+        ],
+        "differentiation_locus": "The workflow step rivals miss is subreddit-rule retrieval and approved-fact grounding baked into the reply-drafting flow for SaaS community managers — a niche vertical where a misstep carries brand risk. However, the moat is thin: the addressed pain (avoiding Reddit faux pas) is real but moderate in",
+        "technical_approach": "Build a Manifest V3 Chrome extension with a secure backend for alert ingestion, context normalization, rule-page retrieval, drafting orchestration, and workspace settings. Use Reddit’s public RSS feeds and user-provided alert URLs where available, with the extension reading the currently authenticated Reddit page only when the user invokes drafting; avoid autonomous posting and store minimal thread data with configurable retention. Retrieve official subreddit rules from public subreddit rule pages, normalize them into citations and warning patterns, and cache them with timestamps. Use a hosted LLM with structured prompts containing thread context, rules, approved facts, and response goals; add deterministic checks for prohibited claims, missing citations, and rule conflicts. Encrypt credentials and workspace data, apply rate limits, provide deletion controls, and maintain an adapter layer so Reddit API or OAuth access can be added if official access terms support the required workflow.",
+        "target_personas": [
+          "Community managers at small B2B SaaS companies handling Reddit brand mentions",
+          "Founder-led SaaS teams that monitor niche subreddits but cannot staff rapid responses",
+          "Customer marketing or support generalists responsible for high-intent Reddit conversations",
+          "Small agency teams managing Reddit engagement for several software clients"
+        ],
+        "requires_data_aggregation": true,
+        "market_fit_claimed_route": "Reddit public RSS feeds + Reddit public subreddit rule pages",
+        "data_sources": [
+          "Reddit RSS feeds",
+          "Reddit public subreddit pages",
+          "Reddit Help and official rule pages",
+          "User-provided brand documentation",
+          "User-provided Reddit alert URLs"
+        ],
+        "data_source_tag": "platform-api",
+        "data_access_model": "public",
+        "data_acquisition_notes": "Public Reddit feeds/rules; RSS coverage and automated access may vary; Reddit ToS/API limits apply.",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "ecd9fcd8",
+      "provenance": "checkpoint_*ecd9fcd8*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "occupied",
+      "pitch": "A Slack bot for freelance bookkeepers that automatically chases their clients for missing receipts and bank statements, so month-end close stops dragging into a second week",
+      "candidate": {
+        "solution_name": "CloseCue",
+        "headline": "Slack Bot That Chases Missing Month-End Documents",
+        "short_description": "CloseCue detects missing receipts and bank statements, drafts Slack chases, and escalates unresolved requests before month-end close.",
+        "description": "A freelance bookkeeper connects CloseCue to Slack and creates a lightweight document checklist for each client, including bank statements, receipt batches, invoices, and transaction explanations. CloseCue learns each client's prior-month submission pattern and combines it with the bookkeeper's expected document types and close deadline to show exactly which clients are missing what; for example, it can flag that a client usually sends a bank statement by the 25th and has sent nothing by the 28th. The bot posts an approval-ready, client-specific chase in Slack, with links or upload instructions, then schedules progressively firmer reminders and escalates overdue items to the bookkeeper. A premium nonprofit mode adds an IRS Form 990 cross-check as one additional signal for unusual or incomplete source-document coverage, without replacing the core chase workflow.",
+        "value_proposition": "For freelance bookkeepers, CloseCue automatically identifies late receipts and bank statements, drafts precise Slack chases, and escalates unresolved requests before month-end close.",
+        "core_features": [
+          "Per-client document-type checklist",
+          "Prior-month submission-pattern tracking",
+          "Close-deadline dashboard in Slack",
+          "Missing-document and lateness detection",
+          "Editable approval-ready chase drafts",
+          "Scheduled reminder and escalation ladder",
+          "Client upload/link instructions",
+          "Resolution and outreach audit trail",
+          "Premium nonprofit Form 990 cross-check"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "pattern-based-document-chasing",
+        "why_it_works": "The product directly matches the immutable brief and the validated anchor: a freelance bookkeeper can see six late clients, each missing a specific expected document, approve targeted Slack chases, and let escalation run before the close deadline. The pattern clock addresses the universal behavior that one client may reliably send statements by the 25th while another sends a receipt batch only after a reminder, avoiding noisy reminders for everyone. Competitors mentioned in the research—Xero, Dext, Hubdoc, QuickBooks, and Excel—support accounting or capture workflows, but do not inherently provide this Slack-native, per-client late-document decision and escalation loop.",
+        "innovation_angle": "Pattern-based, deadline-aware Slack chasing with optional nonprofit Form 990 prioritization.",
+        "differentiation_factors": [
+          "The core product is a Slack bot for freelance bookkeepers, not a replacement document portal.",
+          "Prior-month timing and document-type patterns determine who gets chased and for what.",
+          "The nonprofit 990 cross-check is a premium differentiator layered onto the universal close workflow."
+        ],
+        "differentiation_locus": "Owning the client-chasing step of the month-end close workflow for freelance bookkeepers — the gap between receipt-capture tools (Dext, Hubdoc) and the actual human follow-up needed to get missing documents. The edge is the Slack-native, deadline-aware escalation flow embedded in the bookkeeper's ex",
+        "technical_approach": "Slack OAuth app, encrypted workflow database, scheduled reminder engine, deterministic pattern rules, approval buttons, escalation state machine, audit log, and optional IRS ingestion module.",
+        "target_personas": [
+          "Freelance bookkeepers with 10-30 recurring small-business clients",
+          "Small digitally scaling bookkeeping firms standardizing month-end document collection"
+        ],
+        "requires_data_aggregation": true,
+        "market_fit_claimed_route": "IRS Tax Exempt Organization Search / Form 990 e-file bulk data",
+        "data_sources": [
+          "Slack API",
+          "Bookkeeper-configured document checklists",
+          "Prior-month client submission timestamps",
+          "User-provided receipt and bank-statement uploads or links",
+          "IRS Tax Exempt Organization Search",
+          "IRS Form 990 e-file bulk data"
+        ],
+        "data_source_tag": "user-submitted-and-public-records",
+        "data_access_model": "unverified",
+        "data_acquisition_notes": "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. IRS results confirm electronic Form 990 filing and Form 990-N reporting, but provide no evide",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "f7863089",
+      "provenance": "checkpoint_*f7863089*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "occupied",
+      "pitch": "A web app for youth soccer coaches that auto-generates fair playing-time lineups from the roster and texts them to parents before each game, so coaches stop juggling spreadsheets on the sideline",
+      "candidate": {
+        "solution_name": "FairPlay Ledger",
+        "headline": "Transparent Fairness-Scored Soccer Lineups by SMS",
+        "short_description": "Verify attendance by text, generate lineups with a named fairness algorithm, and show every family the minutes and fairness score behind the result.",
+        "description": "FairPlay Ledger is a web app for youth soccer coaches that auto-generates fair playing-time lineups and texts them to parents. Coaches set up their roster, game, and practical constraints; the app uses each player’s playing-time history to produce a balanced rotation plan. The coach can review the lineup and its rationale before it is sent, replacing sideline spreadsheet juggling with a clear, parent-ready plan.",
+        "value_proposition": "For youth soccer coaches who want to stop juggling spreadsheets on the sideline, FairPlay Ledger is a web app that auto-generates fair playing-time lineups and texts them to parents, making rotations easier to run and easier to explain.",
+        "core_features": [
+          "Auto-generated fair playing-time lineups for youth soccer games",
+          "Text delivery of finalized lineups to parents",
+          "Roster and game setup in a coach-facing web app",
+          "Playing-time history to support consistent fairness across games",
+          "Coach constraints for positions, goalkeeper duties, attendance, and rotation needs",
+          "Explainable lineup rationale and audit history"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "fair-lineups-parent-texting",
+        "why_it_works": "Fair playing time is hard because coaches must balance prior minutes with real game constraints under time pressure. Automating that balancing work removes the spreadsheet burden, while parent texts set expectations before the game. Position and goalkeeper safeguards preserve coaching practicality, and accumulated playing-time history plus an audit trail make fairness more consistent and explainable over a season.",
+        "innovation_angle": "The wedge is not another roster spreadsheet: it turns fair playing-time planning into a repeatable coach workflow, then proactively texts the resulting lineup to parents. Historical minutes and an explainable audit trail create a defensible fairness record without making parents decode a black-box score.",
+        "differentiation_factors": [
+          "Published Minimum-Variance Shift Assignment algorithm with a plain-language math explainer",
+          "Parent-facing per-game minutes and 0–100 fairness score based on a configurable three-game rolling average",
+          "One slider lets coaches balance minimum-variance fairness against position and goalkeeper constraints",
+          "Two-way SMS availability responses directly determine the eligible lineup and trigger timely game information"
+        ],
+        "differentiation_locus": "The dedicated workflow step of tracking cumulative playing-time records per player, auto-generating fair lineups before each game, and proactively texting results to parents with an audit trail — a flow that general-purpose team-management platforms (TeamSnap, SportsEngine) do not offer as a first-c",
+        "technical_approach": "Build a coach-facing web app with roster, schedule, and playing-time records. For each game, generate a lineup that balances cumulative playing time while honoring coach-entered availability, position, goalkeeper, and rotation constraints. Store the inputs, generated plan, adjustments, and final decision as an audit history. Once the coach approves the plan, send the lineup to parents by SMS through a compliant messaging provider.",
+        "target_personas": [
+          "Volunteer youth soccer coaches managing weekly recreational games",
+          "Soccer parents who need timely attendance, kickoff, and lineup information",
+          "Youth soccer club coordinators seeking a transparent standard for playing-time fairness"
+        ],
+        "requires_data_aggregation": false,
+        "data_sources": [
+          "Coach-provided roster data",
+          "Parent-provided SMS responses",
+          "Coach-entered game and playing-time records",
+          "Twilio",
+          "Telnyx"
+        ],
+        "data_source_tag": "first-party-user-submitted-data",
+        "data_access_model": "unverified",
+        "data_acquisition_notes": "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. Twilio docs confirm incoming-message and delivery-status webhooks and discuss opt-in/opt-out,",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "16606c57",
+      "provenance": "checkpoint_*16606c57*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "ruled_out",
+      "pitch": "A web app for small landlords that reads utility bills and meter photos, splits costs fairly across tenants, and sends itemized charge requests, so move-out disputes stop eating their weekends",
+      "candidate": {
+        "solution_name": "RUBSChargeLedger",
+        "headline": "Detect Partial-Period Utility Charges Before Move-Out",
+        "short_description": "Detect mid-period occupancy changes and isolate only affected RUBS charges for review before billing or move-out.",
+        "description": "RUBSChargeLedger is a web app for small landlords that reads utility bills and meter photos, splits costs fairly across tenants, and sends itemized charge requests. Landlords add properties, units, tenants, lease dates, allocation rules, and billing periods, then upload the supporting utility documents. The app calculates each tenant’s share, highlights occupancy changes that may affect a charge, and preserves the source records and adjustments behind every request. Its purpose is to make utility reconciliation clear enough that move-out disputes stop eating landlords’ weekends.",
+        "value_proposition": "For small landlords, RUBSChargeLedger turns utility bills and meter photos into fair, itemized tenant charge requests with the evidence and safeguards needed to reduce move-out arguments.",
+        "core_features": [
+          "Utility-bill and meter-photo upload with source-document storage",
+          "Configurable cost-allocation rules using square footage, occupancy, unit count, fixed percentages, or submeter readings",
+          "Automatic tenant-share calculations for each utility billing period",
+          "Itemized charge requests that show the bill, allocation basis, service period, and tenant amount",
+          "Partial-period safeguards that compare lease dates with billing periods and flag move-ins, move-outs, renewals, and month-to-month changes",
+          "Exception queue and manual adjustment workflow with audit events"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "bill-photo-to-itemized-charges",
+        "why_it_works": "The workflow matches the landlord’s actual job: start with the bill or meter photo, calculate a transparent share, and communicate the resulting charge. Configurable allocation rules accommodate common property setups, while source-document storage, itemization, audit history, and partial-period exception flags make the calculation easier to explain when a tenant questions it. Over time, the structured record of bills, meter evidence, lease periods, allocation choices, and outcomes becomes a practical data advantage for handling recurring utility charges consistently.",
+        "innovation_angle": "The core product is a simple bill-to-charge workflow: read the utility evidence, apply a fair allocation rule, and send an itemized request. Its differentiator is that the same workflow includes deterministic lease-date and billing-period checks, so the charges most likely to be questioned at move-out are flagged before they are sent rather than discovered during a dispute.",
+        "differentiation_factors": [
+          "Partial-Period Detector identifies mid-period lease and occupancy exceptions automatically from date overlap",
+          "Exception queue limits manual work to affected charges instead of requiring a full-bill recalculation",
+          "Move-out packet puts the flagged exception, lease-date evidence, formula, and adjustment rationale at the center",
+          "Works alongside existing property-management software through ledger-ready exports"
+        ],
+        "differentiation_locus": "The specialized end-to-end utility billing workflow—specifically ingesting meter photos, calculating deterministic partial-period lease overlaps, and generating itemized tenant charges—that generalist property management tools overlook.",
+        "technical_approach": "Build RUBSChargeLedger as a web app backed by a relational database for properties, units, tenants, leases, utility billing periods, bills, meter photos, allocation rules, charge calculations, exceptions, adjustments, and audit events. Extract and store bill and meter-photo data alongside the original documents; use the selected allocation rule or submeter readings to calculate tenant shares; then generate itemized charge requests tied to the relevant service period and source evidence. Run a deterministic interval-overlap check between lease dates and bill service dates to flag partial-period cases for review, while retaining manual adjustments and an auditable record of how each charge was produced.",
+        "target_personas": [
+          "Self-managing landlords with 1-5 units who share utilities across units",
+          "Small property owners who calculate RUBS charges manually in spreadsheets"
+        ],
+        "requires_data_aggregation": false,
+        "data_sources": [
+          "Landlord-uploaded utility bills",
+          "Landlord-provided lease and unit data",
+          "Landlord-uploaded meter photos"
+        ],
+        "data_source_tag": "landlord-supplied records",
+        "data_access_model": "unverified",
+        "data_acquisition_notes": "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. UtilityBillOCR advertises usage, charges, and billing periods; evidence does not confirm serv",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "e9145e2b",
+      "provenance": "checkpoint_*e9145e2b*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "occupied",
+      "pitch": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+      "candidate": {
+        "solution_name": "AccreditedVetMapper",
+        "headline": "Controlled Substance Audit Logs for Veterinary Clinics",
+        "short_description": "Upload a controlled-substance log, reconcile discrepancies, verify prescriber accreditation, and export an audit-ready DEA documentation packet.",
+        "description": "A clinic uploads a CSV or spreadsheet export of its controlled-substance log, then maps each prescribing veterinarian to the current USDA APHIS National Veterinary Accreditation Program directory. The tool normalizes medication, quantity, transaction, and prescriber fields; flags unexplained count differences, missing attestations, and accreditation-status mismatches; and shows each exception in a review queue. Staff can assign explanations, attach supporting notes, and record the responsible reviewer without changing the source log. Once reviewed, the clinic exports a timestamped audit packet containing reconciliation results, prescriber verification evidence, exception notes, and DEA-oriented log summaries. The browser workflow is designed for independent practices that need a repeatable month-end or pre-inspection check without re-entering the same information into a PIMS and separate compliance documents.",
+        "value_proposition": "AccreditedVetMapper turns a clinic’s existing controlled-substance export into a reconciled, prescriber-verified audit packet without duplicate manual reporting or spreadsheet investigation.",
+        "core_features": [
+          "CSV/XLSX upload with configurable PIMS column mapping",
+          "Controlled-substance inventory reconciliation by medication, lot, transaction, and period",
+          "Discrepancy detection for opening balance, receipts, administrations, waste, transfers, adjustments, and closing count",
+          "Prescriber-name normalization and matching against the USDA APHIS National Veterinary Accreditation Program directory",
+          "Accreditation-status and directory-match exception queue",
+          "Reviewer workflow for explanations, attestations, notes, and supporting-document references",
+          "Immutable source-file snapshots with processing timestamps and audit history",
+          "DEA-oriented audit packet export in PDF and CSV",
+          "Saved clinic rules for recurring month-end reconciliations",
+          "Role-based access, encryption, retention controls, and deletion tools"
+        ],
+        "project_type": "saas",
+        "mechanism_tag": "aggregates-public-records",
+        "why_it_works": "The stated pain combines untrusted PIMS inventory records with duplicate reporting work, while the brief identifies a specific missing artifact: accreditation status is absent even when Cornerstone or Avimark totals tie out; a downloadable monthly USDA APHIS directory makes the verification step practical without requiring a fragile PIMS integration.",
+        "innovation_angle": "This pairs deterministic controlled-substance reconciliation with a versioned USDA APHIS directory match and evidence-backed prescriber attestations, turning a fragmented monthly check into a portable audit packet outside the PIMS.",
+        "differentiation_factors": [
+          "Combines controlled-substance quantity reconciliation with prescriber accreditation verification in one workflow",
+          "Produces a reviewable audit packet rather than only a dashboard or variance alert",
+          "Uses the clinic’s existing PIMS export, avoiding a second data-entry system",
+          "Stores evidence for each discrepancy and accreditation match, including source version and review history",
+          "Designed specifically for independent veterinary clinics and their recurring DEA-readiness workflow",
+          "Keeps deterministic compliance rules and human review for ambiguous identity matches"
+        ],
+        "differentiation_locus": "The specific compliance workflow step of matching controlled-substance logs against USDA APHIS prescriber accreditation to generate audit-ready packets, which general PIMS inventory modules miss.",
+        "technical_approach": "Build a browser SaaS with a multi-tenant backend, encrypted object storage for uploaded logs, and a parsing pipeline for CSV/XLSX files. Use configurable mapping templates and deterministic reconciliation rules rather than relying on generative AI for compliance decisions. Maintain a versioned monthly snapshot of the USDA APHIS accreditation directory, with source URL, retrieval date, checksum, and matching confidence recorded for every result; unmatched names go to human review rather than being silently classified. Generate PDFs from structured reconciliation data, preserve event-level audit logs, and implement least-privilege roles, encrypted transport and storage, configurable retention, and export/delete controls. Start with common export formats from Avimark and Cornerstone while supporting a generic mapping wizard.",
+        "target_personas": [
+          "Practice owners and managing veterinarians at independent veterinary clinics",
+          "Veterinary practice managers responsible for inventory control and DEA inspection preparation",
+          "Lead veterinary technicians or controlled-substance custodians performing monthly counts",
+          "Compliance consultants supporting small veterinary practices"
+        ],
+        "requires_data_aggregation": true,
+        "market_fit_claimed_route": "USDA APHIS National Veterinary Accreditation Program",
+        "data_sources": [
+          "USDA APHIS National Veterinary Accreditation Program directory",
+          "Clinic-provided PIMS inventory and controlled-substance log exports"
+        ],
+        "data_source_tag": "government-open-data",
+        "data_access_model": "unverified",
+        "data_acquisition_notes": "Data route UNVERIFIED — could not confirm or refute a public source; verify obtainability before building. APHIS NVAP page confirms the program exists, but evidence does not show a public directory/AP",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "89612241",
+      "provenance": "checkpoint_*89612241*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "premise_unproven",
+      "pitch": "A browser extension that drafts concise customer-support replies for independent Shopify merchants using the current order and conversation context, so they can answer repetitive delivery questions without switching tabs.",
+      "candidate": {
+        "solution_name": "A browser extension that drafts concise customer-support replies for independent",
+        "headline": "A browser extension that drafts concise customer-support replies for independent Shopify merchants",
+        "short_description": "A browser extension that drafts concise customer-support replies for independent Shopify merchants using the current order and conversation context, so they can answer repetit…",
+        "description": "A browser extension that drafts concise customer-support replies for independent Shopify merchants using the current order and conversation context, so they can answer repetitive delivery questions without switching tabs. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+        "value_proposition": "A browser extension that drafts concise customer-support replies for independent Shopify merchants using the current order and conversation context, so they can answer repetitive delivery questions without switching tabs.",
+        "core_features": [
+          "A browser extension that drafts concise customer-support replies",
+          "A browser extension that drafts concise customer-support replies app"
+        ],
+        "project_type": "other",
+        "delivery_format": "browser-extension",
+        "why_it_works": "Independent merchants repeatedly handle routine delivery questions but often lack the volume or budget to adopt a full helpdesk. A context-aware draft removes the tab-switching and lookup work while preserving merchant review, making the product faster to try and less risky than autonomous customer-service automation.",
+        "innovation_angle": "This focuses narrowly on an in-context browser action that combines the open conversation with the matching Shopify order, producing an editable delivery reply without requiring merchants to migrate to a new helpdesk.",
+        "differentiation_factors": [
+          "User-provided product brief; preserve its core mechanism during refinement."
+        ],
+        "differentiation_locus": "The no-migration overlay that fuses the live support conversation with Shopify order data to produce a contextual draft reply right inside whatever channel the merchant already uses. Full helpdesks (Gorgias, Zendesk, Freshdesk) demand a complete platform switch; generic AI writing extensions lack or",
+        "technical_approach": "A Chrome-compatible browser extension detects the active support conversation, retrieves the associated Shopify order context through the merchant’s authenticated Shopify session or approved integration, and sends only the relevant context to a hosted language-model endpoint. The endpoint generates a concise draft using structured prompts and merchant-configured tone rules, then returns it to an editable compose panel injected into the support interface. The extension should use minimal permissions, avoid storing full conversations by default, and require explicit merchant approval before copying or sending a reply.",
+        "target_personas": [
+          "Primary niche audience"
+        ],
+        "requires_data_aggregation": false,
+        "data_acquisition_notes": "No external aggregation is required. The extension uses the merchant’s currently authenticated Shopify order and conversation context through the browser workflow; Shopify permissions, supported helpdesk interfaces, and DOM or integration access must be confirmed before shipping.",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "bab9f696",
+      "provenance": "checkpoint_*bab9f696*/stage_5_3_refinement.json (source_frame=user_seed)",
+      "kind": "shipped_candidate",
+      "outcome_at_the_time": "occupied",
+      "pitch": "AI visibility for local businesses in London\nFind out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers.\nHow it works: A simple web app that monitors your visibility across AI platforms.",
+      "candidate": {
+        "solution_name": "AI visibility for local businesses in London Find out what AI assistants know ab",
+        "headline": "AI visibility for local businesses in London Find out what AI assistants",
+        "short_description": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential…",
+        "description": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+        "value_proposition": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+        "core_features": [
+          "AI visibility for local businesses in London Find",
+          "AI visibility for local businesses in London Find app"
+        ],
+        "project_type": "other",
+        "delivery_format": "web-app",
+        "why_it_works": "Local businesses increasingly depend on recommendation-style discovery, while existing free routes such as Google Business Profile and Search Console do not reveal how assistants synthesize that information into answers. A focused, repeatable view of descriptions and recommendations turns an opaque reputation risk into an actionable monitoring workflow.",
+        "innovation_angle": "This narrows monitoring to London local-intent discovery and evaluates whether an assistant accurately describes a business and recommends it for relevant services, rather than treating every brand mention as equal.",
+        "differentiation_factors": [
+          "User-provided product brief; preserve its core mechanism during refinement."
+        ],
+        "differentiation_locus": "London-specific AI visibility benchmarks and local-intent query data — a geographic data slice that could yield local service-category benchmark pages. However, this is a thin wedge: the SEO surface is at the hard floor, the London-only niche limits enumerable pages, and the data slice is narrow eno",
+        "technical_approach": "A web application stores business profiles, target queries, platform responses, timestamps, and extracted visibility metrics. Scheduled jobs submit approved queries through documented AI-platform or search-provider interfaces where available, normalize responses, and flag mentions, recommendations, citations, and competitors for review. A dashboard presents historical trends and links each finding to the captured response; rate limits, consent, and platform terms are enforced.",
+        "target_personas": [
+          "Primary niche audience"
+        ],
+        "requires_data_aggregation": false,
+        "data_acquisition_notes": "Business details and owned-site inputs are public or user-supplied. AI responses require documented provider access where available; coverage, rate limits, pricing, and terms vary, so unsupported platforms should be excluded rather than scraped.",
+        "source_frame": "user_seed"
+      }
+    },
+    {
+      "id": "7703f811",
+      "kind": "reconstructed_from_log",
+      "provenance": "worker_2026-08-13.log 16:31:00 — '[SeedFidelity] rejected — retained 19/23 seed terms, needed 23 (exact_terms=True); missing: [find, out, platform, work]'. The discarded candidate was never persisted; copy reconstructed as the seed's own content tokens minus those four, which is what the log states survived.",
+      "outcome_at_the_time": "not_evaluated (FALSE POSITIVE — this must now be accepted)",
+      "pitch": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+      "candidate": {
+        "solution_name": "LondonAIVisibilityMonitor",
+        "headline": "about across app assist busi custom describ know local london monitor potenti recommend servic simpl they visibl web whether",
+        "description": "about across app assist busi custom describ know local london monitor potenti recommend servic simpl they visibl web whether",
+        "value_proposition": "about across app assist busi custom describ know local london monitor potenti recommend servic simpl they visibl web whether",
+        "source_frame": "user_seed"
+      },
+      "judge_eval": false,
+      "judge_eval_excluded_because": "The candidate copy here is a STEMMED TOKEN BAG ('about across app assist busi ...'), not prose. The logs recorded only WHICH tokens survived the rewrite, never the sentences, so this is the most faithful reconstruction available — and it is valid for the token-overlap gates, which only count tokens. It is meaningless input for a semantic judge, which correctly reports that a word salad is not the same product. Judging it would measure the fixture, not the judge. Birth-time capture (`capture_gate_input`, added 2026-08-14) records real candidate prose at every gate, so future kills will be judge-valid and this exclusion can be retired."
+    },
+    {
+      "id": "e1b42702",
+      "kind": "reconstructed_from_log",
+      "provenance": "62-token pitch discarded post-scoring under the removed exact_terms rule; the wave renamed it 'Go/No-Go Market Researcher' and dropped peripheral words.",
+      "outcome_at_the_time": "not_evaluated (FALSE POSITIVE — this must now be accepted)",
+      "pitch": "NicheIQ is an AI market researcher for people who want to build their own products, websites, and apps to earn additional income on the side. It has analyzed millions of real comments to find the pains people already pay to solve, pressure-tests product ideas, and returns an honest Go/No-Go verdict",
+      "candidate": {
+        "solution_name": "Go/No-Go Market Researcher",
+        "headline": "addit alreadi analyz app build comment earn find has idea incom market million nicheiq own pain pay peopl pressur product real research return solv test their verdict want websit who",
+        "description": "addit alreadi analyz app build comment earn find has idea incom market million nicheiq own pain pay peopl pressur product real research return solv test their verdict want websit who",
+        "value_proposition": "addit alreadi analyz app build comment earn find has idea incom market million nicheiq own pain pay peopl pressur product real research return solv test their verdict want websit who",
+        "source_frame": "user_seed"
+      },
+      "judge_eval": false,
+      "judge_eval_excluded_because": "The candidate copy here is a STEMMED TOKEN BAG ('about across app assist busi ...'), not prose. The logs recorded only WHICH tokens survived the rewrite, never the sentences, so this is the most faithful reconstruction available — and it is valid for the token-overlap gates, which only count tokens. It is meaningless input for a semantic judge, which correctly reports that a word salad is not the same product. Judging it would measure the fixture, not the judge. Birth-time capture (`capture_gate_input`, added 2026-08-14) records real candidate prose at every gate, so future kills will be judge-valid and this exclusion can be retired."
+    },
+    {
+      "id": "d213f348",
+      "kind": "reconstructed_from_log",
+      "provenance": "worker_2026-08-13.log 09:51:21 — '[SeedFidelity] rejected — unpitched core data route(s): ai response sampling requires paid openai and anthropic api access, while google business profile data requires owner authorization, api pricing, rate limits, model changes, and terms must be monitored'. That sentence is data_acquisition_notes prose written by _repair_blank_idea_fields.",
+      "outcome_at_the_time": "not_evaluated (FALSE POSITIVE — this must now be accepted)",
+      "pitch": "Ai visibility for local businesses in London. Solve the problem what Ai models answer about them.",
+      "candidate": {
+        "solution_name": "Ai visibility for local businesses in London",
+        "description": "Ai visibility for local businesses in London. Solve the problem what Ai models answer about them.",
+        "value_proposition": "Ai visibility for local businesses in London. Solve the problem what Ai models answer about them.",
+        "source_frame": "user_seed",
+        "data_acquisition_notes": "ai response sampling requires paid openai and anthropic api access, while google business profile data requires owner authorization, api pricing, rate limits, model changes, and terms must be monitored"
+      }
+    }
+  ],
+  "adversarial": [
+    {
+      "id": "mech_analytics",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "axis": "mechanism",
+      "must_block_because": "drafting replaced by analytics; every pitch word survives",
+      "candidate": {
+        "solution_name": "ReplyInsights",
+        "description": "A Chrome extension for community managers at small SaaS companies that ANALYSES Reddit replies and reports response quality. It does not draft.",
+        "value_proposition": "Dashboards over Reddit reply performance.",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "drafts Reddit replies"
+        ],
+        "audience": [
+          "community managers"
+        ],
+        "delivery": [
+          "Chrome extension"
+        ]
+      }
+    },
+    {
+      "id": "mech_negated",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "axis": "mechanism",
+      "must_block_because": "negation: asserts it does NOT do the pitched action, keeps all tokens",
+      "candidate": {
+        "solution_name": "ReplyReader",
+        "description": "A Chrome extension that does not draft Reddit replies for community managers at small SaaS companies; it only reads and files them.",
+        "value_proposition": "Reading, never drafting.",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "drafts Reddit replies"
+        ],
+        "audience": [
+          "community managers"
+        ],
+        "delivery": [
+          "Chrome extension"
+        ]
+      }
+    },
+    {
+      "id": "scope_global",
+      "pitch": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+      "axis": "scope",
+      "must_block_because": "London-only widened to global; 'local'/'businesses' still present",
+      "candidate": {
+        "solution_name": "Global AI Visibility Monitor",
+        "description": "A web app that monitors AI visibility for local businesses worldwide, in every market, not limited to any city.",
+        "value_proposition": "Worldwide AI answer monitoring for local businesses.",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "audience": [
+          "local businesses in London"
+        ],
+        "mechanism": [
+          "monitors your visibility"
+        ],
+        "delivery": [
+          "web app"
+        ]
+      }
+    },
+    {
+      "id": "buyer_swap",
+      "pitch": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+      "axis": "buyer",
+      "must_block_because": "buyer moved from independent clinics to hospital chains",
+      "candidate": {
+        "solution_name": "EnterpriseVetLedger",
+        "description": "A browser-based inventory reconciliation tool for large hospital chains that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+        "target_personas": [
+          "Enterprise hospital-group procurement directors"
+        ],
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "audience": [
+          "independent veterinary clinics"
+        ],
+        "mechanism": [
+          "inventory reconciliation"
+        ],
+        "delivery": [
+          "browser-based"
+        ]
+      }
+    },
+    {
+      "id": "delivery_swap",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "axis": "delivery",
+      "must_block_because": "browser extension became a managed done-for-you service",
+      "candidate": {
+        "solution_name": "ReplyDesk Managed Service",
+        "description": "A managed service where our staff write Reddit replies for community managers at small SaaS companies. No extension is installed.",
+        "delivery_format": "service",
+        "project_type": "other",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "drafts Reddit replies"
+        ],
+        "audience": [
+          "community managers"
+        ],
+        "delivery": [
+          "Chrome extension"
+        ]
+      }
+    },
+    {
+      "id": "route_replacement",
+      "pitch": "Reconcile uploaded invoices for small bookkeeping firms.",
+      "axis": "mechanism",
+      "must_block_because": "an unpitched external directory became the required core",
+      "candidate": {
+        "solution_name": "AccreditedInvoiceMapper",
+        "description": "Reconcile uploaded invoices by matching every account through the USDA APHIS accreditation directory.",
+        "innovation_angle": "USDA APHIS directory matching is the required differentiator.",
+        "data_sources": [
+          "USDA APHIS National Veterinary Accreditation Program directory"
+        ],
+        "market_fit_claimed_route": "USDA APHIS accreditation directory",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "Reconcile uploaded invoices"
+        ],
+        "audience": [
+          "small bookkeeping firms"
+        ]
+      }
+    },
+    {
+      "id": "route_swap_named",
+      "pitch": "A bank reconciler that requires Plaid API for every transaction match.",
+      "axis": "mechanism",
+      "must_block_because": "the pitch named Plaid; the candidate requires Yodlee instead",
+      "candidate": {
+        "solution_name": "ReconYodlee",
+        "description": "Reconcile transactions through Yodlee for every match.",
+        "innovation_angle": "Yodlee is the required differentiator.",
+        "data_sources": [
+          "Yodlee"
+        ],
+        "market_fit_claimed_route": "Yodlee",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "requires Plaid API"
+        ],
+        "audience": [
+          "bank reconciler"
+        ]
+      }
+    },
+    {
+      "id": "echo_smuggle",
+      "pitch": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+      "axis": "mechanism",
+      "must_block_because": "quotes the pitch verbatim, then asserts a different product underneath",
+      "candidate": {
+        "solution_name": "CommunityPulse",
+        "description": "Original brief: A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand. What we actually build: a sentiment dashboard for subreddit health, with no reply composition of any kind.",
+        "value_proposition": "Subreddit sentiment tracking.",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "mechanism": [
+          "drafts Reddit replies"
+        ],
+        "audience": [
+          "community managers"
+        ],
+        "delivery": [
+          "Chrome extension"
+        ]
+      }
+    },
+    {
+      "id": "instances_named_ok",
+      "pitch": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+      "axis": "must_pass",
+      "must_block_because": "MUST PASS — ChatGPT/Perplexity/DeepSeek are instances of the pitched 'AI assistants'",
+      "candidate": {
+        "solution_name": "London AI Visibility Monitor",
+        "description": "A simple web app that monitors what AI assistants say about local businesses in London, sampling ChatGPT, Perplexity, Gemini and DeepSeek.",
+        "value_proposition": "See how AI assistants describe and recommend your London business.",
+        "data_sources": [
+          "OpenAI API",
+          "Perplexity API",
+          "DeepSeek API",
+          "Google Business Profile"
+        ],
+        "data_acquisition_notes": "Requires paid OpenAI, Perplexity and DeepSeek API access; Google Business Profile needs owner authorization.",
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "audience": [
+          "local businesses in London"
+        ],
+        "mechanism": [
+          "monitors your visibility"
+        ],
+        "delivery": [
+          "web app"
+        ]
+      },
+      "resolved_note": "RESOLVED 2026-08-14 by the seed-authority reorder. `unpitched_core_dependencies` refused this on 'OpenAI API' because deciding that ChatGPT/Perplexity/DeepSeek are instances of the pitched 'AI assistants' is WORLD KNOWLEDGE, which no enumerated cue list can hold — add DeepSeek today and the next vendor breaks it tomorrow. This was the live cause of the five route refusals in run 7703f811. It closed when the deterministic checks stopped being birth vetoes and became labelled evidence for the semantic judge, whose prompt already rules that naming concrete instances of a pitched category is implementation detail. NOTE WHY NO SINGLE RELAXATION WOULD HAVE DONE IT: this candidate trips all three deterministic checks at once — 4 unpitched routes, clause drift ['mechanism'], and retention 12/23 against a floor of 14 — so promoting any one of them back to a veto re-breaks the case. The deterministic layer still refuses it, and still SHOULD: it is retained as the judge-unavailable fallback, whose measured cost is exactly this one wrongly-refused elaboration out of two."
+    },
+    {
+      "id": "enrichment_ok",
+      "pitch": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+      "axis": "must_pass",
+      "must_block_because": "MUST PASS — same product, added optional supporting route and detail",
+      "candidate": {
+        "solution_name": "VetInventory Reconciler",
+        "description": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies, keeps reviewer notes, and generates audit-ready DEA logs.",
+        "technical_approach": "Clinic-uploaded CSV exports. Optionally annotate rows from a public recall feed without making that feed required.",
+        "data_sources": [
+          "Clinic-uploaded CSV files",
+          "Optional public recall feed"
+        ],
+        "source_frame": "user_seed"
+      },
+      "identity_terms": {
+        "audience": [
+          "independent veterinary clinics"
+        ],
+        "mechanism": [
+          "inventory reconciliation"
+        ],
+        "delivery": [
+          "browser-based"
+        ]
+      }
+    }
+  ]
+}

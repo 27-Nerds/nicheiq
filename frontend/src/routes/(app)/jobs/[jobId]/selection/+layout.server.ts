@@ -539,6 +539,13 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     // Same-product idea groups come from the pool/version/fingerprint-verified
     // /solutions snapshot, never the raw preview compatibility endpoint.
     overlapGroups: verifiedPreviewReport?.overlap_groups ?? [],
+    // A "Check my idea" run whose pipeline refused to grade the idea. The workspace never
+    // shows the verdict itself, but its chrome is written in verdict vocabulary ("Your
+    // verdict" in the sidebar, "Your idea's check stays saved" on Review) that is untrue
+    // when nothing was graded. Read from the same verified snapshot as everything else, so
+    // an untrusted artifact reports false rather than guessing.
+    validationNotEvaluated:
+      verifiedPreviewReport?.idea_validation?.outcome === "not_evaluated",
     availableSectionIds,
     decisionTools,
     sampleReportAvailable,

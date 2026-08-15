@@ -274,26 +274,155 @@ export async function sendFailureEmail(
 }
 
 /**
+ * What the two AWAITING_SELECTION emails may say about a submitted idea.
+ * Resolved by `resolveIdeaCheckEmailContext` (notificationService), which documents the
+ * four states and why they mirror `ideaCheckFraming` in routes/chat.ts.
+ *
+ * `headline` and `nextStep` are read VERBATIM off the persisted artifact, which sources
+ * them from `SEED_FAILURE_COPY` (src/nicheiq/report/idea_validation_block.py). No refusal
+ * sentence is written in this file: the program has already found four independently
+ * authored ones, and a fifth here would be the same defect in the one channel that leaves
+ * the product.
+ */
+export interface IdeaCheckEmailContext {
+  state: 'none' | 'evaluated' | 'not_evaluated' | 'unavailable';
+  headline?: string | null;
+  nextStep?: string | null;
+  /** The raw pitch — on a `validate_idea` run `Job.niche` IS what the user submitted. */
+  pitch?: string | null;
+}
+
+const NO_IDEA_CHECK: IdeaCheckEmailContext = { state: 'none' };
+
+/**
+ * S15 — THE CHARGE THAT ALREADY STANDS. Decided 2026-08-15 (owner): a refused idea check
+ * keeps the full discovery charge, with disclosure.
+ *
+ * This is the ONE sentence in this file that is not read off the artifact, and deliberately
+ * so. `headline` and `nextStep` describe what happened on one run and are true of it forever,
+ * which is why they are persisted and quoted; this states a LIVE commercial policy, and a
+ * policy frozen into stored reports would keep being quoted after it changed.
+ *
+ * The emails need it because they are the only refusal surface that leaves the product: they
+ * quote "Run the check again" verbatim from `SEED_FAILURE_COPY`, arrive up to four times over
+ * five days, and mention money nowhere — so "the failure is ours" plus "run it again" reads
+ * as a run that cost nothing. No page fix reaches an inbox.
+ *
+ * BYTE-IDENTICAL to `CHARGE_STANDS` in
+ * `frontend/src/lib/components/sections/ValidationVerdict.svelte`, pinned by
+ * `__tests__/emailService.ideaCheck.test.ts`, which reads both files. Two deployables, one
+ * sentence; a second wording would be the independently-authored-refusal-copy defect this
+ * program has already found four times.
+ *
+ * It says NOTHING about what a retry costs. That is a separate fact on a separate line (the
+ * page's `rerunPriceRecord`), kept separately replaceable: whether a retry stays a full-price
+ * new run is an open question, and this sentence is true either way.
+ */
+const IDEA_CHECK_CHARGE_NOTE =
+  'You were charged in full for this run. Everything else in it completed; the check on '
+  + "your idea did not, and we don't refund that charge.";
+
+/**
+ * The plain-text refusal note, or '' for every other state.
+ *
+ * The charge line is UNCONDITIONAL on a refusal: it depends on no artifact field, so a report
+ * that carries neither sentence — every refusal materialized before 2026-08-14 — still gets
+ * it. The two quoted sentences stay conditional for the reason they always were: the lead
+ * already says the check did not happen, and writing a reason here is the copy source this
+ * file exists to avoid creating.
+ */
+function ideaCheckNoteText(ctx: IdeaCheckEmailContext): string {
+  if (ctx.state !== 'not_evaluated') return '';
+  const lines: string[] = [];
+  if (ctx.pitch) lines.push(`Your submission: "${truncateNiche(ctx.pitch)}"`);
+  if (ctx.headline) lines.push(`What happened: ${ctx.headline}`);
+  if (ctx.nextStep) lines.push(`What to do next: ${ctx.nextStep}`);
+  lines.push(`What this cost: ${IDEA_CHECK_CHARGE_NOTE}`);
+  return `\n\n${lines.join('\n\n')}`;
+}
+
+/** The same note as an HTML block, or '' — inserted UNESCAPED, so every value is escaped here. */
+function ideaCheckNoteHtml(ctx: IdeaCheckEmailContext): string {
+  if (ctx.state !== 'not_evaluated') return '';
+  const rows: string[] = [];
+  if (ctx.pitch) rows.push(`Your submission: "${escapeHtml(truncateNiche(ctx.pitch))}"`);
+  if (ctx.headline) rows.push(`What happened: ${escapeHtml(ctx.headline)}`);
+  if (ctx.nextStep) rows.push(`What to do next: ${escapeHtml(ctx.nextStep)}`);
+  rows.push(`What this cost: ${escapeHtml(IDEA_CHECK_CHARGE_NOTE)}`);
+  const paragraphs = rows
+    .map((row, i) => `      <p style="margin: 0${i === rows.length - 1 ? '' : ' 0 10px'}; color: #52525B;">${row}</p>`)
+    .join('\n');
+  return [
+    '    <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 25px; border: 1px solid rgba(0,0,0,0.07);">',
+    paragraphs,
+    '    </div>',
+    '',
+  ].join('\n');
+}
+
+/**
  * Send solutions ready notification email
+ *
+ * `ideaCheck` defaults to `none`, the state that renders the pre-2026-08-14 copy verbatim:
+ * a caller that cannot resolve the outcome never invents a refusal, and a discovery run is
+ * byte-identical to before. Only `not_evaluated` and `unavailable` change anything.
  */
 export async function sendSolutionsReadyEmail(
   to: string,
   jobId: string,
   niche: string,
-  solutionCount: number
+  solutionCount: number,
+  ideaCheck: IdeaCheckEmailContext = NO_IDEA_CHECK
 ): Promise<void> {
+  const refused = ideaCheck.state === 'not_evaluated';
+  // `unavailable` gets the same wording as a refusal minus the refusal: we cannot read the
+  // outcome, so the email reports the pool and asserts nothing about the submitted idea.
+  const unclaimed = refused || ideaCheck.state === 'unavailable';
+  const count = String(solutionCount);
+  const displayNiche = truncateNiche(niche);
+
   const vars = {
     JOB_ID: jobId,
-    NICHE: truncateNiche(niche),
-    SOLUTION_COUNT: String(solutionCount),
+    NICHE: displayNiche,
+    SOLUTION_COUNT: count,
     STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+    LEAD: refused
+      ? `We've generated ${count} solutions from this run's market evidence. We could not check the idea you submitted — that failure is ours, not a problem with what you wrote.`
+      : unclaimed
+        ? `We've generated ${count} solutions for your review.`
+        : `We've generated ${count} solutions for your research on "${displayNiche}".`,
+    // "validation scores" is true of the pool everywhere, but on an idea-check run it lands
+    // one line under the user's own pitch and reads as a verdict on it.
+    REVIEW_BULLET: unclaimed
+      ? 'Review the solutions and their scores'
+      : 'Review the solutions and their validation scores',
+    IDEA_CHECK_NOTE: ideaCheckNoteText(ideaCheck),
+  };
+  const htmlVars = {
+    LEAD_HTML: refused
+      ? `We've generated <strong>${count} solutions</strong> from this run's market evidence. We could not check the idea you submitted — that failure is ours, not a problem with what you wrote.`
+      : unclaimed
+        ? `We've generated <strong>${count} solutions</strong> for your review.`
+        : `We've generated <strong>${count} solutions</strong> for your research on <strong>"${escapeHtml(displayNiche)}"</strong>.`,
+    IDEA_CHECK_NOTE_HTML: ideaCheckNoteHtml(ideaCheck),
   };
 
   try {
-    const html = renderTemplate(loadTemplate('solutionsReady.html'), vars, true);
+    // Markup pass FIRST (its values are escaped at construction), user-value pass SECOND,
+    // so nothing a user typed can land in a slot that is later substituted unescaped.
+    const html = renderTemplate(
+      renderTemplate(loadTemplate('solutionsReady.html'), htmlVars), vars, true,
+    );
     const text = renderTemplate(loadTemplate('solutionsReady.txt'), vars);
 
-    await sendEmail(to, 'Your NicheIQ Solutions Are Ready for Review!', text, html);
+    await sendEmail(
+      to,
+      refused
+        ? 'Your NicheIQ solutions are ready — we could not check your idea'
+        : 'Your NicheIQ Solutions Are Ready for Review!',
+      text,
+      html,
+    );
     console.log(`Solutions ready email sent to ${to} for job ${jobId}`);
   } catch (error) {
     console.error('Failed to send solutions ready email:', error);
@@ -396,20 +525,53 @@ export async function sendSelectionReminderEmail(
   to: string,
   jobId: string,
   niche: string,
-  solutionCount: number
+  solutionCount: number,
+  ideaCheck: IdeaCheckEmailContext = NO_IDEA_CHECK
 ): Promise<void> {
+  // THE SHARPEST SENTENCE IN THE PROGRAM. "you have N VALIDATED solutions waiting for your
+  // review FOR '{{NICHE}}'" makes the user's own pitch the grammatical object of
+  // "validated ... for", and this email is sent at 24h, 72h AND 120h — up to three more
+  // assertions after the first one, on a run that refused to grade the pitch.
+  const refused = ideaCheck.state === 'not_evaluated';
+  const unclaimed = refused || ideaCheck.state === 'unavailable';
+  const count = String(solutionCount);
+  const displayNiche = truncateNiche(niche);
+
   const vars = {
     JOB_ID: jobId,
-    NICHE: truncateNiche(niche),
-    SOLUTION_COUNT: String(solutionCount),
+    NICHE: displayNiche,
+    SOLUTION_COUNT: count,
     STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+    LEAD: refused
+      ? `Just a reminder — you have ${count} solutions waiting for your review. This run could not check the idea you submitted; these came from the market evidence and stand on their own.`
+      : unclaimed
+        ? `Just a reminder — you have ${count} solutions waiting for your review.`
+        : `Just a reminder — you have ${count} validated solutions waiting for your review for "${displayNiche}".`,
+    IDEA_CHECK_NOTE: ideaCheckNoteText(ideaCheck),
+  };
+  const htmlVars = {
+    LEAD_HTML: refused
+      ? `Just a reminder — you have <strong>${count} solutions</strong> waiting for your review. This run could not check the idea you submitted; these came from the market evidence and stand on their own.`
+      : unclaimed
+        ? `Just a reminder — you have <strong>${count} solutions</strong> waiting for your review.`
+        : `Just a reminder — you have <strong>${count} validated solutions</strong> waiting for your review for <strong>"${escapeHtml(displayNiche)}"</strong>.`,
+    IDEA_CHECK_NOTE_HTML: ideaCheckNoteHtml(ideaCheck),
   };
 
   try {
-    const html = renderTemplate(loadTemplate('selectionReminder.html'), vars, true);
+    const html = renderTemplate(
+      renderTemplate(loadTemplate('selectionReminder.html'), htmlVars), vars, true,
+    );
     const text = renderTemplate(loadTemplate('selectionReminder.txt'), vars);
 
-    await sendEmail(to, 'Reminder: Your NicheIQ Solutions Are Waiting', text, html);
+    await sendEmail(
+      to,
+      refused
+        ? 'Reminder: your NicheIQ solutions are waiting (we could not check your idea)'
+        : 'Reminder: Your NicheIQ Solutions Are Waiting',
+      text,
+      html,
+    );
     console.log(`Selection reminder email sent to ${to} for job ${jobId}`);
   } catch (error) {
     console.error('Failed to send selection reminder email:', error);

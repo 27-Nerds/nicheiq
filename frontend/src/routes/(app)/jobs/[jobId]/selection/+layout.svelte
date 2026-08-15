@@ -1020,6 +1020,7 @@
     selectionQuery={data.workspace.canonicalQuery}
     availableSectionIds={data.availableSectionIds}
     {decisionTools}
+    validationNotEvaluated={data.validationNotEvaluated ?? false}
     {reportAvailable}
   />
   <!-- A <div>, not <main>: the (app) layout already renders the page's single

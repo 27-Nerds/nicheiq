@@ -479,13 +479,25 @@ def _synthesize_idea_from_concept(concept, pain):
     headline = " ".join(one_liner.split()[:12]) or getattr(concept, "concept_name", "")
     obv = getattr(concept, "obviousness_score", -1.0)
     novelty = round(max(0.0, min(1.0, 1.0 - obv)), 2) if (obv is not None and obv >= 0) else 0.5
+    # THE COVERAGE NOTE IS ONLY TRUE WHEN THERE IS A PAIN (2026-08-15, S22). This function has
+    # two callers with different shapes: `enforce_pain_coverage`, which re-injects a concept to
+    # cover a named high-severity pain, and `_refine_single_concept`'s `except` branch, which
+    # passes `pain=None` on the `user_seed` path. On the seed path the sentence rendered as
+    # `(Re-injected to keep coverage of the high-severity pain ""; expand before shipping.)` —
+    # an internal instruction, with an empty pain title, in the `description` field a paying
+    # user reads as their product spec. It shipped on live jobs 03d20ff6 and bab9f696. Nothing
+    # about it was true there: no pain was being covered, and "expand before shipping" is a note
+    # to us. Suppressed when there is no pain rather than reworded, because with no pain there
+    # is no claim left to make.
+    pain_title = (getattr(pain, "title", "") or "").strip() if pain is not None else ""
     return BaseSolutionIdea(
         solution_name=getattr(concept, "concept_name", "Untitled concept"),
         headline=headline,
         short_description=short_desc,
         description=(
             f"{one_liner} (Re-injected to keep coverage of the high-severity pain "
-            f"\"{getattr(pain, 'title', '')}\"; expand before shipping.)"
+            f"\"{pain_title}\"; expand before shipping.)"
+            if pain_title else one_liner
         ),
         value_proposition=one_liner,
         pain_points_addressed=[getattr(pain, "title", "") or "high-severity pain"],

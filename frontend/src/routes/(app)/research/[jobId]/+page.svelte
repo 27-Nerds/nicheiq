@@ -215,6 +215,17 @@
       <!-- Run shell: focused progress column + the ledger, working state. -->
       <div class="run-shell">
         <div class="run-shell-main">
+          <!-- No `ideaCheckOutcome` here, and no artifact fetch to feed one:
+               `belongsOnCanonicalJobPage` sends RUNNING_PHASE2 (and every QUEUED /
+               RUNNING run carrying a DEEP_RESEARCH dispatch) to /jobs/[jobId] before
+               `job` is ever assigned, so this shell only renders the Phase-1 leg —
+               where the idea check has not run yet and no outcome exists to read.
+               The prop's default is "unknown", and during Phase 1 "unknown" means
+               "has not happened yet", so the forward-looking method sentence is what
+               renders — which is what a run still in Phase 1 should say. If this shell
+               ever gains a Phase-2 leg, "unknown" starts meaning "cannot be read" and
+               the screen withholds both claims on its own; that is the point of the
+               tri-state. Pinned in `__tests__/phase2Redirect.test.ts`. -->
           <ResearchProgressScreen
             {jobId}
             phase={workingPhase}

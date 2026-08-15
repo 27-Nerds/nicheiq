@@ -1010,6 +1010,24 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   // a fixed commit dock over the verdict; alternatives live behind the disclosure below.
   const isValidation = $derived(job?.entryMode === 'validate_idea');
   const ideaValidation = $derived(previewReport?.idea_validation ?? null);
+  // The run REFUSED to grade the pitch (six typed causes, all ours): no spec was built,
+  // `idea_name` is null and no candidate anywhere is the user's. `ideaValidation` is
+  // TRUTHY here — the block is always emitted — so every surface below that reads only
+  // "is this a validate run" or "is there a block" was asserting a graded candidate that
+  // does not exist, from the page subtitle down to "Your idea was ruled out".
+  const validationNotEvaluated = $derived(ideaValidation?.outcome === 'not_evaluated');
+  // The same fact as a THREE-state signal, for the in-run progress screen. Everything above
+  // renders the completed report, where a missing block means "no idea check on this run" —
+  // but the progress screen renders mid-run, where the check has run and the block simply
+  // could not be READ: the endpoint 400'd for the whole QUEUED wait before Deep Research,
+  // and any 5xx on the preview fetch does the same at RUNNING_PHASE2. A boolean collapses
+  // "refused" and "unreadable" onto the same `false`, which is the graded wording — the
+  // exact defect, arrived at from a different direction, with no marker on the page.
+  const ideaCheckOutcome = $derived<'graded' | 'not_evaluated' | 'unknown'>(
+    !ideaValidation ? 'unknown'
+    : ideaValidation.outcome === 'not_evaluated' ? 'not_evaluated'
+    : 'graded',
+  );
   const validationSeedRow = $derived.by(() => {
     if (!isValidation) return null;
     return displaySolutions.find(
@@ -1022,6 +1040,19 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
       (s) => s.source_frame === 'user_seed' && s.generation_operation_id === 'validate_pivot',
     ) ?? null;
   });
+  // Rows in THIS LIST that are the user's own idea, by any route. `validationSeedRow`
+  // and `validationPivotRow` above key on the two `validate` operation ids, which is
+  // right for pinning and wrong for the question "is anything of theirs down there":
+  // the chat seed endpoint (POST /api/jobs/:jobId/seed) has no entryMode check, so a
+  // user whose check REFUSED can seed the same pitch from chat at AWAITING_SELECTION
+  // and get a `user_seed` candidate under a `seed_idea_N` id. It lands in this list.
+  // The workbench header used to tell that user "Your idea isn't in this list", with
+  // their idea in it — the same false claim `alternatives.count` was making one card
+  // above (`_alternatives` now excludes every `user_seed`, so the count is true; the
+  // list still renders them, which is correct — they are selectable candidates).
+  const validationOwnIdeaRows = $derived(
+    isValidation ? displaySolutions.filter((s) => s.source_frame === 'user_seed') : [],
+  );
   // Where the user's idea placed among everything this evidence supports — the one
   // number that changes the 100-credit decision, previously hidden behind the fold.
   const validationSeedRank = $derived.by(() => {
@@ -1105,7 +1136,11 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 
   const selectionSubtitle = $derived(
     isValidation
-      ? "Your idea, developed into a product concept and checked against this market's evidence."
+      ? validationNotEvaluated
+        // Points at the verdict card rather than restating its cause: the per-cause
+        // sentences live once, in SEED_FAILURE_COPY (report/idea_validation_block.py).
+        ? "This run couldn't grade your idea. The reason, and what to do next, are below."
+        : "Your idea, developed into a product concept and checked against this market's evidence."
       : 'Discovery is complete. Review the strongest opportunities before moving to Deep Research.',
   );
 
@@ -1459,6 +1494,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
       chatMode={job.chatMode ?? false}
       gateStage={job.gateStage ?? null}
       {decisionTools}
+      {validationNotEvaluated}
       landingPageStatus={lpStatus}
       {reportAvailable}
     />
@@ -1501,6 +1537,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
           jobStatus={job.status}
           niche={job.nicheDisplay ?? job.niche}
           entryMode={job.entryMode}
+          {ideaCheckOutcome}
           userEmail={data.userEmail}
           progressPercent={job.progressPercent}
           stagesCompleted={job.stagesCompleted ?? 0}
@@ -1703,7 +1740,16 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
             {/if}
             {#if hasPhase1Work}
               <p class="stop-handoff__retained">
-                {#if isValidation}
+                {#if isValidation && validationNotEvaluated}
+                  <!-- The graded-check wording below is false when the run refused to grade
+                       the pitch: there is no check to be "intact" and nothing was graded
+                       against anything. -->
+                  <strong>This run's market work is intact.</strong>
+                  The {displaySolutions.length}
+                  {displaySolutions.length === 1 ? 'approach' : 'approaches'} below came from
+                  the completed part of this run and are unaffected. Your idea itself was not
+                  graded on this run.
+                {:else if isValidation}
                   <strong>Your idea's check is intact.</strong>
                   Everything the completed part of this run learned about your idea (and
                   the {displaySolutions.length}
@@ -1827,7 +1873,16 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               onContinue={handleValidateContinue}
               onShowAlternatives={expandAlternatives}
             />
-            <section class="mt-6 mb-6" id="validate-alternatives" aria-label="How your idea was graded">
+            <!-- Every "graded" claim in this section is outcome-branched: on a refused run
+                 the pool below was still generated from this market's evidence, but nothing
+                 was graded against it and none of it is the user's idea. -->
+            <section
+              class="mt-6 mb-6"
+              id="validate-alternatives"
+              aria-label={validationNotEvaluated
+                ? 'The approaches this run generated'
+                : 'How your idea was graded'}
+            >
               {#if !showAlternatives}
                 <div class="card p-6 validate-disclosure">
                   <button
@@ -1840,9 +1895,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                     onclick={expandAlternatives}
                   >
                     <span>
-                      <span class="block text-base font-semibold text-text-primary">How your idea was graded</span>
+                      <span class="block text-base font-semibold text-text-primary">
+                        {validationNotEvaluated
+                          ? 'The approaches this run generated'
+                          : 'How your idea was graded'}
+                      </span>
                       <span class="block mt-1 text-sm text-text-secondary">
-                        {#if validationSeedRank}
+                        {#if validationNotEvaluated}
+                          {ideaValidation.alternatives.count} approaches from this market's evidence. None of them is your idea.
+                        {:else if validationSeedRank}
                           Your idea ranked #{validationSeedRank.rank} of {validationSeedRank.total} against
                           {ideaValidation.alternatives.count} other approaches.
                         {:else}
@@ -1853,9 +1914,15 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                     <ChevronDown class="w-4 h-4 mt-1 shrink-0 text-text-muted" aria-hidden="true" />
                   </button>
                   <p class="mt-3 text-xs text-text-muted max-w-[76ch]">
-                    To grade your idea we generated and scored every other approach this
-                    evidence supports. That pool is the benchmark your idea was ranked
-                    against.{#if (ideaValidation.alternatives.named_buyer_count ?? 0) > 0}{' '}
+                    {#if validationNotEvaluated}
+                      This run generated and scored the approaches this evidence supports, but
+                      it never graded your idea against them — no version of your idea was
+                      built.
+                    {:else}
+                      To grade your idea we generated and scored every other approach this
+                      evidence supports. That pool is the benchmark your idea was ranked
+                      against.
+                    {/if}{#if (ideaValidation.alternatives.named_buyer_count ?? 0) > 0}{' '}
                       {ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.{/if}
                   </p>
                 </div>
@@ -1868,7 +1935,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               <div id="validate-alternatives-content">
                 {#if showAlternatives}
                   <h2 class="sr-only" tabindex="-1" bind:this={alternativesHeadingEl}>
-                    How your idea was graded
+                    {validationNotEvaluated
+                      ? 'The approaches this run generated'
+                      : 'How your idea was graded'}
                   </h2>
                 {/if}
                   <SelectionWorkbench
@@ -1916,20 +1985,36 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                   analystOnly={!showAlternatives}
                   groupByThesis={false}
                   pinnedIdeaKeys={validationPinnedKeys}
-                  headerTitle="Your idea, ranked with the alternatives"
-                  headerSub={validationSeedRow
-                    ? validationSeedRank
-                      ? `Your idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank.rank} marker is its score rank. Add any of these to the Deep Research scope.`
-                      : 'Your idea is pinned at the top for comparison. Add any of these to the Deep Research scope.'
-                    : [
-                        ideaValidation.seed_display_composite_score != null
-                          ? `Your idea scored ${ideaValidation.seed_display_composite_score}/100 on this scale. It was ruled out, so it isn't in this list.`
-                          : "Your idea was ruled out, so it isn't in this list.",
+                  headerTitle={validationNotEvaluated
+                    ? 'The approaches this run generated'
+                    : 'Your idea, ranked with the alternatives'}
+                  headerSub={validationNotEvaluated
+                    // The absence of the seed row used to be read as "demoted", so a run
+                    // that never built the idea told the user it had been RULED OUT — a
+                    // verdict, on a product that was never evaluated. Absence has two
+                    // causes and only the outcome separates them.
+                    ? [
+                        validationOwnIdeaRows.length > 0
+                          ? "The idea you submitted for checking isn't in this list: this run couldn't grade it, so no version of it was built. The idea you seeded from chat is in the list — that one was graded."
+                          : "Your idea isn't in this list: this run couldn't grade it, so no version of it was built.",
                         (ideaValidation.alternatives.named_buyer_count ?? 0) > 0
-                          ? `${ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.`
+                          ? `${ideaValidation.alternatives.named_buyer_count} of these primarily serve the buyer you named.`
                           : '',
                         'Add any of these to the Deep Research scope.',
-                      ].filter(Boolean).join(' ')}
+                      ].filter(Boolean).join(' ')
+                    : validationSeedRow
+                      ? validationSeedRank
+                        ? `Your idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank.rank} marker is its score rank. Add any of these to the Deep Research scope.`
+                        : 'Your idea is pinned at the top for comparison. Add any of these to the Deep Research scope.'
+                      : [
+                          ideaValidation.seed_display_composite_score != null
+                            ? `Your idea scored ${ideaValidation.seed_display_composite_score}/100 on this scale. It was ruled out, so it isn't in this list.`
+                            : "Your idea was ruled out, so it isn't in this list.",
+                          (ideaValidation.alternatives.named_buyer_count ?? 0) > 0
+                            ? `${ideaValidation.alternatives.named_buyer_count} of them primarily serve the buyer you named.`
+                            : '',
+                          'Add any of these to the Deep Research scope.',
+                        ].filter(Boolean).join(' ')}
                   />
               </div>
             </section>
@@ -2236,7 +2321,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
                        a ruled-out idea verdict one screen up. -->
                   <p class="text-xs text-text-muted mb-3 max-w-[76ch]">
                     This section grades the market your idea sits in, not your idea.
-                    Your idea's own verdict is above.
+                    {validationNotEvaluated
+                      ? "Your idea's own result is above."
+                      : "Your idea's own verdict is above."}
                   </p>
                 {/if}
                 <PreviewOverview
@@ -2533,8 +2620,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
 <!-- "Check my idea" runs get their own chapter: the shortlist chapter's anchors all live
      inside the unmounted workbench — running it here would dead-poll every anchor and
      persist `dismissed` against the user's real discovery runs. The host only mounts once
-     its chapter's content exists (block loaded / solutions loaded) so the restart button —
-     which bypasses every readiness gate — can never fire against a bare page. -->
+     its chapter's content exists (block loaded / solutions loaded). -->
 {#if isSelectionPhase && (!isValidation || ideaValidation)}
   <TourHost
     chapter={isValidation ? 'validate-report' : 'job-shortlist'}
@@ -2544,6 +2630,19 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
       : displaySolutions.length > 0
         && !solutionsLoading
         && selectionToolTasks !== undefined}
+    suppressed={
+      // The validate chapter narrates a graded check end to end ("the threads behind the
+      // verdict", "who already ships this", "Deep Research continues with YOUR idea", "How
+      // your idea was graded"), and two of its six anchors — validate-evidence and
+      // validate-competitors — are inside ValidationVerdict's `{#if !isNotEvaluated}`. On a
+      // refused run it would assert a grading that never happened and poll for steps that
+      // cannot mount.
+      //
+      // This is `suppressed`, not `ready`. `ready={false}` only withholds the automatic
+      // invitation: the host still registered with the launcher, so "Show me around again"
+      // rendered on the refused page and replayed step 1 — "run it again in your own
+      // words" — beside a card reading "Not evaluated".
+      isValidation && validationNotEvaluated}
     deferred={seedRunning || isRegenQueued || (!isValidation && invalidSolutionCount > 0)}
     reflowKey={isValidation ? showAlternatives : selectionToolTasks}
   />

@@ -50,7 +50,7 @@ def _seed_idea(parity="none found"):
 class FakeCrew:
     def __init__(self, seed_result="idea", parity="none found",
                  raise_systemic=False, pivot_rev=None, pivot_ok=False,
-                 brief_probe_result=(None, 0)):
+                 brief_probe_result=(None, 0), failure_reason=None):
         for attr, value in POOL_SCRATCH.items():
             setattr(self, attr, value if not isinstance(value, (list, dict, set))
                     else type(value)(value))
@@ -66,6 +66,7 @@ class FakeCrew:
         self.scored = None
         self._brief_probe_result = brief_probe_result
         self.brief_probe_seen = None
+        self._seed_failure_reason = failure_reason
 
     def _probe_seed_brief_parity(self, seed, mechanism_terms):
         # The real method is fail-soft internally — it returns (None, n), never raises.
@@ -248,8 +249,60 @@ def test_seed_none_degrades_without_touching_pool():
     flow._inject_validate_seed(crew, pool)
 
     assert len(pool.solution_ideas) == 1
-    assert any("could not be evaluated" in d for d in flow.state.pipeline_degradations)
+    assert any("could not evaluate your idea" in d
+               for d in flow.state.pipeline_degradations)
     _assert_scratch_restored(crew)
+
+
+def test_a_refusal_merges_nothing_into_the_run_level_ruled_out_ledger():
+    """The load-bearing ORDERING inside `_inject_validate_seed`, pinned.
+
+    `state.idea_ruled_out` is merged at the very bottom of the method, after every refusal
+    path has returned — and nothing enforces that but the line order. Three surfaces render
+    that ledger as statements about THE USER'S IDEA (SelectionWorkbench's ruled-out rail,
+    the analyst chat's ruled-out block, the `/new` prefill), so a merge that moved above the
+    refusals would tell the user which of their idea's pains was ruled out on a run that
+    never graded their idea — the same claim sixteen surfaces of this program have been
+    spent removing, arriving through a data path instead of a copy string.
+
+    Non-vacuous by construction: `FakeCrew.execute_seed_pipeline` sets `ruled_out_pains` to
+    a seed finding BEFORE returning None, exactly as the real reset does, and the accepted
+    path above proves that finding does reach the ledger when the seed survives.
+    """
+    # (1) the crew produced nothing to grade.
+    flow, crew, pool = _flow(), FakeCrew(seed_result=None), _pool()
+    flow._inject_validate_seed(crew, pool)
+    assert flow.state.idea_ruled_out == []
+    # The snapshot/restore half: the seed's findings never reach the POOL harvest either.
+    assert crew.ruled_out_pains == POOL_SCRATCH["ruled_out_pains"]
+
+    # (2) the post-birth identity refusal — a separate `return`, same requirement. The lock
+    # records a value the returned candidate does not carry, so the drift check refuses.
+    flow2, crew2, pool2 = _flow(), FakeCrew(), _pool()
+    crew2._seed_identity_lock = {"solution_name": "a completely different product"}
+    flow2._inject_validate_seed(crew2, pool2)
+    assert len(pool2.solution_ideas) == 1, "drifted seed must not reach the pool"
+    assert flow2.state.idea_ruled_out == []
+
+
+def test_the_degradation_line_is_human_copy_not_the_internal_cause():
+    """`pipeline_degradations` is appended VERBATIM to the report's quality caveats
+    (report_generator `_generate_data_quality_summary`), so it is user-facing copy. It used to
+    interpolate the raw typed cause — a paying user read "seed pipeline refused:
+    judged_a_different_product". The machine-readable cause still travels, on
+    `state.user_idea_failure_reason` and in the identity trace."""
+    from nicheiq.report.idea_validation_block import SEED_FAILURE_COPY
+
+    for reason, (headline, _next_step) in SEED_FAILURE_COPY.items():
+        flow, crew, pool = _flow(), FakeCrew(seed_result=None, failure_reason=reason), _pool()
+        flow._inject_validate_seed(crew, pool)
+
+        assert flow.state.user_idea_failure_reason == reason  # the machine half survives
+        line = flow.state.pipeline_degradations[-1]
+        assert reason not in line and "_" not in line, line
+        assert "refused" not in line, line
+        # Same sentence the idea-check block's top line renders, so the two cannot drift.
+        assert line == f"Idea check: {headline[0].lower()}{headline[1:]}"
 
 
 def test_systemic_breaker_propagates_after_restore():
@@ -422,3 +475,178 @@ def test_trigger_incumbent_parsed_from_paren_format_stamp():
                     pivot_rev=None)
     flow._inject_validate_seed(crew, _pool())
     assert flow.state.user_idea_pivot["trigger_incumbent"] == "Cropster"
+
+
+# ──────────────────────────────────────────────────────────────────────────────────────
+# Round 8 — every refusal path is typed, and none of them writes its own copy.
+# ──────────────────────────────────────────────────────────────────────────────────────
+
+def _post_birth_drift_refusal():
+    """The `changed` branch: the crew returned a candidate the birth lock does not match."""
+    flow, crew, pool = _flow(), FakeCrew(), _pool()
+    crew._seed_identity_lock = {"solution_name": "a completely different product"}
+    flow._inject_validate_seed(crew, pool)
+    return flow, pool
+
+
+def _post_birth_check_failed_refusal(monkeypatch):
+    """The `except` branch: our own identity check could not run at all."""
+    import nicheiq.utils.seed_fidelity as sf
+
+    def boom(*_a, **_k):
+        raise RuntimeError("identity check exploded")
+
+    monkeypatch.setattr(sf, "changed_seed_identity_fields", boom)
+    flow, crew, pool = _flow(), FakeCrew(), _pool()
+    crew._seed_identity_lock = {"solution_name": "anything at all"}
+    flow._inject_validate_seed(crew, pool)
+    return flow, pool
+
+
+def test_every_refusal_path_stamps_a_typed_cause_with_single_source_copy(monkeypatch):
+    """THE TYPED-CAUSE DISCIPLINE COVERED ONE OF THREE REFUSAL PATHS.
+
+    All six causes are assigned inside `execute_seed_pipeline`, and the birth refusal
+    carried the crew's value to state. The two POST-BIRTH refusals set only
+    `pipeline_degradations` and returned, so `user_idea_failure_reason` fell through to
+    `"unknown"` -> the GENERIC copy pair on the report page — while a FOURTH independently
+    authored refusal sentence ("Idea check: the evaluated candidate drifted from your
+    submitted product and was withheld") rendered in `quality_caveats` on that same page,
+    describing "the EVALUATED candidate" under a heading stamped "Not evaluated".
+
+    The property, not the list: for EVERY way this method can refuse, the typed cause must
+    be one the copy map knows, and the user-facing caveat must be DERIVED from that map's
+    headline rather than written at the call site.
+    """
+    from nicheiq.report.idea_validation_block import SEED_FAILURE_COPY, seed_failure_headline
+
+    refusals = {
+        "birth": (lambda: (_flow_refused_at_birth())),
+        "post_birth_drift": (lambda: _post_birth_drift_refusal()),
+        "post_birth_check_failed": (lambda: _post_birth_check_failed_refusal(monkeypatch)),
+    }
+    for label, run in refusals.items():
+        flow, pool = run()
+        assert len(pool.solution_ideas) == 1, f"{label}: refused seed reached the pool"
+
+        reason = flow.state.user_idea_failure_reason
+        assert reason in SEED_FAILURE_COPY, (
+            f"{label}: refusal cause {reason!r} is not a typed cause, so the report renders "
+            "the generic pair for a defect we can name")
+
+        headline = seed_failure_headline(reason)
+        assert flow.state.pipeline_degradations[-1] == (
+            f"Idea check: {headline[0].lower()}{headline[1:]}"), (
+            f"{label}: the caveat is authored here instead of derived from SEED_FAILURE_COPY")
+
+
+def _flow_refused_at_birth():
+    flow, crew, pool = _flow(), FakeCrew(seed_result=None,
+                                        failure_reason="judged_a_different_product"), _pool()
+    flow._inject_validate_seed(crew, pool)
+    return flow, pool
+
+
+def test_the_two_hand_written_post_birth_refusal_sentences_are_gone(monkeypatch):
+    """Named literally, because they are what a user actually read. Both were the FOURTH and
+    FIFTH refusal sentences in a program whose single source is `SEED_FAILURE_COPY`."""
+    dead = (
+        "the evaluated candidate drifted from your submitted product and was withheld",
+        "the submitted-product identity check failed, so the candidate was withheld",
+    )
+    for run in (lambda: _post_birth_drift_refusal(),
+                lambda: _post_birth_check_failed_refusal(monkeypatch)):
+        flow, _pool_ = run()
+        joined = " ".join(flow.state.pipeline_degradations)
+        for sentence in dead:
+            assert sentence not in joined, joined
+        # And it never says "evaluated" about a run that evaluated nothing.
+        assert "evaluated candidate" not in joined
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# S15 — THE COMMERCIAL CONTRACT OF A REFUSAL. PINNED, NOT ENDORSED.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_every_refusal_path_returns_normally_so_no_failure_signal_ever_reaches_billing(
+        monkeypatch):
+    """THE MECHANISM BY WHICH A REFUSED RUN KEEPS THE USER'S MONEY.
+
+    A `validate_idea` job is charged the FULL `discovery` stage at creation
+    (`creditService.ts:906`: `entryStage = chatMode ? 'guided_s1' : 'discovery'`, and
+    `types/job.ts` rejects `chatMode` on an idea check, so it is always the plain
+    discovery price). Every refund path in the backend is keyed on a FAILURE or a
+    DISPATCH settlement — `refundChargeInTx` is called from `jobService`,
+    `dispatchService`, `paidPoolRecoveryService` and `workers.ts`, and not one of those
+    call sites can see an idea-check outcome. `not_evaluated` appears nowhere in any of
+    them; it exists in the backend only in copy and prompt surfaces.
+
+    So the ONLY thing that could return the money is a refusal that presents itself as a
+    failure. This test pins that none of them does: all three `_refuse_seed` call sites
+    (`research_flow.py:5478`, `:5525`, `:5544`) `return` after it, `_refuse_seed` itself
+    (`:5596`) sets two state fields and returns `None`, and so `_inject_validate_seed`
+    returns normally. The run then completes Phase 1 and terminates through the ordinary
+    success endpoint `POST /api/workers/ideas-ready`, which contains no reference to a
+    charge or a refund at all.
+
+    THIS IS DELIBERATE AND IT IS NOT THE BUG. The refusal is non-fatal on purpose — the
+    alternatives pool ships and has value, and raising here would destroy a paid Phase 1
+    to report a defect that is ours (that is S3/S4, already fixed once in this program).
+    What was never a decision is the COMMERCIAL half: nothing anywhere asserted what
+    happens to the charge, so the current outcome — user pays in full, run grades nothing
+    — arrived by accident and could change in either direction silently.
+
+    The contrast that proves this is a choice and not a mechanism: the adjacent
+    in-selection seed op refuses by RAISING (`worker/tasks.py::run_seed_idea` — "Only a
+    TOTAL birth failure is a pipeline failure"), lands on `POST /api/workers/seed-failed`
+    (`workers.ts:2479`) and DOES refund its `seed_idea_N` charge.
+
+    If you are changing this, see ledger item S15 in `docs/SEED_IDENTITY_REMEDIATION.md`:
+    full refund / no refund with disclosure / partial, with what each costs and what each
+    requires in code. Decide it; do not let it drift.
+    """
+    refusals = {
+        "birth": lambda: (_flow_refused_at_birth()),
+        "post_birth_drift": lambda: (_post_birth_drift_refusal()),
+        "post_birth_check_failed": lambda: (_post_birth_check_failed_refusal(monkeypatch)),
+    }
+    for label, run in refusals.items():
+        # (1) It does not raise. A raise is the only signal that could reach a refund.
+        flow, pool = run()
+
+        # (2) It refused: a typed cause is stamped and nothing was graded into the pool.
+        assert flow.state.user_idea_failure_reason, f"{label}: no typed cause stamped"
+        assert len(pool.solution_ideas) == 1, f"{label}: refused seed reached the pool"
+
+        # (3) And the flow carries NO field that any billing consumer could key on — no
+        #     refund request, no charge annotation, no "this run should not have been paid
+        #     for" marker of any spelling. Derived from the state's own field names rather
+        #     than a hand-written list of two, so a field added later is covered.
+        money_fields = [
+            name for name in type(flow.state).model_fields
+            if any(token in name.lower() for token in
+                   ("refund", "credit", "charge", "billing", "price", "cost"))
+            and getattr(flow.state, name, None)
+        ]
+        assert money_fields == [], (
+            f"{label}: the refusal now sets {money_fields} — if this is a deliberate "
+            "billing signal, S15 has been decided and the ledger must say so")
+
+
+def test_the_refusal_next_step_copy_still_tells_the_user_to_re_run(monkeypatch):
+    """Every typed cause ends by telling the user to run the check again — and a re-run is a
+    NEW job, so it is charged the full discovery stage a second time at creation. That is
+    the disclosure obligation S15 turns on, and it is why the price/balance line on the
+    refusal card (`ValidationVerdict.svelte`) is load-bearing rather than decorative.
+
+    Pinned so the copy and the commercial fact cannot drift apart: if a future cause stops
+    inviting a re-run, the disclosure requirement changes with it.
+    """
+    from nicheiq.report.idea_validation_block import SEED_FAILURE_COPY
+
+    assert SEED_FAILURE_COPY, "no typed causes at all — the scan or the import moved"
+    for reason, (_headline, next_step) in SEED_FAILURE_COPY.items():
+        assert "run the check again" in next_step.lower() or "run it again" in next_step.lower(), (
+            f"{reason}: next_step no longer invites a re-run ({next_step!r}) — a re-run is a "
+            "second full charge, so S15's disclosure requirement changes with this copy")

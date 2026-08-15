@@ -528,6 +528,86 @@ describe('selection artifacts during seed evaluation', () => {
     expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
   });
 
+  /**
+   * The QUEUED window before Deep Research starts. The progress screen rendered there is the
+   * designed destination of the "your idea was not graded" handoff, and it reads the outcome
+   * out of this endpoint — which 400'd for the entire queue wait, so the screen fell back to
+   * its graded default and told the user their verdict was on the way. Frontend-only fixes
+   * cannot reach it: no client-side signal carries the outcome.
+   */
+  const queuedDeepResearchJob = (
+    state: 'AUTHORIZED' | 'CLAIMED' | 'COMPLETED' | 'FAILED' = 'AUTHORIZED',
+  ) => ({
+    id: jobId,
+    userId: 'user-123',
+    status: 'QUEUED' as const,
+    activeDispatchId: 'dispatch-deep-research',
+    dispatches: [{ id: 'dispatch-deep-research', kind: 'DEEP_RESEARCH', state }],
+  });
+
+  it.each(['AUTHORIZED', 'CLAIMED'] as const)(
+    'serves the preview artifact while a %s DEEP_RESEARCH dispatch waits in the queue',
+    async (state) => {
+      mockGetJob.mockResolvedValue(queuedDeepResearchJob(state));
+      mockGetPreviewReportForJob.mockResolvedValue({
+        idea_validation: { outcome: 'not_evaluated' },
+      });
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(200);
+      expect(response.body.idea_validation.outcome).toBe('not_evaluated');
+    },
+  );
+
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'still refuses a QUEUED job whose DEEP_RESEARCH dispatch is %s',
+    async (state) => {
+      mockGetJob.mockResolvedValue(queuedDeepResearchJob(state));
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(400);
+      expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+    },
+  );
+
+  it('leaves QUEUED SEED_IDEA and REGENERATE on the 409, not the new escape hatch', async () => {
+    // The blast radius of the change above. The 409 fires BEFORE the allowlist, so these two
+    // must keep being pushed to the verified /solutions context; a `QUEUED` entry in
+    // `allowedStatuses` (rather than a dispatch-scoped predicate) would have freed them too.
+    for (const kind of ['SEED_IDEA', 'REGENERATE'] as const) {
+      mockGetPreviewReportForJob.mockClear();
+      mockGetJob.mockResolvedValue(selectionMutationJob('QUEUED', kind));
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('SELECTION_CONTEXT_REQUIRED');
+      expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+    }
+  });
+
+  it('still refuses a QUEUED initial DISCOVERY run — no artifact exists yet', async () => {
+    mockGetJob.mockResolvedValue({
+      ...queuedDeepResearchJob(),
+      dispatches: [{ id: 'dispatch-deep-research', kind: 'DISCOVERY', state: 'AUTHORIZED' }],
+    });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/preview-report`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(400);
+    expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['COMPLETED', 'QUEUED'],
     ['FAILED', 'RUNNING'],

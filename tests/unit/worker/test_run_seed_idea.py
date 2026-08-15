@@ -433,6 +433,39 @@ class TestRunSeedIdeaDeliveryFailureRevert:
             flow.checkpoint_mgr.save_stage.assert_not_called()
             mock_notify.assert_not_called()
 
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_the_typed_refusal_cause_survives_into_the_failure_message(
+        self, mock_progress, _mock_notify,
+    ):
+        """This message is the ONLY record of why the seed died on this path: it becomes
+        `error_message` on /api/workers/seed-failed, which the backend logs while it settles
+        and refunds the dispatch (the chat receipt the user sees is generic). A bare "did not
+        produce an idea" made an our-side judge outage, a drifted build and a generator that
+        returned nothing indistinguishable — the same defect the typed causes were introduced
+        to fix on the Check-my-idea path, which since round 2 can also refuse HERE.
+        """
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            MockFlow.return_value = flow
+
+            crew = MockCrew.return_value
+            crew.execute_seed_pipeline.return_value = None
+            crew._seed_failure_reason = "identity_judge_unavailable"
+
+            from worker.tasks import run_seed_idea
+
+            with pytest.raises(RuntimeError, match=r"identity_judge_unavailable"):
+                run_seed_idea(
+                    job_id="job-1",
+                    checkpoint_path="/tmp/cp",
+                    seed={"seed_text": "my idea"},
+                    niche="test niche",
+                    dispatch_id="d-this",
+                )
+
 
 class TestSeedBatchProvenance:
     """A seed is its own paid append-only operation, so it must carry batch provenance —

@@ -146,6 +146,11 @@
   const discoveryData = $derived(data.discoveryData);
   const ideaValidation = $derived(previewReport?.idea_validation ?? null);
   const isIdeaCheckShare = $derived(ideaValidation !== null);
+  // The block exists even when the run REFUSED to grade the pitch, so "is this an idea-check
+  // share" answers a different question from "was an idea checked". Every visitor-facing
+  // claim below that a verdict, a ranked submission or a completed check exists has to read
+  // the outcome, not the block's presence.
+  const notEvaluatedShare = $derived(ideaValidation?.outcome === "not_evaluated");
 
   function ideaKey(solution: SolutionPreview): string {
     return solution.idea_id
@@ -184,11 +189,13 @@
     validationSeedRow ? researchRankByKey.get(ideaKey(validationSeedRow)) ?? null : null,
   );
   const validationHeaderSub = $derived(
-    validationSeedRow
-      ? validationSeedRank
-        ? `The submitted idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank} marker is its score rank. Vote for the direction you would back.`
-        : "The submitted idea is pinned at the top for comparison. Vote for the direction you would back."
-      : null,
+    notEvaluatedShare
+      ? "The submitted idea is not in this list: this run could not grade it, so no version of it was built. Vote for the direction you would back."
+      : validationSeedRow
+        ? validationSeedRank
+          ? `The submitted idea is pinned at the top for comparison, not ranked first. The #${validationSeedRank} marker is its score rank. Vote for the direction you would back.`
+          : "The submitted idea is pinned at the top for comparison. Vote for the direction you would back."
+        : null,
   );
 
   function voteRankFor(solution: SolutionPreview, presentationIndex: number): number {
@@ -244,9 +251,11 @@
   <PageHeader
     title={ideaValidation?.idea_name?.trim() || data.nicheDisplay || data.niche}
     titleVariant="research-topic"
-    subtitle={isIdeaCheckShare
-      ? "Review the submitted idea's verdict, supporting evidence, and ranked alternatives from this run."
-      : "Discovery is complete. Review the ranked opportunities and vote for the direction you would back."}
+    subtitle={notEvaluatedShare
+      ? "This run could not check the submitted idea. The reason is below, with the approaches the run did generate from this market's evidence."
+      : isIdeaCheckShare
+        ? "Review the submitted idea's verdict, supporting evidence, and ranked alternatives from this run."
+        : "Discovery is complete. Review the ranked opportunities and vote for the direction you would back."}
   />
   </div>
 
@@ -283,7 +292,9 @@
     solutionVotes={voteSummary.solutionVotes}
     groupByThesis={!isIdeaCheckShare}
     pinnedIdeaKeys={validationPinnedKeys}
-    headerTitle={isIdeaCheckShare ? "Your idea, ranked with the alternatives" : null}
+    headerTitle={notEvaluatedShare
+      ? "The approaches this run generated"
+      : isIdeaCheckShare ? "Your idea, ranked with the alternatives" : null}
     headerSub={validationHeaderSub}
   >
     {#snippet actionSlot({ solution, index }: { solution: SolutionPreview; index: number })}
@@ -515,7 +526,11 @@
   {/if}
 
   <!-- Visitor CTA: the shared/read-only counterpart to the owner's deep-research upsell -->
-  <SharedViewEndCTA variant={isIdeaCheckShare ? "idea-check" : "discovery"} shareToken={shareToken} />
+  <SharedViewEndCTA
+    variant={isIdeaCheckShare ? "idea-check" : "discovery"}
+    ideaChecked={!notEvaluatedShare}
+    shareToken={shareToken}
+  />
 </div>
 </AnnotationProvider>
 </div>

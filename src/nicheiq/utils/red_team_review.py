@@ -142,9 +142,27 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
     (`_comp(rev) > _comp(orig)` AND the revision's own parity re-probe cleared to 'none'). On
     accept: 1:1 in-place replacement carrying provenance, stamps `red_team_revised=True`.
     Fully fail-soft — any failure returns False and the original (with its verdict/caveats)
-    stands. Returns True iff a revision REPLACED the original."""
+    stands. Returns True iff a revision REPLACED the original.
+
+    NEVER revises a `user_seed`. "Check my idea" promises a verdict on the product the USER
+    submitted, so replacing it is grading a substitute — and the seed is the only visible idea,
+    so it is always reviewed. An ACCEPTED revision therefore guaranteed a non-empty
+    `changed_seed_identity_fields` diff at the post-tail identity lock
+    (`unified_solution_crew.py` `execute_seed_pipeline`), which refuses the run: on the seed
+    path this function could only ever reject, or kill a fully-paid run. Returning early also
+    saves the revision LLM call and its `_score_wave` gauntlet, both previously spent on an
+    outcome that could not be applied. The verdict/findings/caveats are already stamped by
+    `run_red_team_review` BEFORE this is called, so the attack's conclusions are kept in full —
+    only the product substitution is dropped. Mirrors `_attempt_validate_pivot`
+    (`research_flow.py`), where the seed is never replaced and alternatives are APPENDED."""
     from pydantic import BaseModel
     from pydantic import Field as _F
+
+    if (getattr(orig, "source_frame", None) or "") == "user_seed":
+        logger.info(
+            f"[RedTeamRevision] skipped for user seed '{getattr(orig, 'solution_name', '?')}' "
+            "— findings kept, the submitted product is never replaced")
+        return False
 
     from ..config.settings import settings
     from ..models.solution_idea import BaseSolutionIdea
@@ -241,15 +259,10 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
         rev.source_segment = getattr(orig, "source_segment", None)
         rev.source_frame = getattr(orig, "source_frame", None) or "pain"
         rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
-        if rev.source_frame == "user_seed":
-            from .seed_fidelity import is_seed_faithful
-            seed_text = getattr(crew, "_current_seed_text", "") or ""
-            if seed_text and not is_seed_faithful(seed_text, rev):
-                logger.info(
-                    f"[RedTeamRevision] rejected off-seed revision "
-                    f"'{getattr(rev, 'solution_name', '?')}' — the submitted product "
-                    "mechanism is immutable")
-                return False
+        # (The former `user_seed` fidelity check lived here. It is unreachable now that the
+        #  function returns early for seeds — and it was the weaker guard anyway: it let a
+        #  FAITHFUL revision through to `ideas[idx] = rev`, which is exactly what tripped the
+        #  post-tail identity lock and refused the paid run.)
 
         crew._score_wave([rev])  # full per-idea sequence; parity re-probe + rule (e) re-apply
 

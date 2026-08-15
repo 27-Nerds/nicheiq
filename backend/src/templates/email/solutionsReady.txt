@@ -1,9 +1,9 @@
 Your NicheIQ Solutions Are Ready for Review!
 
-We've generated {{SOLUTION_COUNT}} solutions for your research on "{{NICHE}}".
+{{LEAD}}{{IDEA_CHECK_NOTE}}
 
 What's next:
-- Review the solutions and their validation scores
+- {{REVIEW_BULLET}}
 - Select the solution you want to investigate further
 - We'll run a deep analysis on your chosen solution
 

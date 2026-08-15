@@ -2213,6 +2213,31 @@ def run_seed_idea(
         crew.hydrate_from_state(state)
 
         seed_operation_key = dispatch_id or "seed"
+        # `identity_terms`/`inferred_fields` are DELIBERATELY not passed here, and passing
+        # `state.user_idea_identity_terms` would be a BUG (checked 2026-08-14 — an audit read
+        # this omission as a wiring gap).
+        #
+        # This task is "generate an idea from your own idea" at selection chat
+        # (backend `queueService.ts`), so `seed_text` is a NEW idea composed mid-conversation.
+        # Stated-clause terms are extracted once, at Stage 1, from the "Check my idea" PITCH
+        # (`research_flow` -> `user_idea_identity_terms`) and describe THAT product. Feeding
+        # them to a chat-composed seed would enforce one idea's mechanism/audience/problem/
+        # delivery clauses on a different idea. Nothing in the worker or backend payload
+        # carries clause terms for this text, so there is nothing correct to pass.
+        #
+        # (This sentence used to end "...and the corrective-rewrite loop would drag the new
+        # idea toward the old one". That loop was REMOVED on 2026-08-15 — see S17 — after it
+        # was measured laundering substitutions past the judge. The conclusion is unchanged:
+        # the terms describe a different product either way.)
+        #
+        # The seed is still guarded here, but say how, because the 2026-08-14 authority
+        # reorder changed what "guarded" means: the SEMANTIC SAME-PRODUCT JUDGE is the birth
+        # verdict and runs unconditionally, and the post-birth snapshot diff still applies
+        # (over product axes only since S19). The retention floor and the route check are
+        # ADVISORY — they are reported to the judge as labelled evidence and no longer veto.
+        # Only the clause gate — which needs per-pitch terms that do not exist on
+        # this path — is absent. If clause enforcement is ever wanted here, terms must be
+        # extracted FROM THIS `seed_text`, never inherited from state.
         idea = crew.execute_seed_pipeline(SeedRequest(
             seed_text=seed.get("seed_text") or "",
             pain_ref=seed.get("pain_ref"),
@@ -2222,7 +2247,15 @@ def run_seed_idea(
         ))
 
         if idea is None:
-            raise RuntimeError("Seed pipeline did not produce an idea")
+            # Carry the crew's TYPED refusal cause. This message is the only record that
+            # survives: it becomes `error_message` on /api/workers/seed-failed, which the
+            # backend logs and settles/refunds the dispatch from (the chat receipt the user
+            # sees is generic — "failed" or "refunded" — so this is diagnosis, not user copy).
+            # A bare "did not produce an idea" made an our-side judge outage, a drifted build
+            # and a generator that returned nothing indistinguishable in the logs, which is the
+            # same defect typed causes were introduced to fix on the Check-my-idea path.
+            reason = getattr(crew, "_seed_failure_reason", None) or "unknown"
+            raise RuntimeError(f"Seed pipeline did not produce an idea ({reason})")
 
         from nicheiq.utils.idea_identity import (
             stamp_new_idea_identities,
@@ -2292,8 +2325,11 @@ def run_seed_idea(
             flow._tag_audience_fit(persist=False)
 
         # A DEMOTED seed must land in "Examined & ruled out", not the selectable pool —
-        # merge this dispatch's ruled-out record(s) into the state ledger (mirrors
-        # research_flow.py's post-Stage-5 merge at :4371-4374). Filtered to `dispatch_id`
+        # merge this dispatch's ruled-out record(s) into the state ledger (mirrors the
+        # `state.idea_ruled_out += unified_crew.ruled_out_pains` merge in
+        # `research_flow.stage_5_unified_solution_pipeline` — cited by SYMBOL, since the line
+        # range this used to name had drifted ~1560 lines and pointed at query generation).
+        # Filtered to `dispatch_id`
         # since a reused crew instance could in principle carry more than this seed's own
         # entry. `save_stage` below flushes this via its metadata side effect — no separate
         # persistence call needed (checkpoint_manager.py's `_update_checkpoint_metadata`

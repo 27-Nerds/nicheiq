@@ -107,9 +107,23 @@ import { buildSelectionDecisionState } from '../services/selectionDecisionStateS
 import {
   loadCurrentSelectionContext,
   type CurrentSelectionContext,
+  type IdeaCheckRecord,
   type UntrustedRunArtifacts,
   type VerifiedRunArtifacts,
 } from '../services/currentSelectionContext.js';
+// Surfaces 20/21: the idea-check framing is a property of the analyst prompt CONTEXT, not a
+// parameter each generator has to remember. `composeAnalystSystemPrompt` is the only producer
+// of `AnalystSystemPrompt`, and it inserts the clause itself.
+import {
+  analystPromptContext,
+  appendToAnalystSystemPrompt,
+  composeAnalystSystemPrompt,
+  ideaCheckFramingForOutcome,
+  ideaCheckFramingFromRecord,
+  type AnalystPromptContext,
+  type AnalystSystemPrompt,
+  type IdeaCheckFraming,
+} from '../services/analystPromptContext.js';
 import type { SelectionDecisionState } from '../types/selectionDecisionState.js';
 import {
   buildSelectionCopilotCatalog,
@@ -1395,7 +1409,12 @@ const IDEA_CHECK_OUTCOME_PHRASE: Record<string, string> = {
   occupied: 'Already shipped by a competitor',
   premise_unproven: 'Premise unproven',
   ruled_out: 'Ruled out',
-  not_evaluated: 'Not evaluated (the run degraded)',
+  // `not_evaluated` deliberately has NO entry: that outcome returns early from
+  // `buildIdeaCheckBlock` and never reaches the "Verdict: …" line this map feeds. It used
+  // to have one — 'Not evaluated (the run degraded)' — and that single correct label sitting
+  // beside unconditional prose ("We developed that pitch into the product spec …") is what
+  // made the block LOOK handled while it asserted a product that was never built. An entry
+  // here would restore the disguise without restoring the branch.
 };
 
 const IDEA_CHECK_CLAUSE_PHRASE: Record<string, string> = {
@@ -1411,6 +1430,15 @@ const IDEA_CHECK_RISK_SOURCE_PHRASE: Record<string, string> = {
   market_signal: 'market signal',
 };
 
+/** Is the user's own submitted candidate actually IN the ranked list this dossier prints?
+ *  Same predicate `buildIdeaSection` uses to stamp "THIS IS THE USER'S OWN IDEA", so the
+ *  idea-check block can never point at a marker the list does not carry. */
+function rankedListCarriesUserSeed(bundle: DossierBundle): boolean {
+  return bundle.canonical.ideas.some(
+    (idea) => idea.source_frame === 'user_seed' && idea.generation_operation_id === 'validate',
+  );
+}
+
 /** "Check my idea" runs: the block that tells the analyst whose idea this run is about.
  *  Leads the dossier so every later candidate reads against it. */
 function buildIdeaCheckBlock(bundle: DossierBundle): string {
@@ -1423,6 +1451,46 @@ function buildIdeaCheckBlock(bundle: DossierBundle): string {
   const refinement = iv.refinement as { kept?: string[]; changed?: string[]; because?: string | null } | null;
   const killRisks = Array.isArray(iv.kill_risks) ? (iv.kill_risks as Record<string, unknown>[]) : [];
   const pivot = (iv.pivot ?? {}) as Record<string, unknown>;
+  const seedInList = rankedListCarriesUserSeed(bundle);
+  // F-1: the block used to branch on `outcome === 'not_evaluated'` and fall through to the
+  // GRADED prose for everything else — including an outcome string this build does not
+  // recognise, which is how a refusal record produced "We developed that pitch into the
+  // product spec …". `ideaCheckFramingForOutcome` is the single classifier the prompt uses,
+  // so an unrecognised outcome now emits NOTHING here, matching the `unavailable` framing
+  // that same value produces one layer up. Prompt and dossier cannot disagree.
+  const framing = ideaCheckFramingForOutcome(iv.outcome as string | null);
+  if (framing === 'unavailable') return '';
+
+  // `not_evaluated` = the run REFUSED to grade the pitch (six typed causes, all ours):
+  // no spec was built, `idea_name` is null, and no candidate below is the user's. The
+  // block used to assert the opposite unconditionally — "We developed that pitch into
+  // the product spec …, the candidate marked THE USER'S OWN IDEA in the ranked list" —
+  // so the analyst confabulated a product that was never built, and the framing's final
+  // clause forbade the one true answer. The two user-facing sentences come from
+  // `SEED_FAILURE_COPY` (report/idea_validation_block.py) via `headline` /
+  // `failure_next_step` and are printed VERBATIM: that map is the single source, and a
+  // sentence written here would be a fourth copy of the same decision. The per-cause
+  // headline is also HOW the cause is named — every cause has its own line (pinned
+  // distinct by tests/unit/crews/test_seed_pipeline.py) — so the typed `failure_reason`
+  // key itself stays out of the dossier, where it would be an internal identifier the
+  // PLAIN LANGUAGE rule forbids the analyst to repeat.
+  if (framing === 'not_evaluated') {
+    return [
+      "THE USER'S SUBMITTED IDEA (this is an idea-check run, and it did NOT produce a verdict):",
+      pitch ? `The user pitched: "${pitch}"` : '',
+      `NO CANDIDATE WAS BUILT. This run did not develop that pitch into a product spec and did not grade it. What went wrong, in the words the user was shown: ${
+        iv.headline ?? 'We could not evaluate their idea in this market on this run.'
+      }`,
+      'This is a failure of OUR pipeline, not a problem with what the user wrote.',
+      seedInList
+        ? 'Ignore any candidate below that claims to be the user\'s own idea: the run did not certify one, so no candidate below may be described as their submitted idea.'
+        : 'NOTHING in the ranked list below is the user\'s idea. There is no spec, no score, no competitor finding and no verdict for it — the ranked list is the pool this run generated from the market evidence, and it stands on its own.',
+      iv.failure_next_step ? `What the user was told to do next: ${iv.failure_next_step}` : '',
+      'ANSWERING ABOUT "MY IDEA": say plainly that this run could not evaluate it, give the reason above, and say it was our failure. Never describe, name, score, summarise or infer a spec for it, and never treat the ranked candidates as versions of it. You MAY discuss the ranked candidates and this run\'s market evidence, and you MAY offer to look at their idea another way — here, a question about their own idea IS a legitimate reason to propose it as a new idea (a paid evaluation; say so first, as that tool\'s rules require), and re-running the check from their report page is the other route.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
 
   const clauseList = (clauses: string[] | undefined) =>
     (clauses ?? []).map((c) => IDEA_CHECK_CLAUSE_PHRASE[c] || c).join(', ');
@@ -1430,7 +1498,12 @@ function buildIdeaCheckBlock(bundle: DossierBundle): string {
   const lines = [
     "THE USER'S SUBMITTED IDEA (this is an idea-check run):",
     pitch ? `The user pitched: "${pitch}"` : '',
-    `We developed that pitch into the product spec "${name}" — the candidate marked THE USER'S OWN IDEA in the ranked list below. When the user says "my idea" or uses that name, they mean that candidate.`,
+    // The ranked-list pointer is asserted only when the list actually carries the marker;
+    // a graded seed that is not in this pool would otherwise send the analyst hunting for
+    // a candidate that is not printed.
+    seedInList
+      ? `We developed that pitch into the product spec "${name}" — the candidate marked THE USER'S OWN IDEA in the ranked list below. When the user says "my idea" or uses that name, they mean that candidate.`
+      : `We developed that pitch into the product spec "${name}" and graded it. It is NOT in the ranked list below — when the user says "my idea" or uses that name, they mean this spec and the verdict in this section, not any candidate below.`,
     refinement
       ? `The evaluation changed part of the pitch — kept: ${clauseList(refinement.kept) || 'nothing stated'}; changed: ${clauseList(refinement.changed)}${refinement.because ? `; because: ${refinement.because}` : ''}.`
       : 'The spec keeps everything the user stated; the name and the build details are ours.',
@@ -1642,12 +1715,46 @@ const EXPORT_IDEA_BLOCK = `WHEN TO USE THE export_idea TOOL:
 const EXPORT_IDEA_NOT_A_SELECTION_ACTION_LINE =
   '\n- Do NOT route export requests through prepare_selection_action; opening the candidate view is not an export.';
 
+/** The four framing states now live on `services/analystPromptContext.ts`, with the outcome
+ *  classifier (F-1) and the clause every generator receives. Re-exported here because the
+ *  type is part of this module's published surface. */
+export type { IdeaCheckFraming } from '../services/analystPromptContext.js';
+export { ideaCheckFramingFromRecord } from '../services/analystPromptContext.js';
+
+/** Single authority for the framing state, derived from the SAME bundle the dossier is
+ *  built from, so the prompt and the dossier can never disagree about what exists.
+ *
+ *  NOT a synonym for `entryMode === 'validate_idea'`. The framing used to be gated on the
+ *  entry mode alone and therefore told the model "the run developed their pitch into a
+ *  complete product spec and graded it … their submitted idea is ALREADY evaluated" on runs
+ *  that had refused to grade it. The mode is only WHICH question was asked; the outcome is
+ *  whether it was answered — and an outcome string this build does not recognise resolves to
+ *  `unavailable`, never to `evaluated` (see `ideaCheckFramingForOutcome`). */
+export function ideaCheckFraming(
+  entryMode: string | null | undefined,
+  bundle: DossierBundle,
+): IdeaCheckFraming {
+  if (entryMode !== 'validate_idea') return 'none';
+  // `buildIdeaCheckBlock` emits nothing in either of these cases; the framing must not
+  // point at a section the dossier does not contain.
+  if (bundle.run.verification === 'untrusted' || !bundle.run.ideaValidation) return 'unavailable';
+  return ideaCheckFramingForOutcome(bundle.run.ideaValidation.outcome as string | null);
+}
+
 /** Grounded system prompt for the G3 (AWAITING_SELECTION) chat surface. */
-function buildG3SystemPrompt(niche: string, dossier: string, weak: boolean, toolUsageBlock: string, decisionTools: boolean, ideaCheck = false): string {
-  const framing = ideaCheck
-    ? `You are the NicheIQ research analyst embedded in a live "Check my idea" run. The user submitted THEIR OWN product idea; the run developed their pitch into a complete product spec and graded it beside every other approach the same market evidence supports. The dossier below opens with the idea-check section naming their idea and its verdict, and their candidate is marked THE USER'S OWN IDEA in the ranked list. When the user says "my idea" (or uses that product's name), ground your answer in that candidate and the idea-check verdict — the rest of the list is the benchmark pool and optional additions to the Deep Research scope. Their submitted idea is ALREADY evaluated in this run: answer questions about it from the dossier, and never treat a question about it as a request to propose a new idea.`
-    : `You are the NicheIQ research analyst embedded in a live market-research run. The user is reviewing a ranked list of solution ideas generated for the niche "${niche}" and may ask about them or ask you to steer the next regeneration batch.`;
-  return `${framing}
+function buildG3SystemPrompt(ctx: AnalystPromptContext, dossier: string, weak: boolean, toolUsageBlock: string, decisionTools: boolean): AnalystSystemPrompt {
+  const ideaCheck = ctx.ideaCheck;
+  const niche = ctx.subject;
+  const genericFraming = `You are the NicheIQ research analyst embedded in a live market-research run. The user is reviewing a ranked list of solution ideas generated for the niche "${niche}" and may ask about them or ask you to steer the next regeneration batch.`;
+  const framing = ideaCheck === 'evaluated'
+    ? `You are the NicheIQ research analyst embedded in a live "Check my idea" run. The user submitted THEIR OWN product idea; the run developed their pitch into a complete product spec and graded it beside every other approach the same market evidence supports. The dossier below opens with the idea-check section naming their idea and its verdict. When the user says "my idea" (or uses that product's name), ground your answer in the idea-check section — the rest of the list is the benchmark pool and optional additions to the Deep Research scope. Their submitted idea is ALREADY evaluated in this run: answer questions about it from the dossier, and never treat a question about it as a request to propose a new idea.`
+    : ideaCheck === 'not_evaluated'
+      ? `You are the NicheIQ research analyst embedded in a live "Check my idea" run in which the check FAILED. The user submitted THEIR OWN product idea and this run did NOT develop it into a product spec and did NOT grade it — no such candidate exists anywhere in this dossier. The dossier below opens with the idea-check section, which carries the pitch, the reason the run could not grade it, and what the user was told to do next; that reason is a failure of our pipeline, not of what the user wrote. When the user says "my idea" (or names a product they expected), say plainly that this run could not evaluate it, give that reason, and own it as ours. Never describe, name, score, summarise or infer a spec for their idea, and never present a ranked candidate as their idea or as a version of it — the ranked list is the pool this run generated from the market evidence and stands on its own. A question about their own idea IS a legitimate reason to propose it as a new idea here.`
+      : ideaCheck === 'unavailable'
+        ? `${genericFraming}\n\nThis is a "Check my idea" run, but this run's verified record for the submitted idea did not load, so the dossier below has no idea-check section. Make NO claim about the user's submitted idea — not that it was graded, not that it was refused, and not that any candidate below is it. If asked about it, say its result could not be loaded here.`
+        : genericFraming;
+  return composeAnalystSystemPrompt(ctx, {
+    body: `${framing}
 
 GROUNDING RULES:
 - Answer run-specific questions ONLY from the dossier below. If something isn't in it, say so plainly — never invent scores, features, or evidence.
@@ -1684,8 +1791,9 @@ ${PROPOSE_NEW_IDEA_BLOCK}
 ${PROPOSE_IDEA_SYNTHESIS_BLOCK}
 ${decisionTools ? PREPARE_SELECTION_ACTION_BLOCK : ''}
 ${EXPORT_IDEA_BLOCK}${decisionTools ? EXPORT_IDEA_NOT_A_SELECTION_ACTION_LINE : ''}
-${toolUsageBlock}
-${dossier}`;
+${toolUsageBlock}`,
+    dossier,
+  });
 }
 
 // ============================================
@@ -1720,6 +1828,30 @@ const MAX_SUGGESTIONS = 3;
 // runs long, and silently dropping it left the user with one chip instead of three.
 const MAX_SUGGESTION_CHARS = 72;
 
+/**
+ * SURFACE 20. This prompt is the chip generator's whole instruction set, and until this round
+ * it was a module constant handed straight to the model: `generateSuggestions(dossier, history,
+ * answer, model)` never received the system prompt or the idea-check framing. Its output is
+ * persisted to `ChatMessage.suggestionsJson`, selected back on every history load and rendered
+ * as the chips under the composer — model-authored prose that outlives the page, which is the
+ * property round 8 swept on and which both prompt rounds walked past.
+ *
+ * A chip is a question in the USER'S OWN VOICE, so the failure mode is not a false statement
+ * but a false PRESUPPOSITION: "How did ⟨their pitch⟩ score?" printed as a suggestion the
+ * product is making to them, on a run that refused to score it.
+ *
+ * Two accidents used to stand in for a guard, and neither survives contact:
+ *  - `not_evaluated` was safe because the refusal block happens to sit inside the DOSSIER the
+ *    chip model is handed. Accidental — nothing pins it, and the completed dossier omits the
+ *    block when the record is null.
+ *  - `unavailable` was "guarded" only by the main system prompt leaking in through
+ *    `history.slice(-6)`, whose element 0 is that prompt. After six turns element 0 falls out
+ *    of the window and the guard is gone, leaving ranked ideas beside "Name real things (an
+ *    actual idea, pain, or segment)". Driven and confirmed at seven turns.
+ *
+ * The body is now composed per call through `composeAnalystSystemPrompt`, so the clause is
+ * present in the SYSTEM message on every turn, independent of the history window.
+ */
 const SUGGESTION_SYSTEM_PROMPT = `You write follow-up questions for a market-research analyst's chat.
 
 Given the conversation so far, propose up to 3 questions the USER would plausibly ask NEXT, in the user's own voice ("Why is X risky?", not "I can explain why X is risky").
@@ -1739,18 +1871,22 @@ Reply with ONLY a JSON object: {"suggestions": ["...", "..."]}`;
 /** Generates the analyst's own follow-up chips. Returns null (never throws) on any
  *  failure so the caller keeps the turn; active threads then render no suggestions. */
 async function generateSuggestions(
+  ctx: AnalystPromptContext,
   dossier: string,
   history: ChatCompletionMessageParam[],
   answer: string,
   model: string,
 ): Promise<{ suggestions: string[]; costUsd: number; usage: AnalystTokenUsage } | null> {
   try {
+    const suggestionSystemPrompt = composeAnalystSystemPrompt(ctx, {
+      body: SUGGESTION_SYSTEM_PROMPT,
+    });
     const latestUserRequest =
       [...history].reverse().find((m) => m.role === 'user' && typeof m.content === 'string')?.content ?? '';
     const completion = await chatComplete({
       model,
       messages: [
-        { role: 'system', content: SUGGESTION_SYSTEM_PROMPT },
+        { role: 'system', content: suggestionSystemPrompt },
         {
           role: 'user',
           content: [
@@ -1800,9 +1936,17 @@ async function generateSuggestions(
 // POST /:jobId/gate-action — this endpoint only ever returns a proposal.
 // ============================================
 
-/** Grounded system prompt for the G1 (AWAITING_GATE, gateStage=1) chat surface. */
-function buildG1SystemPrompt(niche: string, dossier: string, decisionTools: boolean): string {
-  return `You are the NicheIQ research analyst embedded in a live guided market-research run. The user is reviewing the NICHE VALIDATION checkpoint (Gate 1) for "${niche}" — this runs BEFORE any discussion data has been collected, so this dossier is the only run-specific research material that exists so far.
+/** Grounded system prompt for the G1 (AWAITING_GATE, gateStage=1) chat surface.
+ *
+ * G1 and G2 are UNREACHABLE on an idea-check run today — `types/job.ts` rejects `chatMode`
+ * when `entryMode === 'validate_idea'` ("Guided research is not available for idea checks").
+ * Round 9 recorded that as a forward hazard: a schema fact in a different file, with nothing
+ * going red if it changes. They take the context anyway, because the whole point of the new
+ * shape is that a generator does not get to decide whether the framing applies to it. On a
+ * discovery run the clause is empty and the assembled prompt is byte-identical. */
+function buildG1SystemPrompt(ctx: AnalystPromptContext, dossier: string, decisionTools: boolean): AnalystSystemPrompt {
+  return composeAnalystSystemPrompt(ctx, {
+    body: `You are the NicheIQ research analyst embedded in a live guided market-research run. The user is reviewing the NICHE VALIDATION checkpoint (Gate 1) for "${ctx.subject}" — this runs BEFORE any discussion data has been collected, so this dossier is the only run-specific research material that exists so far.
 
 GROUNDING RULES:
 - Answer run-specific questions ONLY from the dossier below. If something isn't in it, say so plainly — never invent facts.
@@ -1822,9 +1966,9 @@ ${ANALYST_FREEDOM_BLOCK}
 WHEN TO USE THE propose_modification TOOL:
 - Call it ONLY when the user explicitly asks to change the niche description, market segments, industry boundaries, or target audience.
 - Do NOT call it for plain questions about the current niche framing — answer those in text instead.
-- Calling it only proposes a change for review; say so in your reply.
-
-${dossier}`;
+- Calling it only proposes a change for review; say so in your reply.`,
+    dossier,
+  });
 }
 
 /** Fenced dossier of the job's G1 gate artifact (niche-context fields). */
@@ -1848,9 +1992,11 @@ function buildG1Dossier(jobId: string, niche: string, gateArtifact: unknown): st
   return fenceContent(stripSchemaVocabulary(body), 'job_dossier', jobId, 'RESEARCH DOSSIER');
 }
 
-/** Grounded system prompt for the G2 (AWAITING_GATE, gateStage=4) chat surface. */
-function buildG2SystemPrompt(niche: string, dossier: string, toolUsageBlock: string, decisionTools: boolean): string {
-  return `You are the NicheIQ research analyst embedded in a live guided market-research run. The user is reviewing the AUDIENCE & PAIN-POINT checkpoint (Gate 2) for "${niche}" — discovery search and pain-point analysis have run; audience mapping just completed. Solution ideation has NOT started yet.
+/** Grounded system prompt for the G2 (AWAITING_GATE, gateStage=4) chat surface. See the
+ *  G1 note above for why an unreachable-on-idea-checks surface takes the context. */
+function buildG2SystemPrompt(ctx: AnalystPromptContext, dossier: string, toolUsageBlock: string, decisionTools: boolean): AnalystSystemPrompt {
+  return composeAnalystSystemPrompt(ctx, {
+    body: `You are the NicheIQ research analyst embedded in a live guided market-research run. The user is reviewing the AUDIENCE & PAIN-POINT checkpoint (Gate 2) for "${ctx.subject}" — discovery search and pain-point analysis have run; audience mapping just completed. Solution ideation has NOT started yet.
 
 GROUNDING RULES:
 - Answer run-specific questions ONLY from the dossier below. If something isn't in it, say so plainly — never invent facts.
@@ -1873,8 +2019,9 @@ WHEN TO USE THE propose_modification TOOL:
 - Do NOT call it for plain questions about the current pains or segments — answer those in text instead.
 - Only reference pain titles and segment names that appear in the dossier — never invent new ones.
 - Calling it only proposes a change for review; say so in your reply.
-${toolUsageBlock}
-${dossier}`;
+${toolUsageBlock}`,
+    dossier,
+  });
 }
 
 /** Fenced dossier of the job's G2 gate artifact (full pain titles + audience segments). */
@@ -2195,6 +2342,57 @@ interface CompletedDecisionJourney {
   ownerEvidence: OwnerEvidenceContextRow[];
   collaboratorVotes: CollaboratorVoteFeedback[];
   handoff: SelectionDecisionHandoffArtifact | null;
+  /** Surface 19: null on a discovery run, or when the idea-check record did not load. */
+  ideaCheck?: IdeaCheckRecord | null;
+}
+
+/**
+ * The idea-check section of the COMPLETED-report dossier.
+ *
+ * Deliberately much thinner than `buildIdeaCheckBlock` (the G3 one): that block reads the
+ * live selection pool, and by `COMPLETED` the pool has been superseded, so nothing here
+ * points at a ranked candidate or repeats a Phase-1 score. It carries only what
+ * `IdeaCheckRecord` carries — the outcome and the two sentences the user was already shown.
+ *
+ * The refusal sentences are printed VERBATIM from the artifact (which sources them from
+ * `SEED_FAILURE_COPY`, report/idea_validation_block.py). The typed `failure_reason` key is
+ * deliberately NOT carried on the record and so cannot leak here: it is an internal
+ * identifier, and the PLAIN LANGUAGE rule forbids the analyst to repeat one.
+ */
+function buildCompletedIdeaCheckBlock(jobId: string, record: IdeaCheckRecord): string {
+  // F-1: same classifier as the prompt, so an outcome this build does not recognise emits
+  // nothing here rather than falling through to the graded prose. `buildCompletedReportDossier`
+  // drops the block when this returns empty.
+  const framing = ideaCheckFramingForOutcome(record.outcome);
+  if (framing === 'unavailable') return '';
+  const refused = framing === 'not_evaluated';
+  const lines = refused
+    ? [
+      "THE USER'S SUBMITTED IDEA (this report began as an idea-check run, and the check did NOT produce a verdict):",
+      record.userIdeaText ? `The user pitched: "${record.userIdeaText}"` : '',
+      `NO SPEC WAS BUILT AND NOTHING WAS GRADED. What went wrong, in the words the user was shown: ${
+        record.headline ?? 'We could not evaluate their idea in this market on that run.'
+      }`,
+      'This is a failure of OUR pipeline, not a problem with what the user wrote.',
+      'This report is NOT about that pitch. Its title is the pitch only because that is what the user typed to start the run; every finding below concerns the candidate the user selected afterwards. There is no score, no competitor finding and no verdict anywhere in this report for the submitted idea.',
+      record.failureNextStep ? `What the user was told to do next: ${record.failureNextStep}` : '',
+      'ANSWERING ABOUT "MY IDEA": say plainly that the check never evaluated it, give the reason above, and say it was our failure. Never describe, name, score, summarise or infer a spec for it, and never present a report finding as being about it. Re-running the check from a new run is the route open to them.',
+    ]
+    : [
+      "THE USER'S SUBMITTED IDEA (this report began as an idea-check run):",
+      record.userIdeaText ? `The user pitched: "${record.userIdeaText}"` : '',
+      record.ideaName
+        ? `We developed that pitch into the product spec "${record.ideaName}" and graded it during selection.`
+        : 'We developed that pitch into a product spec and graded it during selection.',
+      record.headline ? `The verdict the user was shown: ${record.headline}` : '',
+      "This report's title is that pitch rather than a market name. The findings below concern the candidate the user selected after the check; use the retrieval tools for anything you state about them.",
+    ];
+  return fenceContent(
+    lines.filter(Boolean).join('\n'),
+    'idea_check',
+    jobId,
+    "IDEA CHECK — THE USER'S SUBMITTED IDEA",
+  );
 }
 
 function buildCompletedReportDossier(
@@ -2231,7 +2429,12 @@ function buildCompletedReportDossier(
     jobId,
     'COMPLETED REPORT CATALOG',
   );
-  const parts = [reportCatalog];
+  // LEADS the dossier, like the G3 idea-check block: every later section is read against it,
+  // and on a refused run this is the only place the report's own title is explained.
+  const ideaCheckBlock = journey?.ideaCheck
+    ? buildCompletedIdeaCheckBlock(jobId, journey.ideaCheck)
+    : '';
+  const parts = ideaCheckBlock ? [ideaCheckBlock, reportCatalog] : [reportCatalog];
 
   if (finalDecision) {
     const selectedSnapshot = asReportRecord(finalDecision.selectedIdeaSnapshot);
@@ -2282,8 +2485,38 @@ function buildCompletedReportDossier(
   return replaceCurrentCandidateCodenames(parts.join('\n\n'), journey?.ideas ?? []);
 }
 
-function buildCompletedReportSystemPrompt(niche: string, dossier: string, decisionTools: boolean): string {
-  return `You are the NicheIQ research analyst for a COMPLETED report about "${niche}".
+/**
+ * THE NINETEENTH SURFACE. `niche` IS the user's raw pitch on a `validate_idea` run, so the
+ * opening line asserted the completed report was ABOUT their submitted idea — on every
+ * question they asked, including the runs where the pipeline had REFUSED to grade it. Unlike
+ * every earlier surface this one is interactive and persisted: each reply is written to
+ * `ChatMessage` and re-rendered on every history load, so a wrong answer outlives the page.
+ *
+ * The analyst could not have discovered the truth either. It is instructed to cite the
+ * report, and the FINAL report carries no `idea_validation` block at all (it exists only in
+ * the preview artifact) — the refusal reaches the completed report only as one unlabelled
+ * sentence inside `data_quality_summary.quality_caveats`, which nothing can key on. So the
+ * dossier now carries the outcome explicitly; see `buildCompletedIdeaCheckBlock`.
+ *
+ * This is the same fix `buildG3SystemPrompt` already carries, four states and all, arriving
+ * at gate 6 one round later. `none` and `evaluated` are byte-identical to the shipped prompt.
+ */
+function buildCompletedReportSystemPrompt(
+  ctx: AnalystPromptContext,
+  dossier: string,
+  decisionTools: boolean,
+): AnalystSystemPrompt {
+  const ideaCheck = ctx.ideaCheck;
+  const niche = ctx.subject;
+  const opening = ideaCheck === 'evaluated'
+    ? `You are the NicheIQ research analyst for a COMPLETED report. This began as a "Check my idea" run: the user submitted their own product idea, the run developed it into a product spec, graded it beside the other approaches the same market evidence supports, and then researched the selection they made. The report title you will see is the user's own pitch, not a market name. The idea-check section below carries their idea and its verdict; when they say "my idea", ground your answer there.`
+    : ideaCheck === 'not_evaluated'
+      ? `You are the NicheIQ research analyst for a COMPLETED report from a "Check my idea" run in which the check FAILED. The user submitted their own product idea and this run did NOT develop it into a product spec and did NOT grade it. The report title you will see is their raw pitch, but the report is NOT about that idea and contains no verdict on it — it reports the research this run actually did on the candidate the user selected afterwards. The idea-check section below carries the pitch, the reason we could not grade it, and what the user was told to do next; that reason is a failure of our pipeline, not of what the user wrote. When the user asks how their idea did, say plainly that this run never evaluated it, give that reason, and own it as ours. Never describe, name, score, summarise or infer a spec for their idea, and never present anything in this report as their idea or as a version of it.`
+      : ideaCheck === 'unavailable'
+        ? `You are the NicheIQ research analyst for a COMPLETED report titled "${niche}".\n\nThis began as a "Check my idea" run, so that title is the user's own pitch rather than a market name — and this run's record of the idea check did not load, so there is no idea-check section below. Make NO claim about the user's submitted idea: not that it was graded, not that it was refused, and not that anything in this report is it. If asked about it, say its result could not be loaded here.`
+        : `You are the NicheIQ research analyst for a COMPLETED report about "${niche}".`;
+  return composeAnalystSystemPrompt(ctx, {
+    body: `${opening}
 
 The completed research findings are read-only.${decisionTools ? ' Decision Lab can record a separate owner decision and handoff without changing those findings; this chat may explain that layer but may not mutate either layer.' : ''} You may explain, compare, recommend, navigate the stored findings, and create private exports. You must never propose changing the niche, audience, pains, selection, or ideas, and must never generate additional ideas from this completed job.
 
@@ -2304,9 +2537,9 @@ Answer direct facts briefly. For comparisons, give a recommendation, decisive fa
 AVAILABLE ACTIONS: read report sections, inspect or compare stored ideas, retrieve evidence, explain metrics, and export existing report data.
 UNAVAILABLE ACTIONS: every research mutation, including changing prior-stage data or generating more ideas.
 
-${ANALYST_FREEDOM_BLOCK}
-
-${dossier}`;
+${ANALYST_FREEDOM_BLOCK}`,
+    dossier,
+  });
 }
 
 interface ToolExecutionResult {
@@ -2820,7 +3053,11 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
   }
 
   let dossier: string;
-  let systemPrompt: string;
+  let systemPrompt: AnalystSystemPrompt;
+  // Built per gate below, from the framing resolver that gate's read path supports. Every
+  // generator on this turn — the answer, and the follow-up chips at the end of it — takes
+  // this one object, so they cannot disagree about what may be claimed.
+  let promptContext: AnalystPromptContext;
   let patchTool: ChatCompletionTool | null = null;
   let toolArgsSchema: typeof G1ToolArgsSchema | typeof G2ToolArgsSchema | typeof ProposeModificationArgsSchema | null = null;
   // Evidence tools (v1.1) available alongside the gate's propose_modification variant, and
@@ -2835,7 +3072,11 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     // G1 runs before any discovery search — no evidence tools exist yet (plan: "G1 has
     // none: omit tools there").
     dossier = buildG1Dossier(jobId, job.niche, job.gateArtifact);
-    systemPrompt = buildG1SystemPrompt(job.niche, dossier, decisionTools);
+    promptContext = analystPromptContext(
+      job.niche,
+      ideaCheckFramingFromRecord(job.entryMode, currentSelection.ideaCheck),
+    );
+    systemPrompt = buildG1SystemPrompt(promptContext, dossier, decisionTools);
     patchTool = G1_PATCH_TOOL;
     toolArgsSchema = G1ToolArgsSchema;
   } else if (effectiveGateStage === 4) {
@@ -2846,7 +3087,11 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     const g2Discovery = await getDiscoveryDataForJob(jobId).catch(() => null);
     const g2HasEvidence = hasQuotesData(g2Discovery);
     if (g2HasEvidence) evidenceTools.push(GET_PAIN_EVIDENCE_TOOL);
-    systemPrompt = buildG2SystemPrompt(job.niche, dossier, buildToolUsageBlock(g2HasEvidence, false), decisionTools);
+    promptContext = analystPromptContext(
+      job.niche,
+      ideaCheckFramingFromRecord(job.entryMode, currentSelection.ideaCheck),
+    );
+    systemPrompt = buildG2SystemPrompt(promptContext, dossier, buildToolUsageBlock(g2HasEvidence, false), decisionTools);
     patchTool = G2_PATCH_TOOL;
     toolArgsSchema = G2ToolArgsSchema;
   } else if (effectiveGateStage === REPORT_GATE_STAGE) {
@@ -2940,9 +3185,19 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
           : [],
         collaboratorVotes: completedContext?.discoveryShare?.votes ?? [],
         handoff: decisionTools ? decisionHandoff : null,
+        // Outcome-derived, never mode-derived — the same rule as G3. Read from
+        // `context.ideaCheck`, NOT from the bundle: `runArtifacts` is withheld at COMPLETED,
+        // so a bundle-derived framing would resolve `unavailable` on every run.
+        ideaCheck: currentSelection.ideaCheck,
       },
     );
-    systemPrompt = buildCompletedReportSystemPrompt(job.niche, dossier, decisionTools);
+    promptContext = analystPromptContext(
+      job.niche,
+      // Outcome-derived, never mode-derived — the same rule as G3. Read from
+      // `context.ideaCheck`, NOT from the bundle: `runArtifacts` is withheld at COMPLETED.
+      ideaCheckFramingFromRecord(job.entryMode, currentSelection.ideaCheck),
+    );
+    systemPrompt = buildCompletedReportSystemPrompt(promptContext, dossier, decisionTools);
     evidenceTools.push(
       GET_REPORT_SECTION_TOOL,
       GET_SOLUTION_DETAIL_TOOL,
@@ -3161,13 +3416,17 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       decisionTools ? experimentBriefs : [],
       decisionTools,
     );
-    systemPrompt = buildG3SystemPrompt(
+    promptContext = analystPromptContext(
       job.niche,
+      // Outcome-derived, never mode-derived: see `ideaCheckFraming`.
+      ideaCheckFraming(job.entryMode, bundle),
+    );
+    systemPrompt = buildG3SystemPrompt(
+      promptContext,
       dossier,
       poolHealth.weak,
       buildToolUsageBlock(g3HasEvidence, g3HasCompetitors),
       decisionTools,
-      job.entryMode === 'validate_idea',
     );
     // A client can name a gated workspace ("risks" / "tests" / "alternatives") in
     // selectionContext, and the block below ends by telling the model to prepare a draft
@@ -3220,7 +3479,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
             && resolvedIdeaKeys.has(`${row.idea.ideaId}:${row.idea.ideaRevision}`)
           ))
       ));
-      systemPrompt += `\n\nCURRENT OWNER WORKSPACE:\n${JSON.stringify({
+      systemPrompt = appendToAnalystSystemPrompt(systemPrompt, `\n\nCURRENT OWNER WORKSPACE:\n${JSON.stringify({
         workspace: selectionContext.workspace,
         candidate_refs: currentRefs,
         candidate_context: contextResolution,
@@ -3228,7 +3487,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         resolved_candidates: resolvedIdeas.length,
         lens: currentLens,
         record: recordIsCurrent ? requestedRecord : null,
-      })}\nUse this only to focus the response on what the owner is viewing. If candidate_context is partial or unresolved, say that the view contains a stale candidate reference and do not silently substitute a different candidate or the saved shortlist. Explain the next useful step and, when asked, prepare an editable review draft through the existing selection action tool. Never save, launch, spend credits, or decide owner judgment automatically.`;
+      })}\nUse this only to focus the response on what the owner is viewing. If candidate_context is partial or unresolved, say that the view contains a stale candidate reference and do not silently substitute a different candidate or the saved shortlist. Explain the next useful step and, when asked, prepare an editable review draft through the existing selection action tool. Never save, launch, spend credits, or decide owner judgment automatically.`);
     }
     if (synthesisIntent) {
       lockedSynthesisRefs = synthesisIntent.parents.map((parent) => {
@@ -3237,10 +3496,10 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
         );
         return `R${index + 1}`;
       });
-      systemPrompt += `\n\nOWNER-LOCKED SYNTHESIS REQUEST:\n${JSON.stringify({
+      systemPrompt = appendToAnalystSystemPrompt(systemPrompt, `\n\nOWNER-LOCKED SYNTHESIS REQUEST:\n${JSON.stringify({
         operation: synthesisIntent.operation,
         source_refs: lockedSynthesisRefs,
-      })}\nIf you propose a synthesis, use exactly this operation and source set. Do not substitute another candidate.`;
+      })}\nIf you propose a synthesis, use exactly this operation and source set. Do not substitute another candidate.`);
     }
     patchTool = PROPOSE_MODIFICATION_TOOL;
     toolArgsSchema = ProposeModificationArgsSchema;
@@ -3675,7 +3934,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
   let suggestions: string[] | null = null;
   let suggestionCostUsd = 0;
   if (!clientAborted && !gateChangedMidStream && !assistantPersistFailed && content) {
-    const generated = await generateSuggestions(dossier, messages, content, analystModel);
+    const generated = await generateSuggestions(promptContext, dossier, messages, content, analystModel);
     if (generated) {
       suggestions = generated.suggestions;
       suggestionCostUsd = generated.costUsd;

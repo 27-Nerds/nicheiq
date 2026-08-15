@@ -590,3 +590,58 @@ class TestSeedRunDataContext:
         assert "MUST always be evidence_gap" in prompt
         for phrase in ("not found", "no proof", "does not appear"):
             assert phrase in prompt
+
+
+class TestUserSeedIsNeverReplaced:
+    """"Check my idea" grades the product the USER submitted. The seed is the only visible
+    idea so it is ALWAYS red-teamed, and an ACCEPTED revision replaced it via
+    `ideas[idx] = rev` — which guaranteed a non-empty identity diff at the post-tail lock in
+    `execute_seed_pipeline` and refused the fully-paid run. On the seed path the revision
+    could therefore only reject, or destroy a run; it could never improve the idea."""
+
+    def test_a_user_seed_revision_is_never_attempted(self, monkeypatch):
+        from nicheiq.utils import red_team_review as rtr
+
+        seed = _idea(name="MySubmittedProduct", source_frame="user_seed")
+        refined = _refined([seed])
+        crew = _crew()
+
+        # RECORD the calls; do NOT raise. `_attempt_red_team_revision` is fail-soft
+        # (`except Exception` -> return False), so an exception-based probe is swallowed and
+        # the test passes with or without the guard.
+        llm_calls: list = []
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            lambda **_kw: (llm_calls.append(True), (SimpleNamespace(), None))[1])
+        crew._score_wave = MagicMock()
+
+        assert rtr._attempt_red_team_revision(
+            crew, refined, seed,
+            _RedTeamVerdict(verdict="weakened", findings=[RedTeamFinding(
+                claim="an incumbent ships this", kind="verified_incumbent_overlap")]),
+            "evidence") is False
+        assert llm_calls == [], "revision LLM call must not run for a user seed"
+        crew._score_wave.assert_not_called()
+        # The submitted product is still the one in the pool, unmodified.
+        assert refined.solution_ideas == [seed]
+        assert seed.solution_name == "MySubmittedProduct"
+
+    def test_a_non_seed_idea_is_still_revised(self, monkeypatch):
+        """The guard is scoped to seeds: ordinary discovery ideas keep the revision path,
+        which is where it earns its keep."""
+        from nicheiq.utils import red_team_review as rtr
+
+        idea = _idea(name="DiscoveryIdea", source_frame="pain")
+        refined = _refined([idea])
+        crew = _crew()
+        reached = []
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            lambda **_kw: (reached.append(True), (_ for _ in ()).throw(RuntimeError("stop")))[0])
+
+        rtr._attempt_red_team_revision(
+            crew, refined, idea,
+            _RedTeamVerdict(verdict="weakened", findings=[RedTeamFinding(
+                claim="an incumbent ships this", kind="verified_incumbent_overlap")]),
+            "evidence")
+        assert reached, "non-seed ideas must still reach the revision attempt"

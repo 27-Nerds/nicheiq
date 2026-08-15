@@ -6,9 +6,13 @@
   interface Props {
     variant: Variant;
     shareToken?: string;
+    /** idea-check only: false when the shared run REFUSED to grade the submitted idea.
+     *  "You saw one idea checked" is the one line here that claims something happened,
+     *  and on that outcome nothing did. */
+    ideaChecked?: boolean;
   }
 
-  let { variant, shareToken }: Props = $props();
+  let { variant, shareToken, ideaChecked = true }: Props = $props();
 
   const eyebrow = $derived(
     variant === "report" ? "Shared report · end"
@@ -19,7 +23,9 @@
 
   const headline = $derived(
     variant === "idea-check"
-      ? { primary: "You saw one idea checked.", secondary: "Now test yours against real evidence." }
+      ? ideaChecked
+        ? { primary: "You saw one idea checked.", secondary: "Now test yours against real evidence." }
+        : { primary: "That check couldn't finish.", secondary: "Test your own idea against real evidence." }
       : variant === "discovery"
       ? { primary: "You saw one niche discovered.", secondary: "Now run the research on yours." }
       : { primary: "You saw one niche analyzed.", secondary: "Now do the same for yours." },

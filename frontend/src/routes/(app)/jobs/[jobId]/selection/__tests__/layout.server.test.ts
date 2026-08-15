@@ -347,6 +347,36 @@ describe("selection layout Discovery navigation", () => {
     );
   });
 
+  // The workspace chrome is written in verdict vocabulary ("Your verdict" in the sidebar,
+  // "Your idea's check stays saved" on Review). A run that REFUSED to grade the idea still
+  // emits an idea_validation block, so those surfaces had no way to tell — they need the
+  // outcome, and it has to come off the same verified snapshot as everything else.
+  it("projects the refused-check outcome for the workspace chrome", async () => {
+    const withOutcome = (outcome: string | null) => (path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job()));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [],
+          artifactVerification: "verified",
+          previewReport: {
+            detailed_pain_points: [],
+            ...(outcome ? { idea_validation: { outcome } } : {}),
+          },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    };
+
+    mocks.fetchBackend.mockImplementation(withOutcome("not_evaluated"));
+    expect((await load(event()))?.validationNotEvaluated).toBe(true);
+
+    mocks.fetchBackend.mockImplementation(withOutcome("worth_testing"));
+    expect((await load(event()))?.validationNotEvaluated).toBe(false);
+
+    mocks.fetchBackend.mockImplementation(withOutcome(null));
+    expect((await load(event()))?.validationNotEvaluated).toBe(false);
+  });
+
   // Finding D2, tertiary defect: seven untrusted-artifact states emptied overlapGroups
   // and availableSectionIds with zero user-visible signal, while the job page showed a
   // banner for the SAME job. /selection/review is the worst case: its duplicate-idea gate

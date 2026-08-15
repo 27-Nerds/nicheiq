@@ -220,10 +220,23 @@ export interface IdeaValidationAlternatives {
 }
 
 export interface IdeaValidation {
-	provisional: true;
+	/** `true` hedges a verdict that could still upgrade. `false` on `not_evaluated`, where
+	 *  there is no verdict at all to hedge. Was the literal `true` while the refusal branch
+	 *  still inherited it. */
+	provisional: boolean;
 	outcome: IdeaValidationOutcome;
 	idea_name?: string | null;
 	headline: string;
+	/** `not_evaluated` only: the TYPED refusal cause (`identity_judge_unavailable`,
+	 * `judged_a_different_product`, …) stamped by the seed pipeline. Diagnostic — the page
+	 * must never branch copy off it, because that would put a second copy of the decision
+	 * here; render `failure_next_step` instead. */
+	failure_reason?: string | null;
+	/** `not_evaluated` only: what the Next card tells the user to DO, authored per cause in
+	 * `SEED_FAILURE_COPY` (report/idea_validation_block.py) alongside `headline`, so the two
+	 * cannot contradict each other. The page renders it verbatim. Absent on reports
+	 * materialized before 2026-08-14. */
+	failure_next_step?: string | null;
 	parts: IdeaValidationPart[];
 	score_bands?: Record<string, string>;
 	evidence_confidence: 'Low' | 'Moderate' | 'High';
@@ -286,9 +299,16 @@ export interface IdeaValidation {
 	 * list, so the page cannot derive this number anywhere else. */
 	seed_display_composite_score?: number | null;
 	demotion_reason?: string | null;
+	/** Method caveats on the FINDINGS. Empty on `not_evaluated`: two of the three qualify
+	 *  content the refusal branch clears (`anchored_pains`, `breadth`), and a caveat list
+	 *  beside no findings implies findings. */
 	desk_limits: string[];
+	/** The cheapest-next-test ladder. Empty on `not_evaluated` — prescribing a week of
+	 *  interviews off a check that never ran is the one copy defect here that costs the
+	 *  reader real money and time. */
 	experiment_ladder: { rung: number; action: string; kill_number: string; cost_note: string }[];
-	next_experiment_index: number;
+	/** `null` when there is no next test, rather than an index into an empty ladder. */
+	next_experiment_index: number | null;
 	/** The product as the tournament actually graded it (may be a refinement of the pitch). */
 	evaluated_idea?: {
 		name?: string | null;

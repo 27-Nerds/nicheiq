@@ -320,6 +320,68 @@ def test_missing_seed_yields_not_evaluated_block():
     assert block["alternatives"]["count"] == 1
 
 
+def test_a_refusal_withdraws_the_pivot_record_and_its_scores():
+    """THE SIXTEENTH SURFACE'S SHAPE, FOUND AGAIN ON A FOURTH FIELD (round 8).
+
+    `state.user_idea_pivot` is stamped by `_attempt_validate_pivot`'s `finally` BEFORE the
+    two post-birth refusal returns, and neither clears it. The base block copies it in above
+    the `seed is None` branch, so a block stamped `outcome: not_evaluated` shipped
+    `trigger_finding`, `rejected_name`, and `rejected_composite: 61 / original_composite:
+    58` — A SCORE FOR THE USER'S IDEA on a run that refused to score it, next to a named
+    revision of a product the same block says was never built.
+
+    Latent only because two renderers happen to withhold the panels. The branch's own stated
+    doctrine is that the ARTIFACT is the authority, not the renderer.
+    """
+    from nicheiq.report.idea_validation_block import NO_PIVOT
+
+    state = _state([_idea(solution_name="Alt")])
+    state.user_idea_pivot = {
+        "attempted": True, "outcome": "rejected",
+        "trigger_finding": "partial (Cropster): lot tracking shipped since 2021",
+        "because": "the untracked staleness window", "keeps": "the lot ledger",
+        "changes": "the alerting", "reason_not_shown": "it scored no better",
+        "rejection_code": "not_better", "rejected_name": "Green Lot Wedge",
+        "rejected_pitch": "A narrower tracker.",
+        "rejected_composite": 61, "original_composite": 58,
+        "ries_label": "zoom-in", "name": None,
+    }
+
+    block = build_idea_validation_block(state, "validate_idea")
+
+    assert block["outcome"] == "not_evaluated"
+    # No number anywhere in the record. `original_composite` is the user's OWN idea's score.
+    assert block["pivot"] == NO_PIVOT
+    for leaked in ("rejected_composite", "original_composite", "rejected_name",
+                   "rejected_pitch", "rejection_code"):
+        assert leaked not in block["pivot"], leaked
+    assert block["pivot"]["trigger_finding"] is None
+    assert block["pivot"]["attempted"] is False
+
+
+def test_all_three_refusal_paths_emit_the_same_pivot_record():
+    """A consumer must not be able to tell how far a refused run got from its pivot record.
+
+    The crew's birth refusal never writes the state at all; the two post-birth refusals
+    write a full record first. Both must arrive here identical, or "not_evaluated" would
+    carry different amounts of information about an idea nobody graded.
+    """
+    from nicheiq.report.idea_validation_block import NO_PIVOT
+
+    never_written = _state([_idea(solution_name="Alt")])
+    written_then_refused = _state([_idea(solution_name="Alt")])
+    written_then_refused.user_idea_pivot = {
+        "attempted": True, "outcome": "rejected", "trigger_finding": "shipped (X): thing",
+        "because": "b", "keeps": "k", "changes": "c", "reason_not_shown": "r",
+        "ries_label": "zoom-in", "name": "Some Wedge", "rejected_composite": 61,
+    }
+
+    a = build_idea_validation_block(never_written, "validate_idea")
+    b = build_idea_validation_block(written_then_refused, "validate_idea")
+    assert a["outcome"] == b["outcome"] == "not_evaluated"
+    assert a["pivot"] == b["pivot"] == NO_PIVOT
+
+
 def test_pivot_record_and_refs_flow_through():
     seed = _idea(incumbent_parity="partial (X): overlap", **SEED_KW)
     pivot = _idea(solution_name="Wedge", source_frame="user_seed",

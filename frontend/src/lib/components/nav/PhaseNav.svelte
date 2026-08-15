@@ -78,6 +78,11 @@
      *  shows Choose ideas → Compare trade-offs → Review and start, and the
      *  "Check the evidence" row is omitted rather than linking into a 403. */
     decisionTools?: boolean;
+    /** "Check my idea" runs whose pipeline refused to grade the idea
+     *  (`idea_validation.outcome === 'not_evaluated'`). There is no verdict on such a run,
+     *  so the journey step cannot be named for one. Defaults false: a surface that cannot
+     *  see the outcome keeps the graded-run label rather than inventing a refusal. */
+    validationNotEvaluated?: boolean;
     /** Status of the completed run's optional landing-page deliverable. */
     landingPageStatus?: "pending" | "running" | "completed" | "failed" | "locked";
     /** Asset-backed report availability. COMPLETED alone does not make report routes valid. */
@@ -99,6 +104,7 @@
     chatMode = false,
     gateStage = null,
     decisionTools = false,
+    validationNotEvaluated = false,
     landingPageStatus = "pending",
     reportAvailable = false,
     recoverLabel = "Next step",
@@ -206,8 +212,16 @@
   // "Check my idea" runs land on a verdict about ONE idea — "Choose ideas" is
   // discovery vocabulary and reads wrong beside it. Same journey, mode-true name
   // (matches the progress screen's "Your verdict" phase label).
+  //
+  // Unless there is no verdict. A run that refused to grade the idea has an outcome, not a
+  // verdict, and the label was derived from the ENTRY MODE alone — so the sidebar read
+  // "Selection step · Your verdict" beside a card reading "Not evaluated". Falls back to
+  // the breadcrumb's word for the same step, which names the step without claiming a
+  // result.
   const chooseIdeasLabel = $derived(
-    entryMode === "validate_idea" ? "Your verdict" : CHOOSE_IDEAS_LABEL,
+    entryMode === "validate_idea"
+      ? (validationNotEvaluated ? "Idea check" : "Your verdict")
+      : CHOOSE_IDEAS_LABEL,
   );
 
   const phaseBadges = $derived.by((): Record<string, PhaseBadge> => {

@@ -415,3 +415,82 @@ def test_classifier_smoke_real_llm():
         if (ctx.audience_scope or "") != expected:
             wrong.append((text, expected, ctx.audience_scope))
     assert len(wrong) <= 1, f"classifier drifted on >1 case: {wrong}"
+
+
+class TestIdeaCheckIdentityTermsFallback:
+    """A pitch whose classifier returns no VERBATIM clause must leave identity_terms unset.
+
+    It used to bind the whole submitted pitch as a single `mechanism` term. `seed_clause_drift`
+    requires EVERY mechanism stem to survive (other clauses need one), so a whole-pitch clause
+    is unsatisfiable by any faithful rewrite — the abolished verbatim-retention rule, reborn
+    through a different door. It discarded live runs e1b42702 and 7703f811.
+
+    Leaving it unset skips clause enforcement ONLY: the retention floor, the route check, the
+    semantic same-product judge and the post-birth identity lock all still run.
+    """
+
+    def _flow(self):
+        flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
+        flow.entry_mode = "validate_idea"
+        flow._state = SimpleNamespace()   # `state` is a read-only Flow property
+        flow._extract_niche_anchors = lambda *a, **k: None
+        return flow
+
+    @staticmethod
+    def _ctx(**over):
+        """Mirrors the `_IdeaCheckNicheContext` the production path builds inline — the
+        `idea_*_terms` fields only exist on that subclass, so a plain NicheContext silently
+        drops them and every clause reads empty."""
+        from pydantic import Field as _F
+
+        class _IdeaCtx(NicheContext):
+            idea_name: str = ""
+            idea_brief: str = ""
+            idea_inferred_fields: list[str] = _F(default_factory=list)
+            idea_mechanism_terms: list[str] = _F(default_factory=list)
+            idea_audience_terms: list[str] = _F(default_factory=list)
+            idea_problem_terms: list[str] = _F(default_factory=list)
+            idea_delivery_terms: list[str] = _F(default_factory=list)
+
+        base = dict(niche_input="x", niche_description="AI visibility tooling",
+                    market_segments=["a", "b"], industry_boundaries="z")
+        base.update(over)
+        return _IdeaCtx(**base)
+
+    def _mock(self, monkeypatch, returned):
+        from nicheiq.utils.llm_service import LLMService
+        monkeypatch.setattr(
+            LLMService, "invoke_structured",
+            lambda *a, **k: (returned, SimpleNamespace(to_dict=lambda: {})))
+
+    PITCH = ("AI visibility for local businesses in London Find out what AI assistants know "
+             "about your business and whether they recommend you to potential customers.")
+
+    def test_no_verbatim_clause_leaves_identity_terms_unset(self, monkeypatch):
+        # Classifier paraphrases instead of quoting — none of these appear in the pitch, so
+        # every term is dropped by the verbatim filter and the fallback used to fire.
+        self._mock(monkeypatch, self._ctx(
+            audience_scope="segment_of_niche", user_target_audience="local businesses",
+            idea_mechanism_terms=["monitors generative answer engines"],
+            idea_audience_terms=["small firms"], idea_problem_terms=["poor discoverability"],
+            idea_delivery_terms=["hosted dashboard"]))
+        flow = self._flow()
+        flow._generate_niche_context(self.PITCH)
+
+        assert flow.state.user_idea_identity_terms is None
+        # and specifically NOT the whole pitch bound as one mechanism clause
+        terms = flow.state.user_idea_identity_terms or {}
+        assert self.PITCH.split()[0] not in " ".join(terms.get("mechanism", []))
+
+    def test_a_verbatim_clause_is_still_captured(self, monkeypatch):
+        """The change is scoped to the empty case — real quoted clauses still lock."""
+        self._mock(monkeypatch, self._ctx(
+            audience_scope="segment_of_niche", user_target_audience="local businesses",
+            idea_mechanism_terms=["AI assistants"], idea_audience_terms=["local businesses"],
+            idea_problem_terms=[], idea_delivery_terms=[]))
+        flow = self._flow()
+        flow._generate_niche_context(self.PITCH)
+
+        terms = flow.state.user_idea_identity_terms
+        assert terms is not None
+        assert terms["mechanism"] == ["AI assistants"]

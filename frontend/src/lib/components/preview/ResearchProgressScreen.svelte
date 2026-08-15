@@ -24,6 +24,28 @@
     embedded?: boolean;
     niche?: string;
     entryMode?: string | null;
+    /**
+     * The idea check's outcome on a `validate_idea` run. THREE states, because there are
+     * three, and collapsing them to a boolean is what made this screen assert a graded
+     * verdict twice:
+     *
+     *   "graded"        — the artifact was read and the pipeline evaluated the pitch.
+     *   "not_evaluated" — the artifact was read and the pipeline REFUSED to grade it.
+     *   "unknown"       — the outcome could not be read. THE DEFAULT.
+     *
+     * The boolean this replaces defaulted to `false`, i.e. to "graded", so every caller
+     * that could not read the artifact silently claimed a verdict: QUEUED before Deep
+     * Research (the endpoint 400'd for the whole queue wait) and RUNNING_PHASE2 whenever
+     * the preview fetch 5xx'd. Both reproduced the original defect exactly, with no marker
+     * anywhere on the page. Enumerating the states that break it is how this program has
+     * already found sixteen of these; making the DEFAULT safe is the fix.
+     *
+     * "unknown" is not an error state. During Phase 1 the check genuinely has not run yet
+     * and the forward-looking method sentence is correct, so `isDiscovery` reads it as
+     * "not yet". It is only past Phase 1 — where the outcome is a settled fact — that
+     * "unknown" means "we cannot see it", and there the screen states neither outcome.
+     */
+    ideaCheckOutcome?: "graded" | "not_evaluated" | "unknown";
     userEmail?: string | null;
     progressPercent?: number;
     stagesCompleted?: number;
@@ -55,6 +77,7 @@
     embedded = false,
     niche = "",
     entryMode = null,
+    ideaCheckOutcome = "unknown",
     userEmail = null,
     stagesCompleted = 0,
     totalStages = 0,
@@ -86,6 +109,15 @@
     isQueued ? "Queued" : isDiscovery ? "Research in progress" : "Deep research",
   );
 
+  const isIdeaCheck = $derived(entryMode === "validate_idea");
+  const ideaCheckRefused = $derived(isIdeaCheck && ideaCheckOutcome === "not_evaluated");
+  // Past Phase 1 the check has already run, so its outcome is a fact — and "unknown" here
+  // means the page could not read it, not that it has yet to happen. Neither the graded
+  // promise nor the refusal may be printed in that state.
+  const ideaCheckUnreadable = $derived(
+    isIdeaCheck && !isDiscovery && ideaCheckOutcome === "unknown",
+  );
+
   // Catalog provenance caption (reuses the shared entity icons; self-hides otherwise).
   const provenance = $derived.by(() => {
     switch (entryMode) {
@@ -98,14 +130,20 @@
       // "Check my idea": static copy by design — the derived market lives only in
       // checkpoint state (never on the Job row), so it appears in the report's
       // parsed-idea echo at completion, not here.
+      // Present tense on a run that already refused to grade the idea claimed work
+      // that had stopped, so the outcome selects the caption.
+      // "Started from your idea" is the caption that is true whichever way the check went;
+      // it is used only when the outcome could not be read, so neither claim is invented.
       case "validate_idea":
-        return { Icon: IDEA_ICON, text: "Checking your idea against this market" };
+        return ideaCheckRefused
+          ? { Icon: IDEA_ICON, text: "This run couldn't grade your idea" }
+          : ideaCheckUnreadable
+            ? { Icon: IDEA_ICON, text: "Started from your idea" }
+            : { Icon: IDEA_ICON, text: "Checking your idea against this market" };
       default:
         return null;
     }
   });
-  const isIdeaCheck = $derived(entryMode === "validate_idea");
-
   const DISCOVERY_VISIBLE_STAGES = 4;
   const DEEP_RESEARCH_VISIBLE_STAGES = VISIBLE_TOTAL_STAGES - DISCOVERY_VISIBLE_STAGES;
 
@@ -168,12 +206,26 @@
   // an automatic research phase; the required user choice belongs between the runs.
   // Idea-check runs end at the idea's verdict, not an idea-picking step — "Pick
   // ideas" mid-run would teach exactly the wrong expectation.
+  //
+  // A refused check has no verdict step to show. The track measures WORK WITH
+  // PROGRESS — every segment before the active one is filled and marked done — so
+  // keeping "Your verdict" here rendered the refusal as a completed step, and a
+  // relabelled segment would still be a bar that can never fill. The step is
+  // dropped instead, and the absence is stated in words above the track.
+  //
+  // When the outcome cannot be READ, the step is neither dropped (that asserts no verdict)
+  // nor left as "Your verdict" (that asserts one, filled and done). It is named for the work
+  // that certainly happened — the check ran — which is true either way.
   const phases = $derived(
     isIdeaCheck
-      ? ["Research", "Your verdict", "Deep Research"]
+      ? ideaCheckRefused
+        ? ["Research", "Deep Research"]
+        : ideaCheckUnreadable
+          ? ["Research", "Idea check", "Deep Research"]
+          : ["Research", "Your verdict", "Deep Research"]
       : ["Discovery", "Pick ideas", "Deep Research"],
   );
-  const activePhase = $derived(isDiscovery ? 0 : 2);
+  const activePhase = $derived(isDiscovery ? 0 : phases.length - 1);
   const phaseState = (i: number): "done" | "active" | "queued" | "pending" =>
     i < activePhase
       ? "done"
@@ -211,7 +263,21 @@
       </p>
     {/if}
 
-    {#if isIdeaCheck}
+    {#if ideaCheckRefused}
+      <!-- The method sentence below promises a spec and a score. Neither exists on a
+           refused run, so it is withheld and replaced by the absence itself — the
+           outcome only. The CAUSE is not restated here: it lives once, in
+           SEED_FAILURE_COPY (report/idea_validation_block.py), on the run's own page. -->
+      <p class="rp-method">
+        Your pitch was not written up as a product spec or scored on this run.
+        What stopped the check stays recorded on this run.
+      </p>
+    {:else if ideaCheckUnreadable}
+      <!-- Withheld entirely. The sentence below is a PROMISE ("we … write your pitch up as
+           a complete product spec … and score it"); past Phase 1 it is a claim about work
+           that has already finished one way or the other, and we cannot see which. The
+           refusal wording above would be the same mistake pointing the other way. -->
+    {:else if isIdeaCheck}
       <!-- The control-group sentence — echoed at the report's alternatives disclosure,
            so the generated pool reads as method, never a bait-and-switch. -->
       <p class="rp-method">

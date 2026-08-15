@@ -111,7 +111,18 @@
 
   // Same source as the header's credit pill — the buyer shouldn't have to scroll up
   // to learn whether they can afford the ask.
+  //
+  // AVAILABILITY IS THE LOAD-STATE FLAG, NOT THE VALUE (2026-08-15). This read used to be
+  // `typeof value === "number"` alone, and `(app)/+layout.server.ts` seeds `creditBalance = 0`
+  // at :27 while setting `balanceUnavailable = true` at :34, assigning BOTH only inside
+  // `if (balanceRes?.ok)` at :64. So a failed balance fetch reaches this component as a
+  // perfectly finite `0` — and the refusal card rendered "BALANCE 0", a confidently wrong
+  // number, on the one panel that has just told the user the failure was OURS. Zero is also
+  // a legitimate balance, so the value can never distinguish the two; only the flag can.
+  // Same gate as `checkCost` below and the same shape as the review page's own read
+  // (`jobs/[jobId]/selection/review/+page.svelte:328-332`).
   const creditBalance = $derived.by(() => {
+    if (page.data?.billingLoadState?.balanceUnavailable) return null;
     const value = page.data?.creditBalance;
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   });
@@ -129,6 +140,48 @@
       ? `(new check · ${checkCost} credits · you have ${creditBalance})`
       : "(starts a new paid check)",
   );
+  // H-3 — the ledger-atom form of the SAME fact, with the same fallback for the same reason.
+  // The refusal branch printed its cost line under `{#if checkCost != null && creditBalance !=
+  // null}` with NO `{:else}`, while both other rerun links in this component fall back to
+  // "starts a new paid check". `discoveryCostUnavailable` is initialised TRUE in
+  // +layout.server.ts and cleared only on a successful billing fetch, so any billing-load
+  // failure dropped the disclosure entirely — on the one branch that has just told the user
+  // the failure was OURS, which is exactly where an unpriced "Run the check again →" reads as
+  // a free retry. Derived beside the prose form so the two can never drift.
+  const rerunPriceRecord = $derived(
+    checkCost != null && creditBalance != null
+      ? `NEW CHECK · ${checkCost} CREDITS · BALANCE ${creditBalance}`
+      : "STARTS A NEW PAID CHECK",
+  );
+
+  // S15 — THE CHARGE THAT ALREADY STANDS. Decided 2026-08-15 (owner): a refused idea check
+  // keeps the full discovery charge, with disclosure. Both lines above price the NEXT check
+  // and neither says what became of the credits already spent on THIS one, so a reader who
+  // has just been told the failure was ours and is then offered "a new paid check" can
+  // reasonably conclude the failed run cost them nothing. It did not: the discovery price is
+  // taken at job creation (`creditService.ts:906`), the refusal is deliberately non-fatal,
+  // the run ends at AWAITING_SELECTION and no hop on that path refunds anything.
+  //
+  // ONE constant, rendered ONCE, in the same paragraph as the price it qualifies. It is NOT
+  // appended to the seven `next_step` strings in `SEED_FAILURE_COPY`: the fact is
+  // cause-independent, and seven copies of one sentence is the duplicated-refusal-copy defect
+  // this program has already fixed once. It is not carried on the persisted block either —
+  // `failure_next_step` records what happened on THAT run and stays true forever, while this
+  // states a live commercial policy, and a policy frozen into stored reports would keep being
+  // rendered verbatim after it changed. Being independent of `failure_reason` also means it
+  // renders on pre-2026-08-14 refusals, which carry no typed cause at all.
+  //
+  // IT SAYS NOTHING ABOUT WHAT A RETRY COSTS — that half is `rerunPriceRecord` above, and the
+  // two are kept separately replaceable on purpose. If a refused run ever gains a cheaper
+  // same-run retry, only the price line changes; this sentence stays true unedited.
+  //
+  // The refusal emails carry the same fact for the same reason (`emailService.ts`,
+  // IDEA_CHECK_CHARGE_NOTE): they quote the same "run the check again" instruction, mention
+  // money nowhere, and no page fix can reach an inbox. The two literals are pinned identical
+  // by `backend/src/services/__tests__/emailService.ideaCheck.test.ts`.
+  const CHARGE_STANDS =
+    "You were charged in full for this run. Everything else in it completed; the check on "
+    + "your idea did not, and we don't refund that charge.";
 
   const strongerPainCount = $derived(data.stronger_pain_count ?? 0);
   const alternativesCount = $derived(data.alternatives?.count ?? 0);
@@ -232,8 +285,15 @@
         {/if}
       </div>
     {/if}
-    <!-- Priced honestly: an unpriced redo link next to a paid receipt reads as a trap. -->
-    {#if !readOnly}
+    <!-- Priced honestly: an unpriced redo link next to a paid receipt reads as a trap.
+         Suppressed on `not_evaluated`, where it pointed the opposite way to the Next card
+         on the same page: this link asked "does this miss your intent? Edit and rerun"
+         while the Next card said "nothing in it caused this — there is nothing to change
+         before you retry". Both open the SAME prefilled re-run, so nothing is lost by
+         dropping the one that implies the pitch is at fault; the Next card owns the retry
+         here, priced, with the per-cause instruction attached. The one cause where extra
+         detail helps says so itself, in its own next step. -->
+    {#if !readOnly && !isNotEvaluated}
       <a class="iv-meta-link" href={rerunHref}>Does this miss your intent? Edit and rerun {rerunPriceSuffix}&nbsp;→</a>
     {/if}
   </div>
@@ -242,8 +302,12 @@
   <div class="iv-card iv-verdict" data-tour="validate-verdict">
     <div class="iv-verdict-head">
       <!-- "provisional" hedges a verdict that might still upgrade — a ruled-out
-           verdict is final for this run and the hedge undercut it. -->
-      <h2 class="iv-eyebrow">Idea check{isRuledOut ? "" : " · provisional"}</h2>
+           verdict is final for this run and the hedge undercut it, and a REFUSED run has
+           no verdict at all to hedge: "Idea check · provisional" printed beside the
+           "Not evaluated" chip read as a soft grade rather than an absent one. Mirrors
+           `block["provisional"] = False` on the refusal branch, which this eyebrow has
+           never read (it is derived, not carried) — hence both. -->
+      <h2 class="iv-eyebrow">Idea check{isRuledOut || isNotEvaluated ? "" : " · provisional"}</h2>
       <span class="iv-outcome-group">
         <span class="iv-outcome iv-tone-{outcomeTone}">{outcomeLabel}</span>
         {#if refinement}<span class="iv-tag">refined during evaluation</span>{/if}
@@ -572,41 +636,75 @@
     {/if}
   {/if}
 
-  <!-- ── Card: What desk research cannot see ── -->
-  <div class="iv-card">
-    <h2 class="iv-eyebrow">What this check cannot see</h2>
-    <ul class="iv-list">
-      {#each data.desk_limits as limit}<li>{limit}</li>{/each}
-    </ul>
-  </div>
+  <!-- ── Cards: desk limits + cheapest next test ──
+       BOTH sat outside the `!isNotEvaluated` guard that closes above, and both are
+       findings-shaped: a caveat list qualifies findings, a ladder prescribes the next
+       experiment against a verdict. A refused run has neither, and these rendered
+       BETWEEN "Not evaluated" and "This run couldn't grade your idea":
 
-  <!-- ── Card: cheapest next test (its own card — the page's second-most actionable
-       block was buried under three caveats). ── -->
-  <div class="iv-card">
-    <h2 class="iv-eyebrow">Lowest-cost next test</h2>
-    <ol class="iv-ladder">
-      {#each data.experiment_ladder as rung, i}
-        <li class:iv-rung-next={i === data.next_experiment_index}>
-          <span class="iv-rung-action">{rung.action}</span>
-          <span class="iv-rung-meta">{rung.kill_number} · cost: {rung.cost_note}</span>
-        </li>
-      {/each}
-    </ol>
-  </div>
+         [2] What this check cannot see   — "No one has paid … for this idea"
+         [3] Lowest-cost next test        — rung 1 flagged NEXT: "Run 5 problem
+                                            interviews with the buyer you named"
+
+       On the read-only share it is worse: all three commit panels below require
+       `!readOnly`, so the ladder was the LAST card in this component, with nothing after
+       it to say the check never ran.
+
+       `report/idea_validation_block.py` now emits both empty on a refusal — that is the
+       authority, because the block is persisted and every consumer reads it. The
+       `isNotEvaluated` half of each guard is NOT redundant with the length check: reports
+       materialized before 2026-08-14 carry the full four-rung ladder in their stored JSON
+       and this renderer is the only thing standing between those and the reader. -->
+  {#if !isNotEvaluated && data.desk_limits?.length}
+    <div class="iv-card">
+      <h2 class="iv-eyebrow">What this check cannot see</h2>
+      <ul class="iv-list">
+        {#each data.desk_limits as limit}<li>{limit}</li>{/each}
+      </ul>
+    </div>
+  {/if}
+
+  {#if !isNotEvaluated && data.experiment_ladder?.length}
+    <div class="iv-card">
+      <h2 class="iv-eyebrow">Lowest-cost next test</h2>
+      <ol class="iv-ladder">
+        {#each data.experiment_ladder as rung, i}
+          <li class:iv-rung-next={i === data.next_experiment_index}>
+            <span class="iv-rung-action">{rung.action}</span>
+            <span class="iv-rung-meta">{rung.kill_number} · cost: {rung.cost_note}</span>
+          </li>
+        {/each}
+      </ol>
+    </div>
+  {/if}
 
   <!-- ── Commit panel (owner only) ── -->
   {#if !readOnly && isNotEvaluated}
     <div class="iv-card iv-commit" data-tour="validate-continue">
       <h2 class="iv-eyebrow">Next</h2>
       <h3 class="iv-commit-title">This run couldn't grade your idea</h3>
-      <p class="iv-body-text">
-        We couldn't evaluate your idea on this run. Your submission is saved. Run it
-        again, or rephrase it in your own words.
-      </p>
-      <a class="iv-btn-primary" href={rerunHref}>Run the check again <ArrowRight class="iv-btn-icon" aria-hidden="true" /></a>
-      {#if checkCost != null && creditBalance != null}
-        <p class="iv-record iv-cost">NEW&nbsp;CHECK&nbsp;· {checkCost}&nbsp;CREDITS&nbsp;· BALANCE&nbsp;{creditBalance}</p>
+      <!-- RENDERED VERBATIM, never branched on here. This paragraph used to be one
+           hardcoded sentence for all six typed refusal causes — "Run it again, or rephrase
+           it in your own words" — which contradicted the verdict card two blocks up: a run
+           killed by OUR judge outage says "that is a fault on our side, not with your idea"
+           and then told the user to rewrite it. The per-cause copy is authored next to the
+           headline in `SEED_FAILURE_COPY` (report/idea_validation_block.py) so the two
+           cannot drift; a map here would be a third copy of the same decision, and the next
+           cause added would miss it. Absent on reports materialized before 2026-08-14 —
+           those keep the honest headline and the re-run button, with no sentence invented
+           locally to fill the gap. -->
+      {#if data.failure_next_step}
+        <p class="iv-body-text">{data.failure_next_step}</p>
       {/if}
+      <a class="iv-btn-primary" href={rerunHref}>Run the check again <ArrowRight class="iv-btn-icon" aria-hidden="true" /></a>
+      <!-- Both commercial facts in ONE paragraph: what the next check costs, then what
+           happened to what this one cost. Same element so the commit block keeps its
+           ≤3 text elements + button (design rule 21), and so the standing charge can never be
+           rendered without the price it qualifies, or the price without it. -->
+      <p class="iv-record iv-cost">
+        {rerunPriceRecord}
+        <span class="iv-charge-note">{CHARGE_STANDS}</span>
+      </p>
     </div>
   {:else if !readOnly && data.seed_purchasable}
     <div class="iv-card iv-commit" data-tour="validate-continue">
@@ -1286,6 +1384,21 @@
   }
   .iv-cost {
     margin-top: 0.5rem;
+  }
+  /* The standing charge rides inside the cost paragraph but not in its register: mono
+     uppercase is for data records, and this is a sentence meant to be read. */
+  .iv-charge-note {
+    display: block;
+    margin-top: 0.4rem;
+    max-width: var(--iv-measure);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.5;
+    text-transform: none;
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
   }
   /* Secondary rerun link sits on its own quiet row under the primary action —
      inline it crowded the button shoulder-to-shoulder. */

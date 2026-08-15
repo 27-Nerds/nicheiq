@@ -1,0 +1,160 @@
+{
+ "job_id": "8580c179-5fcb-441f-8fee-5e14fd0eaf43",
+ "captured_at": "2026-08-15T11:03:51.590979",
+ "pitch": "AI visibility for local businesses in London\nFind out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers.\nHow it works: A simple web app that monitors your visibility across AI platforms.",
+ "outcome": "identity_changed_during_scoring",
+ "identity_terms": {
+  "mechanism": [
+   "monitors your visibility",
+   "web app"
+  ],
+  "audience": [
+   "local businesses in London"
+  ],
+  "problem": [
+   "what AI assistants know about your business",
+   "how they describe your services",
+   "whether they recommend you"
+  ],
+  "delivery": [
+   "simple web app"
+  ]
+ },
+ "inferred_fields": [],
+ "gates": [
+  {
+   "gate": "generated",
+   "verdict": "advisory",
+   "reason": "candidate_as_generated",
+   "candidate": {
+    "solution_name": "LondonBusinessAIVisibilityMonitor",
+    "headline": "Simple web app that monitors what AI assistants know about London local",
+    "short_description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prom…",
+    "description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+    "value_proposition": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking.",
+    "core_features": [
+     "AI visibility London business",
+     "what ChatGPT says about my London business",
+     "AI recommendation tracking for local services"
+    ],
+    "project_type": "saas",
+    "mechanism_tag": "scheduled-automated-checks",
+    "why_it_works": "Local businesses and agencies need evidence that conventional rank reports do not provide: whether assistants accurately describe services, cite credible local sources, and recommend the business for real customer questions. A focused London scope keeps prompt templates, benchmarks, and reporting relevant while paid AI-visibility tooling demonstrates that some buyers already budget for monitoring.",
+    "innovation_angle": "This focuses narrowly on London local-business discovery, using repeatable service-and-location prompts plus citation and recommendation measurements to turn conversational AI answers into an auditable local SEO workflow.",
+    "differentiation_factors": [
+     "Pain served: Cannot establish a repeatable AI visibility baseline. Insight 1: hand-rolled spreadsheet workaround. Evidence: \"We’ve been framing it more as emerging visibility, using a mix of prompt sampling, brand lift, and downstream signals, but being very explic\". Wedge: Repeatedly running the exact same prompt set daily against four live AI interfaces creates a longitudinal baseline that competitors using synthetic or single-run snapshots cannot replicate because only you control the daily cadence and model sampling."
+    ],
+    "technical_approach": "Build a multi-tenant web application with business profiles, prompt-template management, scheduled job execution, encrypted provider credentials where required, and a normalized observation store. Provider adapters submit repeatable prompts to permitted AI assistant APIs or documented interfaces, capture responses and citations, and attach timestamps and model metadata. Background workers deduplicate observations, calculate recommendation and citation metrics, and use lightweight rules plus an LLM classifier to identify sentiment, factual discrepancies, and service mentions. A dashboard provides trend charts, evidence excerpts, alerts, and exportable reports; rate limits, provider terms, and response-retention controls are enforced per source.",
+    "target_personas": [
+     "Primary niche audience"
+    ],
+    "requires_data_aggregation": false,
+    "market_fit_claimed_route": "Public community discussions (Reddit/HN/forums, public)",
+    "data_source_tag": "third-party-api",
+    "data_acquisition_notes": "The product primarily uses paid, permitted AI provider APIs where available, supplemented by first-party business data and public website/citation sources. Provider costs vary by model and prompt volume, so monitoring frequency and plan limits should be metered; no undocumented scraping should be required. Google Business Profile access may require owner authorization and API quota approval, while public citations must respect robots.txt, terms, and applicable privacy rules.",
+    "differentiation_locus": "Programmatic benchmark pages cross-referencing AI visibility data by London borough × business category × service type — a hyperlocal data slice none of the broad/enterprise competitors (Otterly AI, Peec AI, Semrush) currently publish at page scale."
+   }
+  },
+  {
+   "gate": "birth_evidence",
+   "verdict": "advisory",
+   "reason": "{\"unpitched_core_dependencies\": [\"Public community discussions (Reddit/HN/forums, public)\"], \"seed_clause_drift\": [\"mechanism\"], \"retained_seed_terms\": 17, \"total_seed_terms\": 23, \"retention_floor\": 14, \"retention_floor_met\": true}",
+   "candidate": {
+    "solution_name": "LondonBusinessAIVisibilityMonitor",
+    "headline": "Simple web app that monitors what AI assistants know about London local",
+    "short_description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prom…",
+    "description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+    "value_proposition": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking.",
+    "core_features": [
+     "AI visibility London business",
+     "what ChatGPT says about my London business",
+     "AI recommendation tracking for local services"
+    ],
+    "project_type": "saas",
+    "delivery_format": "web-app",
+    "mechanism_tag": "scheduled-automated-checks",
+    "why_it_works": "Local businesses and agencies need evidence that conventional rank reports do not provide: whether assistants accurately describe services, cite credible local sources, and recommend the business for real customer questions. A focused London scope keeps prompt templates, benchmarks, and reporting relevant while paid AI-visibility tooling demonstrates that some buyers already budget for monitoring.",
+    "innovation_angle": "This focuses narrowly on London local-business discovery, using repeatable service-and-location prompts plus citation and recommendation measurements to turn conversational AI answers into an auditable local SEO workflow.",
+    "differentiation_factors": [
+     "Pain served: Cannot establish a repeatable AI visibility baseline. Insight 1: hand-rolled spreadsheet workaround. Evidence: \"We’ve been framing it more as emerging visibility, using a mix of prompt sampling, brand lift, and downstream signals, but being very explic\". Wedge: Repeatedly running the exact same prompt set daily against four live AI interfaces creates a longitudinal baseline that competitors using synthetic or single-run snapshots cannot replicate because only you control the daily cadence and model sampling."
+    ],
+    "technical_approach": "Build a multi-tenant web application with business profiles, prompt-template management, scheduled job execution, encrypted provider credentials where required, and a normalized observation store. Provider adapters submit repeatable prompts to permitted AI assistant APIs or documented interfaces, capture responses and citations, and attach timestamps and model metadata. Background workers deduplicate observations, calculate recommendation and citation metrics, and use lightweight rules plus an LLM classifier to identify sentiment, factual discrepancies, and service mentions. A dashboard provides trend charts, evidence excerpts, alerts, and exportable reports; rate limits, provider terms, and response-retention controls are enforced per source.",
+    "target_personas": [
+     "Primary niche audience"
+    ],
+    "requires_data_aggregation": false,
+    "market_fit_claimed_route": "Public community discussions (Reddit/HN/forums, public)",
+    "data_source_tag": "third-party-api",
+    "data_acquisition_notes": "The product primarily uses paid, permitted AI provider APIs where available, supplemented by first-party business data and public website/citation sources. Provider costs vary by model and prompt volume, so monitoring frequency and plan limits should be metered; no undocumented scraping should be required. Google Business Profile access may require owner authorization and API quota approval, while public citations must respect robots.txt, terms, and applicable privacy rules.",
+    "differentiation_locus": "Programmatic benchmark pages cross-referencing AI visibility data by London borough × business category × service type — a hyperlocal data slice none of the broad/enterprise competitors (Otterly AI, Peec AI, Semrush) currently publish at page scale."
+   }
+  },
+  {
+   "gate": "birth_accepted",
+   "verdict": "accepted",
+   "reason": "",
+   "candidate": {
+    "solution_name": "LondonBusinessAIVisibilityMonitor",
+    "headline": "Simple web app that monitors what AI assistants know about London local",
+    "short_description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prom…",
+    "description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+    "value_proposition": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking.",
+    "core_features": [
+     "AI visibility London business",
+     "what ChatGPT says about my London business",
+     "AI recommendation tracking for local services"
+    ],
+    "project_type": "saas",
+    "delivery_format": "web-app",
+    "mechanism_tag": "scheduled-automated-checks",
+    "why_it_works": "Local businesses and agencies need evidence that conventional rank reports do not provide: whether assistants accurately describe services, cite credible local sources, and recommend the business for real customer questions. A focused London scope keeps prompt templates, benchmarks, and reporting relevant while paid AI-visibility tooling demonstrates that some buyers already budget for monitoring.",
+    "innovation_angle": "This focuses narrowly on London local-business discovery, using repeatable service-and-location prompts plus citation and recommendation measurements to turn conversational AI answers into an auditable local SEO workflow.",
+    "differentiation_factors": [
+     "Pain served: Cannot establish a repeatable AI visibility baseline. Insight 1: hand-rolled spreadsheet workaround. Evidence: \"We’ve been framing it more as emerging visibility, using a mix of prompt sampling, brand lift, and downstream signals, but being very explic\". Wedge: Repeatedly running the exact same prompt set daily against four live AI interfaces creates a longitudinal baseline that competitors using synthetic or single-run snapshots cannot replicate because only you control the daily cadence and model sampling."
+    ],
+    "technical_approach": "Build a multi-tenant web application with business profiles, prompt-template management, scheduled job execution, encrypted provider credentials where required, and a normalized observation store. Provider adapters submit repeatable prompts to permitted AI assistant APIs or documented interfaces, capture responses and citations, and attach timestamps and model metadata. Background workers deduplicate observations, calculate recommendation and citation metrics, and use lightweight rules plus an LLM classifier to identify sentiment, factual discrepancies, and service mentions. A dashboard provides trend charts, evidence excerpts, alerts, and exportable reports; rate limits, provider terms, and response-retention controls are enforced per source.",
+    "target_personas": [
+     "Primary niche audience"
+    ],
+    "requires_data_aggregation": false,
+    "market_fit_claimed_route": "Public community discussions (Reddit/HN/forums, public)",
+    "data_source_tag": "third-party-api",
+    "data_acquisition_notes": "The product primarily uses paid, permitted AI provider APIs where available, supplemented by first-party business data and public website/citation sources. Provider costs vary by model and prompt volume, so monitoring frequency and plan limits should be metered; no undocumented scraping should be required. Google Business Profile access may require owner authorization and API quota approval, while public citations must respect robots.txt, terms, and applicable privacy rules.",
+    "differentiation_locus": "Programmatic benchmark pages cross-referencing AI visibility data by London borough × business category × service type — a hyperlocal data slice none of the broad/enterprise competitors (Otterly AI, Peec AI, Semrush) currently publish at page scale."
+   }
+  },
+  {
+   "gate": "post_wave",
+   "verdict": "refused",
+   "reason": "identity_changed_during_scoring",
+   "candidate": {
+    "solution_name": "LondonBusinessAIVisibilityMonitor",
+    "headline": "Simple web app that monitors what AI assistants know about London local",
+    "short_description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prom…",
+    "description": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking. (Re-injected to keep coverage of the high-severity pain \"\"; expand before shipping.)",
+    "value_proposition": "Simple web app that monitors what AI assistants know about London local businesses, how they describe services, and whether they recommend you to customers via repeatable prompt sampling and citation tracking.",
+    "core_features": [
+     "AI visibility London business",
+     "what ChatGPT says about my London business",
+     "AI recommendation tracking for local services"
+    ],
+    "project_type": "saas",
+    "delivery_format": "web-app",
+    "mechanism_tag": "scheduled-automated-checks",
+    "why_it_works": "Local businesses and agencies need evidence that conventional rank reports do not provide: whether assistants accurately describe services, cite credible local sources, and recommend the business for real customer questions. A focused London scope keeps prompt templates, benchmarks, and reporting relevant while paid AI-visibility tooling demonstrates that some buyers already budget for monitoring.",
+    "innovation_angle": "This focuses narrowly on London local-business discovery, using repeatable service-and-location prompts plus citation and recommendation measurements to turn conversational AI answers into an auditable local SEO workflow.",
+    "differentiation_factors": [
+     "Pain served: Cannot establish a repeatable AI visibility baseline. Insight 1: hand-rolled spreadsheet workaround. Evidence: \"We’ve been framing it more as emerging visibility, using a mix of prompt sampling, brand lift, and downstream signals, but being very explic\". Wedge: Repeatedly running the exact same prompt set daily against four live AI interfaces creates a longitudinal baseline that competitors using synthetic or single-run snapshots cannot replicate because only you control the daily cadence and model sampling."
+    ],
+    "technical_approach": "Build a multi-tenant web application with business profiles, prompt-template management, scheduled job execution, encrypted provider credentials where required, and a normalized observation store. Provider adapters submit repeatable prompts to permitted AI assistant APIs or documented interfaces, capture responses and citations, and attach timestamps and model metadata. Background workers deduplicate observations, calculate recommendation and citation metrics, and use lightweight rules plus an LLM classifier to identify sentiment, factual discrepancies, and service mentions. A dashboard provides trend charts, evidence excerpts, alerts, and exportable reports; rate limits, provider terms, and response-retention controls are enforced per source.",
+    "target_personas": [
+     "Primary niche audience"
+    ],
+    "requires_data_aggregation": false,
+    "data_source_tag": "third-party-api",
+    "data_acquisition_notes": "The product primarily uses paid, permitted AI provider APIs where available, supplemented by first-party business data and public website/citation sources. Provider costs vary by model and prompt volume, so monitoring frequency and plan limits should be metered; no undocumented scraping should be required. Google Business Profile access may require owner authorization and API quota approval, while public citations must respect robots.txt, terms, and applicable privacy rules.",
+    "differentiation_locus": "London-local AI visibility benchmark pages enumerable by borough × business category × service type — a data slice no broad AI-monitoring competitor currently publishes as indexable content."
+   }
+  }
+ ]
+}

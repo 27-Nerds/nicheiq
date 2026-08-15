@@ -26,14 +26,28 @@
     chapter: string;
     /** The admin decision-tools grant. The tutorial exists only for those users. */
     enabled: boolean;
-    /** Page data has landed and the surface has settled. Chapter-specific. */
+    /**
+     * Page data has landed and the surface has settled. Chapter-specific.
+     *
+     * A TIMING gate, and only that. It holds back the automatic invitation until the
+     * anchors exist; it does NOT decide whether this surface may host the chapter at all.
+     * `ready={false}` still leaves the manual restart live, which is how a suppressed
+     * chapter shipped one click away from a page it contradicted — use `suppressed`.
+     */
     ready: boolean;
     /**
      * A transient state is competing for attention (a banner, an open overlay, a
      * pending mutation). The invitation waits rather than stacking on top of it.
      */
     deferred?: boolean;
-    /** The surface is unusable for the tour's premise — read-only, conflicted, errored. */
+    /**
+     * The surface is unusable for the tour's premise — read-only, conflicted, errored.
+     *
+     * A POLICY gate: honoured by every entry point, not just the invitation. While it is
+     * set the chapter cannot be invited, cannot be started manually, is not registered
+     * with the launcher (so the restart control does not render), and a tour already
+     * running is stopped.
+     */
     suppressed?: boolean;
     /** Runs before the tour starts; used to switch the compare view for the fit step. */
     onBeforeStart?: () => void | Promise<void>;
@@ -132,7 +146,10 @@
   });
 
   async function run(startAt = 0) {
-    if (!definition) return;
+    // `suppressed`, not `ready`: a chapter withheld because the surface contradicts it must
+    // stay withheld on the manual path too. The kill-effect above already stops a running
+    // tour in that state — checking here means it never starts, rather than flashing.
+    if (!definition || suppressed) return;
     inviteVisible = false;
     inviteSettled = true;
 
@@ -171,8 +188,15 @@
   }
 
   // A manual restart ignores whether the chapter was already settled, and always starts
-  // from the beginning — the user asked to see it again, not to resume.
-  onDestroy(tourLauncher.register(() => void run(0)));
+  // from the beginning — the user asked to see it again, not to resume. It does NOT ignore
+  // the surface's own policy: registering unconditionally at mount is what put "Show me
+  // around again" on pages whose chapter had been withheld, and on pages whose user has no
+  // grant, contradicting both TourRestartButton's docstring and `enabled`'s. Registration
+  // is reactive, so the control appears and disappears with the state it depends on.
+  $effect(() => {
+    if (!enabled || suppressed || !definition) return;
+    return tourLauncher.register(() => void run(0));
+  });
 
   // Leaving the surface ends the chapter as still-in-progress, so it re-offers later
   // rather than being marked declined. A same-route replaceState (the compare view

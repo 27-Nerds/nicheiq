@@ -1,0 +1,82 @@
+{
+  "provisional": false,
+  "user_idea_text": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+  "user_idea_brief": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies to reduce time spent manually answering repetitive questions.",
+  "assumed_fields": [],
+  "derived_market": "The social media community management and engagement software market encompasses tools designed to streamline interaction, content distribution, and brand monitoring across platforms like Reddit, Twitter, and LinkedIn. It focuses on automating repetitive communication tasks, managing brand sentiment, and scaling human connection for organizations of all sizes.",
+  "derived_buyer": "Small SaaS Community Managers Scaling Human Engagement",
+  "desk_limits": [],
+  "experiment_ladder": [],
+  "next_experiment_index": null,
+  "pivot": {
+    "attempted": false,
+    "outcome": "not_attempted",
+    "trigger_finding": null,
+    "because": null,
+    "keeps": null,
+    "changes": null,
+    "reason_not_shown": null,
+    "ries_label": null,
+    "name": null
+  },
+  "outcome": "not_evaluated",
+  "idea_name": null,
+  "headline": "Our own check that we were still grading your idea could not run, so we stopped rather than report a verdict we had not verified \u2014 a fault on our side, not with your idea.",
+  "failure_reason": "identity_judge_unavailable",
+  "failure_next_step": "Your submission is saved, and nothing in it caused this \u2014 there is nothing to change before you retry. Run the check again; if it stops the same way immediately, wait a few minutes first.",
+  "parts": [],
+  "evidence_confidence": "Low",
+  "evidence_confidence_reason": "The evaluation did not complete; nothing here grades your idea.",
+  "breadth": null,
+  "anchored_pains": [],
+  "related_pains": [],
+  "stronger_pain_count": 0,
+  "unanchored_hypothesis": null,
+  "incumbent_parity": null,
+  "existing_equivalent": null,
+  "competitors": [],
+  "duplicate_of": null,
+  "red_team_verdict": null,
+  "red_team_findings": null,
+  "kill_risks": [],
+  "alternatives": {
+    "count": 10,
+    "named_buyer_count": null,
+    "top": [
+      {
+        "idea_id": "idea_c644e7d18015c8147b5ee2173891c1c0",
+        "name": "BotBridge Recipes",
+        "one_liner": "Give founders a concrete, code-first migration path from Reddit bots blocked by API limits to maintainable Mastodon and Lemmy equivalents."
+      },
+      {
+        "idea_id": "idea_ef193f0bde10705d09e4d0dea67d8d64",
+        "name": "ChurnSignal Triage",
+        "one_liner": "ChurnSignal Triage converts unanswered community questions into a transparent retention-risk queue, helping small teams intervene first where silence is most li"
+      },
+      {
+        "idea_id": "idea_35bead5140fb41c80d1fcafcdd6a5796",
+        "name": "GroundTruth Reply Check",
+        "one_liner": "GroundTruth Reply Check compares every factual claim in an AI-drafted community reply with the company\u2019s own documentation, showing exactly where the draft conf"
+      },
+      {
+        "idea_id": "idea_faaae41ea9019640dc740e0dbaad2a69",
+        "name": "ActivityBridge Router",
+        "one_liner": "Give agencies one self-hosted, unlimited-seat queue for mainstream social inquiries by translating authorized platform activity into an ActivityPub workflow wit"
+      },
+      {
+        "idea_id": "idea_f7830a379dbcf73f29071c94174309c5",
+        "name": "GapSignal",
+        "one_liner": "Give small brands and nonprofits one daily Coverage Gap Score that reveals when news and social chatter diverge, so they can investigate overlooked risks and op"
+      }
+    ]
+  },
+  "seed_candidate_status": null,
+  "seed_idea_id": null,
+  "seed_idea_revision": null,
+  "seed_purchasable": false,
+  "seed_display_composite_score": null,
+  "demotion_reason": null,
+  "evaluated_idea": null,
+  "refinement": null,
+  "original_mechanism_parity": null
+}

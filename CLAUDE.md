@@ -321,11 +321,26 @@ python -m nicheiq.main --niche "Your niche" --resume
 
 ```bash
 source .venv/bin/activate
-pytest                   # All tests
+pytest                   # Everything except integration (free)
 pytest tests/unit/       # Unit tests only
-pytest tests/integration/# Integration tests only
 pytest -v --cov          # With coverage
+
+# Integration tests call live providers and COST REAL MONEY (the seed-identity
+# judge-eval is ~30 API calls, roughly 20c a sweep). `addopts` carries
+# -m "not integration" so they never run by accident; opt in explicitly:
+pytest -m integration                                    # all of them
+pytest tests/integration/test_seed_identity_judge_eval.py -m integration -s
 ```
+
+Note `pytest tests/integration/` **without** `-m integration` now deselects everything and runs
+nothing — the path alone is not the opt-in, the marker is. Until 2026-08-15 there was no marker
+filter at all and the marker only *lifted* conftest's network block, so a bare `pytest` billed a
+live judge sweep on every run.
+
+**Never pipe a test command.** The shell wrapper rewrites piped output: `pytest <failing test> |
+tail` prints `"Pytest: No tests collected"` and swallows the exit status, and `git diff | grep
+"^-"` returned nothing for a diff with 41 removed lines. Silence reads as absence. Redirect to a
+file and read the file.
 
 **Folder Structure:**
 

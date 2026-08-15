@@ -7,10 +7,20 @@ const { mockChatCreate, mockChatComplete, mockJobUpdate, mockTransaction } = vi.
   mockTransaction: vi.fn(),
 }));
 
+// `job.findUnique` / `jobAsset.findUnique` back the REAL `loadCurrentSelectionContext`, which
+// the enriched prompt now consults for the idea-check framing (surface 21). A discovery row
+// (no `entryMode`) resolves `none`, so every assertion in this file is about unchanged copy.
 vi.mock('../db.js', () => ({
   prisma: {
     chatMessage: { create: mockChatCreate, update: vi.fn() },
-    job: { update: mockJobUpdate },
+    job: {
+      update: mockJobUpdate,
+      findUnique: vi.fn(async () => ({
+        status: 'AWAITING_SELECTION', niche: 'dog groomers', solutionIdeas: [],
+        candidatePoolVersion: null, gateStage: 5, activeDispatchId: null, entryMode: null,
+      })),
+    },
+    jobAsset: { findUnique: vi.fn(async () => null) },
     $transaction: mockTransaction,
   },
 }));

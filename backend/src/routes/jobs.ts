@@ -85,6 +85,47 @@ function isSelectionMutationActive(
   return false;
 }
 
+/**
+ * QUEUED with a live DEEP_RESEARCH dispatch: Phase 2 is authorized and waiting for a worker.
+ *
+ * `allowedStatuses` below omitted QUEUED, so the endpoint 400'd for the whole queue wait.
+ * That is what left the in-run progress screen asserting a graded idea check on a run the
+ * pipeline had REFUSED to grade: the screen is the designed destination of the
+ * `/selection/review` handoff, it renders the outcome, and it cannot read one it is denied.
+ * The window is the full queue wait under load, not one worker pickup, and the screen tells
+ * the user "You can safely close this tab".
+ *
+ * THE ARTIFACT IS NOT GUARANTEED HERE. This comment used to state that it was — "the job
+ * could not have reached this state without passing through AWAITING_SELECTION, where
+ * discovery had already written it". REFUTED: a catalog `deep_idea` run is CREATED at
+ * QUEUED with a DEEP_RESEARCH dispatch (`catalogResearch.ts` job.create + openDispatch) and
+ * skips stages 1-5 entirely; `run_catalog_deep_research` (worker/tasks.py) never calls
+ * `_materialize_preview_report`, so no PREVIEW_REPORT asset is ever written for it. The
+ * BEHAVIOUR is right and unchanged — the read misses, the route answers 404, the loader
+ * resolves null, and the progress screen's `ideaCheckOutcome` stays "unknown", which
+ * asserts neither outcome, which is correct for a run that has no idea check at all. Only
+ * the stated guarantee was false, and a docstring's factual claim is treated here like a
+ * report's number: this program has already found four lying ones.
+ *
+ * Deliberately narrow, and deliberately NOT folded into `isSelectionMutationActive`: that
+ * predicate also drives the 409 above, where SEED_IDEA/REGENERATE must keep being pushed to
+ * the verified /solutions context. DEEP_RESEARCH is past selection — there is no candidate
+ * pool left to bind and no stale-summary bypass to reopen — so it belongs only here, where
+ * the 409 has already declined to fire on it.
+ */
+function isQueuedDeepResearch(
+  job: NonNullable<Awaited<ReturnType<typeof getJob>>>,
+): boolean {
+  if (job.status !== JobStatus.QUEUED || !job.activeDispatchId) return false;
+  const dispatch = job.dispatches.find(({ id }) => id === job.activeDispatchId);
+  return !!dispatch
+    && dispatch.kind === DispatchKind.DEEP_RESEARCH
+    && (
+      dispatch.state === DispatchState.AUTHORIZED
+      || dispatch.state === DispatchState.CLAIMED
+    );
+}
+
 async function settledSeedOutcome(jobId: string, sourceMessageId: string): Promise<string | null> {
   const receipts = await prisma.chatMessage.findMany({
     where: { jobId, gateStage: 5, role: 'receipt' },
@@ -518,6 +559,7 @@ jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, asy
     if (
       !allowedStatuses.includes(job.status as JobStatus)
       && !isSelectionMutationActive(job)
+      && !isQueuedDeepResearch(job)
     ) {
       res.status(400).json({ error: 'Preview report not yet available' });
       return;

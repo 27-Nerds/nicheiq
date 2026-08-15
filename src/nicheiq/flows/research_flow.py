@@ -3866,10 +3866,19 @@ Return a valid JSON object with this structure (emit the fields in this order):
                       and normalize_text(t) in normalized_pitch][:4]
                 for key in ("mechanism", "audience", "problem", "delivery")
             }
-            if not any(_identity_terms.values()):
-                # No model-supplied clause can mean "unknown", never "no identity
-                # lock". Bind the full submitted pitch as a deterministic fallback.
-                _identity_terms["mechanism"] = [" ".join(niche_input.split()).strip()]
+            # When the classifier supplies no verbatim clause, identity_terms stays EMPTY and
+            # resolves to None below, which skips clause enforcement only — the retention
+            # floor, the route check, the semantic same-product judge and the post-birth
+            # identity lock all still run, so the product is not unguarded.
+            #
+            # This previously bound the whole submitted pitch as a single mechanism term, to
+            # avoid reading "unknown" as "no identity lock". That recreated the abolished
+            # verbatim-retention rule inside `seed_clause_drift`, which requires EVERY mechanism
+            # stem to survive (`seed_fidelity.py`, mechanism = len(stems)) while other clauses
+            # need just one. A whole pitch bound as one clause is unsatisfiable by any faithful
+            # rewrite — the same defect that discarded live runs e1b42702 and 7703f811, arriving
+            # through a different door. The verbatim filter above makes the empty case common
+            # (paraphrasing classifiers, non-English pitches), so this was not a rare path.
             # Empty term lists already skip clause enforcement. Trusting an LLM
             # inferred flag as a second bypass let it suppress a stated clause,
             # so inferred labels are never an identity-security boundary.
@@ -5334,6 +5343,69 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             f"recommendation moved to '{pick.solution_name}' (killed idea kept in the list)"
         )
 
+    def _write_seed_identity_trace(self, unified_crew, seed_text: str, outcome: str) -> None:
+        """Persist what each seed-identity gate actually SAW, for the offline replay corpus.
+
+        This is the artifact that did not exist, and its absence is why the gates were only ever
+        tunable by shipping a change and waiting for a user to paste a log. The pipeline persists
+        the FINAL merged idea; the gates judge the candidate at each gate, and those two objects
+        differ (the worker's post-merge save and the pool contract write route fields afterwards).
+        Replaying the persisted artifact therefore measures a shape production never evaluates.
+
+        Written once per seed run, on EVERY exit `_inject_validate_seed` has — the crew-level
+        refusal (`seed is None`), both post-birth refusals, and acceptance. A refusal is the
+        more valuable record, since a discarded candidate is otherwise lost entirely.
+
+        "BOTH the accepted and refused paths" is what this paragraph used to say, and it was a
+        lying docstring of trap 7's exact shape: only two of the four exits called this. The two
+        it missed are the post-birth ones, whose traces are the RICHEST the method can produce
+        (the candidate cleared birth, so the trace carries `birth_accepted`/`final_accepted`
+        records) and whose refusals are the ones nobody can otherwise reconstruct.
+
+        The claim is pinned by DRIVING all four exits and looking for bytes, in
+        `tests/unit/flows/test_seed_identity_trace_write.py` — not by walking the method's
+        `return` statements. An AST walk was the first design and was discarded as trap 5's
+        shape: it would have to guess which returns are reachable with a trace in hand, and a
+        scan that guesses is a scan that is green while blind.
+
+        Fail-soft and best-effort: a telemetry write must never cost a paid run. Feed these into
+        `tests/fixtures/seed_identity_corpus.json` to turn honest pairs from measured into
+        asserted.
+        """
+        try:
+            trace = list(getattr(unified_crew, "_seed_identity_trace", None) or [])
+            if not trace:
+                return
+            from datetime import datetime
+            payload = {
+                "job_id": getattr(self, "job_id", None) or getattr(self, "_job_id", None),
+                "captured_at": datetime.utcnow().isoformat(),
+                "pitch": seed_text,
+                "outcome": outcome,
+                "identity_terms": getattr(self.state, "user_idea_identity_terms", None),
+                "inferred_fields": list(
+                    getattr(self.state, "user_idea_inferred_fields", None) or []),
+                "gates": trace,
+            }
+            # `settings.checkpoint_dir`, NOT `output_dir / "checkpoints"`. Those are the same
+            # directory only when `OUTPUT_DIR` is unset. The shipped local `.env` carries
+            # `OUTPUT_DIR=../output` while `checkpoint_dir` keeps its own default, so the
+            # hand-built path resolved to `<repo>/../output/checkpoints` — one level ABOVE the
+            # repo — while every run's checkpoints sat in `<repo>/output/checkpoints`.
+            # This is not hypothetical: it is why round 16 recorded "the birth capture built in
+            # S9 has never written a file" from `find output -name "seed_identity_trace*"`
+            # returning nothing. The search was correct and looked in the wrong directory; a
+            # stale trace was sitting outside the repo the whole time. Deriving the location
+            # from the setting that names it removes the divergence instead of documenting it.
+            out = Path(settings.checkpoint_dir)
+            out.mkdir(parents=True, exist_ok=True)
+            name = f"seed_identity_trace_{payload['job_id'] or 'unknown'}.json"
+            (out / name).write_text(json.dumps(payload, indent=1, ensure_ascii=False, default=str))
+            logger.info(
+                f"[SeedTrace] {len(trace)} gate record(s) -> {out / name} (outcome={outcome})")
+        except Exception as e:  # noqa: BLE001 — telemetry must never break a run
+            logger.warning(f"[SeedTrace] write skipped (non-fatal): {str(e)[:120]}")
+
     def _inject_validate_seed(self, unified_crew, refined_solutions) -> None:
         """"Check my idea": run the user's idea through the seed pipeline on the WARM crew
         at the end of Stage 5 (plan P4). The seed rides `execute_seed_pipeline` — the real
@@ -5422,48 +5494,150 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             unified_crew._tournament_ctx = None
 
         if seed is None:
-            self.state.pipeline_degradations = list(
-                getattr(self.state, "pipeline_degradations", None) or []
-            ) + ["Idea check: your idea could not be evaluated in this market "
-                 "(the seed pipeline returned no result)."]
-            logger.error("[Idea Check] seed pipeline produced no idea — degraded")
+            # Carry the crew's TYPED refusal cause to state so the report can say WHICH
+            # guarantee could not be met. Without it every cause collapsed into one sentence,
+            # and three distinct defects were indistinguishable to the user and to us.
+            reason = getattr(unified_crew, "_seed_failure_reason", None) or "unknown"
+            self._write_seed_identity_trace(unified_crew, seed_text, reason)
+            self._refuse_seed(reason)
+            logger.error(f"[Idea Check] seed pipeline produced no idea — degraded ({reason})")
             return
 
         try:
-            from ..utils.seed_fidelity import is_seed_faithful, seed_clause_drift
+            from ..utils.seed_fidelity import changed_seed_identity_fields
 
-            final_drift = seed_clause_drift(
-                getattr(self.state, "user_idea_identity_terms", None),
-                seed,
-                getattr(self.state, "user_idea_inferred_fields", None),
-            )
-            if not is_seed_faithful(
-                seed_text,
-                seed,
-                exact_terms=bool(getattr(self.state, "user_idea_identity_terms", None)),
-            ) or final_drift:
-                self.state.pipeline_degradations = list(
-                    getattr(self.state, "pipeline_degradations", None) or []
-                ) + ["Idea check: the evaluated candidate drifted from your submitted product and was withheld."]
+            # POST-BIRTH IS A DIFF, NOT A RE-TRIAL (2026-08-14 seed-authority reorder). This
+            # used to re-run the lexical gates against the PITCH — a fourth trial of a question
+            # the crew's judge already settled at birth, with different thresholds and its own
+            # false-positive rate, on a run the user had already paid for in full. The honest
+            # question here is narrower: did anything between the crew returning and pool
+            # injection change the product? The birth snapshot answers exactly that.
+            #
+            # THE DIFF IS OVER PRODUCT AXES ONLY (2026-08-15, S19). The birth snapshot reads
+            # `_PRODUCT_IDENTITY_FIELDS`: `_IDENTITY_FIELDS` minus the three fields the
+            # pipeline writes its own conclusions into (`market_fit_claimed_route`,
+            # `data_access_model`, `data_acquisition_notes`). Diffing those measured our own
+            # machinery and destroyed a completed paid run — job 8580c179, refused on
+            # `market_fit_claimed_route` after the birth judge had accepted the candidate.
+            # Reasons per field, each driven rather than argued, at `_EVALUATION_FIELDS`.
+            #
+            # SUBSUMPTION, PRECISELY (do not restate this as "every field they read is in the
+            # snapshot" — that was written here and is false). The residual is
+            # `differentiation_locus` PLUS those three evaluation fields; it was "exactly one
+            # field" before the split and saying so now would be a false claim.
+            #
+            # THE THREE RESIDUE AS A NARROWED DISCLOSURE, NOT AS AN INTRODUCED ROUTE
+            # (re-derived 2026-08-15; the first version of this paragraph, and the ledger,
+            # stated it in route-gate terms, which is not a reachable shape).
+            # `data_access_model` is read by no route gate at all and is a closed-vocab tag
+            # that cannot name a source; `data_acquisition_notes` is deliberately barred from
+            # minting a route assertion; only `market_fit_claimed_route` can carry a route
+            # value, and it is code-populated from the calibration critic. What is unwatched is
+            # the VALUE the user reads. Driven on the live 8580c179 candidate: the pool
+            # contract's well-known-source upgrade folds `licensed -> paywalled -> public` in
+            # one pass and overwrites a 479-char cost/authorisation/ToS disclosure with a
+            # 56-char stock line, and the post-birth diff returns []. That text is user-visible
+            # as the `Data:` badge tooltip in `TechnicalBlueprint.svelte` and
+            # `AlternativesSection.svelte`. Accepted — the old behaviour refused the whole paid
+            # run over the same vocabulary alias. Full derivation at the crew call site and at
+            # `_EVALUATION_FIELDS` in `utils/seed_fidelity.py`.
+            #
+            # `differentiation_locus` is the one with no mitigation, and BOTH
+            # lexical checks read it — this comment
+            # used to say `seed_clause_drift` did not, which was the fifth false claim in this
+            # program and the sixth overall. `seed_clause_drift` computes `additive_mechanism`
+            # by CALLING `unpitched_core_dependencies`, so it inherits that function's whole
+            # read set; the claim to the contrary came from walking `_AXIS_IDENTITY_FIELDS`,
+            # which cannot see a call. Measured 2026-08-15 by driving both functions with a
+            # recording candidate over the corpus.
+            #
+            # The exclusion from `_IDENTITY_FIELDS` is deliberate and must stay — the parity
+            # pass clears `differentiation_locus` (with `winning_angle` and the two rationales)
+            # to None in `UnifiedSolutionCrew._probe_mechanism_parity`
+            # (unified_solution_crew.py:3259-3261) so `_classify_idea_angles` re-derives them
+            # against final capped scores, i.e. it changes after birth BY DESIGN on every run;
+            # snapshotting it would refuse healthy paid runs, and
+            # `changed_seed_identity_fields` flags blank-fills too, so it would trip in both
+            # directions.
+            #
+            # DELETING IT FROM THE GATES INSTEAD was attempted on 2026-08-15 and measured as a
+            # regression; the numbers are at `_CORE_PROMISE_FIELDS` in `utils/seed_fidelity.py`.
+            # Residual hole, stated plainly and NOT closed: a post-birth pass that introduces an
+            # unpitched core data route ONLY in `differentiation_locus` is not caught here.
+            # `tests/unit/utils/test_seed_identity_corpus.py` pins the residual by DRIVING both
+            # checks rather than by comparing tuples, so a new escaping field fails loudly
+            # instead of silently re-breaking this paragraph.
+            lock = getattr(unified_crew, "_seed_identity_lock", None)
+            changed = changed_seed_identity_fields(lock, seed) if lock else []
+            if changed:
+                # TYPED, like every other refusal (2026-08-14, round 8). This path used to
+                # set `pipeline_degradations` and nothing else, so
+                # `user_idea_failure_reason` fell through to `"unknown"` and the report
+                # block rendered the GENERIC pair — while a fourth, independently authored
+                # sentence ("the evaluated candidate drifted from your submitted product
+                # and was withheld") rendered in `quality_caveats` on the same page. It
+                # also said "the EVALUATED candidate" on a page stamped "Not evaluated".
+                #
+                # The cause is REUSED here because reuse is honest: this event IS
+                # `identity_changed_in_final_evaluation` — a check of ours, after grading,
+                # found the product had changed — and its copy already says exactly that
+                # ("Our final checks rewrote the product after it had already been graded —
+                # run it again as submitted"). Reuse where the sentence fits; mint where it
+                # does not, as the `except` below now does.
+                self._write_seed_identity_trace(
+                    unified_crew, seed_text, "identity_changed_in_final_evaluation")
+                self._refuse_seed("identity_changed_in_final_evaluation")
                 logger.error(
-                    f"[Idea Check] refusing drifted seed before pool injection: {final_drift}")
+                    f"[Idea Check] refusing drifted seed before pool injection: {changed}")
                 return
         except Exception as exc:  # noqa: BLE001
-            self.state.pipeline_degradations = list(
-                getattr(self.state, "pipeline_degradations", None) or []
-            ) + ["Idea check: the submitted-product identity check failed, so the candidate was withheld."]
+            # OUR COMPARISON RAISED — not the judge, and not an outage.
+            #
+            # Round 8 stamped `identity_judge_unavailable` here, whose `next_step` ends "if it
+            # stops the same way immediately, wait a few minutes first". That is advice about
+            # a remote service under load, and everything inside this `try` is a
+            # deterministic, network-free field diff between the birth snapshot and the
+            # finished candidate: waiting cannot help a code defect, so the sentence was a
+            # transplant that told the user to do something we know will not work.
+            #
+            # The justification for reusing it was that a new key would be invisible to
+            # `live_typed_failure_causes`, which read cause literals out of
+            # `unified_solution_crew.py` alone. Being invisible to a scan is a reason to fix
+            # the scan; that scan now reads this file's `_refuse_seed` call sites too, so a
+            # cause minted here has copy or the suite goes red.
+            self._write_seed_identity_trace(
+                unified_crew, seed_text, "identity_check_could_not_run")
+            self._refuse_seed("identity_check_could_not_run")
             logger.error(f"[Idea Check] final seed identity check failed: {exc}")
             return
 
         seed.generation_operation_id = "validate"
         refined_solutions.solution_ideas.append(seed)
         self._stamp_validate_duplicate(seed, refined_solutions)
+        # ── THIS ORDERING IS LOAD-BEARING. DO NOT MOVE THE MERGE ABOVE THE REFUSALS. ──
+        # Everything the seed's own evaluation ruled out is merged into the RUN-LEVEL ledger
+        # here, at the bottom, after every refusal path has already returned (`seed is None`
+        # ~L5493, and the two post-birth identity refusals ~L5529/L5535). Nothing enforces
+        # that but the line order, and three surfaces render this ledger as statements about
+        # THE USER'S IDEA — SelectionWorkbench's ruled-out rail, the analyst chat's ruled-out
+        # block, and the `/new` prefill. On a run the pipeline REFUSED to grade, a merged
+        # entry would tell the user which of their idea's pains was ruled out, on an idea
+        # that was never evaluated: the same class of claim sixteen surfaces of this program
+        # have been spent removing, arriving through a data path instead of a copy string.
+        #
+        # The other half of the same guarantee is the `finally` block above: the crew's
+        # `ruled_out_pains` is SNAPSHOTTED before `execute_seed_pipeline` and restored after,
+        # so the seed's findings never reach the pool-level harvest either. Both halves are
+        # pinned by `test_a_refusal_merges_nothing_into_the_run_level_ruled_out_ledger`
+        # (tests/unit/flows/test_validate_idea_stage5.py) — moving this block above either
+        # refusal turns it red instead of shipping a ruled-out finding for an ungraded idea.
         if seed_ruled_out:
             self.state.idea_ruled_out = list(
                 getattr(self.state, "idea_ruled_out", None) or []) + seed_ruled_out
         if pivot is not None:
             pivot.generation_operation_id = "validate_pivot"
             refined_solutions.solution_ideas.append(pivot)
+        self._write_seed_identity_trace(unified_crew, seed_text, 'accepted')
         logger.info(
             f"[Idea Check] seed '{getattr(seed, 'solution_name', '?')}' injected "
             f"(status={getattr(seed, 'candidate_status', '?')}, "
@@ -5484,6 +5658,35 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     + ", ".join(drifted))
         except Exception as exc:  # never let telemetry break injection
             logger.warning(f"[Idea Check] clause-drift telemetry failed: {exc}")
+
+    def _refuse_seed(self, reason: str) -> None:
+        """THE ONE WAY THIS FLOW REFUSES TO SHIP A GRADED SEED.
+
+        All three refusal paths in `_inject_validate_seed` come through here, so a refusal
+        is indistinguishable downstream regardless of how far the run got: one typed cause
+        on `state.user_idea_failure_reason`, and one user-facing caveat DERIVED from
+        `SEED_FAILURE_COPY`.
+
+        WHY IT EXISTS. The crew's birth refusal did both of these; the two post-birth
+        refusals did neither. They set `pipeline_degradations` alone, each with its own
+        hand-written sentence, so the typed cause fell through to `"unknown"` and the report
+        rendered the generic pair beside a fourth independently authored refusal sentence on
+        the same page. `pipeline_degradations` is appended VERBATIM to the report's quality
+        caveats (`report_generator._generate_data_quality_summary`), so every sentence added
+        here is user-facing copy and must come from the single source — the raw token was
+        once interpolated straight into it ("seed pipeline refused:
+        judged_a_different_product") in front of a paying user.
+
+        `reason` must be a key of `SEED_FAILURE_COPY`; an unrecognised value renders the
+        generic pair, which is the honest rendering of "we do not know" and nothing else.
+        """
+        from ..report.idea_validation_block import seed_failure_headline
+
+        self.state.user_idea_failure_reason = reason
+        headline = seed_failure_headline(reason)
+        self.state.pipeline_degradations = list(
+            getattr(self.state, "pipeline_degradations", None) or []
+        ) + [f"Idea check: {headline[0].lower()}{headline[1:]}"]
 
     def _attempt_validate_pivot(self, unified_crew, seed):
         """Single accept-guarded wedge-pivot revision of the user's idea (plan P4.19).

@@ -685,3 +685,48 @@ def test_technical_approach_still_mints_an_unpitched_dependency():
         technical_approach="Every match requires the USDA APHIS accreditation directory.",
     )
     assert unpitched_core_dependencies("Reconcile uploaded invoices", cand) != []
+
+
+def test_a_pitch_that_names_a_route_keeps_the_guard_armed():
+    """The escape is scoped to route-less pitches. A pitch that names its route still catches
+    a candidate that swaps in a different required source — the case the rule exists for."""
+    seed = "A bank reconciler that requires Plaid API for every transaction match."
+    swapped = _candidate(
+        description="Reconcile uploaded invoices by matching every account through Yodlee.",
+        innovation_angle="Yodlee is the required differentiator.",
+        data_sources=["Yodlee"],
+        market_fit_claimed_route="Yodlee",
+    )
+    assert unpitched_core_dependencies(seed, swapped) != []
+
+
+
+def test_channel_axis_reads_product_copy_not_pipeline_written_seo_prose():
+    """The delivery clause used to also read `programmatic_seo_opportunity`,
+    `content_generation_model`, `organic_discovery_queries` and both `estimated_cac_*` — none
+    of which the post-birth snapshot locks, and all of which `_repair_blank_idea_fields` WRITES
+    after birth. A repudiation cue in that generated SEO copy could newly fail the delivery
+    clause at the post-tail check and discard a clean, fully-paid run."""
+    from nicheiq.utils.seed_fidelity import _AXIS_IDENTITY_FIELDS, _IDENTITY_FIELDS
+
+    pipeline_written = {
+        "programmatic_seo_opportunity", "content_generation_model",
+        "organic_discovery_queries", "estimated_cac_organic", "estimated_cac_paid",
+    }
+    assert not (set(_AXIS_IDENTITY_FIELDS["channel"]) & pipeline_written), (
+        "channel axis must not judge the user's delivery against prose the pipeline authored")
+    # The user's stated delivery is still covered by locked product copy.
+    for f in ("delivery_format", "description", "short_description", "value_proposition"):
+        assert f in _AXIS_IDENTITY_FIELDS["channel"], f
+        assert f in _IDENTITY_FIELDS, f
+
+    terms = {"delivery": ["web app"]}
+    cand = _candidate(
+        description="A simple web app that monitors your visibility.",
+        delivery_format="web app",
+        # Pipeline-authored SEO prose carrying a repudiation cue near the delivery term.
+        programmatic_seo_opportunity=(
+            "Low: rather than a web app directory, publish comparison pages without "
+            "per-city templates."),
+    )
+    assert seed_clause_drift(terms, cand) == []

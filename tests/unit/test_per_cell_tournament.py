@@ -143,6 +143,15 @@ def test_user_seed_tournament_prioritizes_fidelity_over_novelty(monkeypatch):
     monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_stamp_payability", lambda self, i: None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    # S23: a `user_seed` cell with more than one concept now asks the BIRTH JUDGE whether the
+    # highest-fidelity concept's refinement is still the submitted product, and only walks on if
+    # it says no. Accepting here keeps this test measuring exactly what its name says — that
+    # FIDELITY, not novelty, decides which concept the cell reaches for FIRST. Without the stub
+    # the call went live: the `_no_live_http` guard turned it into a TEARDOWN error while the
+    # assertions still passed, because `_expand_seed_until_judged` fails soft to the
+    # highest-fidelity expansion. That is trap 3's shape, and the guard is what caught it.
+    monkeypatch.setattr(UnifiedSolutionCrew, "_semantic_seed_identity_matches",
+                        lambda self, seed, candidate, evidence=None: True)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
 

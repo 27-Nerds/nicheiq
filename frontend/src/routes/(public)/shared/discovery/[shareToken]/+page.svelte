@@ -14,6 +14,11 @@
   let { data }: Props = $props();
   const discovery = $derived(data.discovery);
   const isIdeaCheckShare = $derived(Boolean(discovery?.previewReport?.idea_validation));
+  // The block is present even when the run refused to grade the pitch, so it cannot stand in
+  // for "a check happened" in the copy below.
+  const notEvaluatedShare = $derived(
+    discovery?.previewReport?.idea_validation?.outcome === "not_evaluated",
+  );
   const sharedTitle = $derived(
     discovery?.previewReport?.idea_validation?.idea_name?.trim()
       || discovery?.nicheDisplay
@@ -26,9 +31,11 @@
     <title>{sharedTitle} - {isIdeaCheckShare ? 'Shared Idea Check' : 'Shared Discovery'} - NicheIQ</title>
     <meta
       name="description"
-      content={isIdeaCheckShare
-        ? `Review the shared idea check for: ${sharedTitle}`
-        : `Vote on solution ideas for: ${sharedTitle}`}
+      content={notEvaluatedShare
+        ? `A shared idea check for "${sharedTitle}" that could not be completed, with the approaches the run did generate.`
+        : isIdeaCheckShare
+          ? `Review the shared idea check for: ${sharedTitle}`
+          : `Vote on solution ideas for: ${sharedTitle}`}
     />
   {:else}
     <title>Discovery Unavailable - NicheIQ</title>

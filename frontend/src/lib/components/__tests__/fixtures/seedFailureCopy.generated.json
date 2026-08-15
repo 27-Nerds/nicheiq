@@ -1,0 +1,34 @@
+{
+  "generation_produced_no_candidate": {
+    "headline": "We could not build a working version of your idea to grade on this run.",
+    "next_step": "Your submission is saved. Run it again \u2014 the build starts from scratch each time. If it stops the same way twice, one extra sentence on who it is for and what it does gives us more to build from."
+  },
+  "identity_judge_unavailable": {
+    "headline": "Our own check that we were still grading your idea could not run, so we stopped rather than report a verdict we had not verified \u2014 a fault on our side, not with your idea.",
+    "next_step": "Your submission is saved, and nothing in it caused this \u2014 there is nothing to change before you retry. Run the check again; if it stops the same way immediately, wait a few minutes first."
+  },
+  "identity_check_could_not_run": {
+    "headline": "Our last comparison against the idea you submitted could not finish, so we stopped rather than report a verdict we had not checked \u2014 a fault in our code, not in your idea.",
+    "next_step": "Your submission is saved, and nothing you wrote caused this. Run the check again straight away \u2014 there is nothing to wait for here. If it stops the same way a second time, it needs a fix from us rather than another attempt."
+  },
+  "judged_a_different_product": {
+    "headline": "What we built drifted into a different product, so we stopped rather than grade something you did not describe.",
+    "next_step": "Your submission is saved. The drift is in our build, not in what you sent, so run it again as it stands \u2014 we rebuild your idea from scratch on each run."
+  },
+  "identity_changed_at_birth": {
+    "headline": "What we built no longer matched your idea, so we stopped rather than grade a different product.",
+    "next_step": "Your submission is saved. That mismatch happened on our side while building, so run the check again unchanged \u2014 a fresh build usually holds to your idea."
+  },
+  "identity_changed_during_scoring": {
+    "headline": "Your idea changed while it was being scored, so we stopped rather than report a verdict on a changed version.",
+    "next_step": "Your submission is saved. A later scoring pass of ours edited the product, not you \u2014 run the check again exactly as you wrote it."
+  },
+  "identity_changed_in_final_evaluation": {
+    "headline": "Your idea changed during the final checks, so we stopped rather than report a verdict on a changed version.",
+    "next_step": "Your submission is saved. Our final checks rewrote the product after it had already been graded \u2014 run it again as submitted."
+  },
+  "__generic__": {
+    "headline": "We could not evaluate your idea in this market on this run.",
+    "next_step": "Your submission is saved. Run the check again \u2014 nothing you wrote needs to change first."
+  }
+}

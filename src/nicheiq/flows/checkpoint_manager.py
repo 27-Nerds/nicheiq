@@ -382,6 +382,8 @@ class CheckpointManager:
             metadata["user_idea_identity_terms"] = self.state.user_idea_identity_terms
         if getattr(self.state, "user_idea_brief_parity", None) is not None:
             metadata["user_idea_brief_parity"] = self.state.user_idea_brief_parity
+        if getattr(self.state, "user_idea_failure_reason", None) is not None:
+            metadata["user_idea_failure_reason"] = self.state.user_idea_failure_reason
         # Persist the pair by key presence, including its legacy/stale states. Metadata is
         # merged with the previous file, so explicit removal is required or a failed refresh
         # can resurrect an older summary/fingerprint on resume.
@@ -774,6 +776,8 @@ class CheckpointManager:
             self.state.user_idea_identity_terms = metadata["user_idea_identity_terms"]
         if metadata.get("user_idea_brief_parity"):
             self.state.user_idea_brief_parity = metadata["user_idea_brief_parity"]
+        if metadata.get("user_idea_failure_reason"):
+            self.state.user_idea_failure_reason = metadata["user_idea_failure_reason"]
         if "idea_portfolio_summary" in metadata:
             self.state.idea_portfolio_summary = metadata["idea_portfolio_summary"]
         if "idea_portfolio_summary_fingerprint" in metadata:

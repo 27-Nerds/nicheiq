@@ -196,8 +196,10 @@ const SENTENCE_RULES: [RegExp, string][] = [
   // Fieldproxy: …" — a capitalised fragment, on 9 of the 34 distinct `examined_ruled_out[]
   // .reason` values under `output/` (12 of the 65 distinct values of `reason` anywhere), and
   // 0 of them arrive already in the colon form. THE PRODUCER AGREES IT
-  // IS A LABEL: `report/idea_validation_block.py:169` rewrites exactly this dash to a colon —
-  // but only inside `_display_embedded`, which runs on `demotion_reason` and never on
+  // IS A LABEL: `report/idea_validation_block.py`'s `_display_embedded` rewrites exactly this
+  // dash to a colon (cited by SYMBOL, not by line — the line number this used to carry went
+  // stale the first time anything was inserted above it, and pointed at unrelated code) —
+  // but it runs on `demotion_reason` and never on
   // `examined_ruled_out[].reason`, the field SelectionWorkbench's ruled-out panel prints.
   // Applying that call to this field too is the cleaner fix and it belongs in the producer,
   // which this round does not own; the rule below is idempotent against it, because `%`

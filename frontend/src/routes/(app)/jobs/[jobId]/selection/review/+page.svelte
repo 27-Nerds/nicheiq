@@ -386,6 +386,9 @@
   const validationSubjectSwitch = $derived(
     isValidation && selectedCount > 0 && !scopeIncludesSeed,
   );
+  // A refused run has no seed candidate at all, so it ALWAYS lands in the subject-switch
+  // branch — which is written for a user who chose to switch away from a graded idea.
+  const validationNotEvaluated = $derived(Boolean(data.validationNotEvaluated));
   let subjectSwitchAcknowledged = $state(false);
   $effect(() => {
     // Any scope change resets the acknowledgement.
@@ -770,6 +773,14 @@
                 Deep Research will cover {selectedIdeas.map(solutionDisplayTitle).join(" · ")}
                 instead of your idea, {solutionDisplayTitle(validationSeed)}. Your idea's
                 check stays saved on this run. You can start it later.
+              {:else if validationNotEvaluated}
+                <!-- The refusal case. "Your idea's check stays saved" is true of a graded
+                     run whose seed simply isn't purchasable, but here nothing was graded:
+                     it told a user whose check never ran that a check of theirs was on
+                     file. Name the absence by its actual cause. -->
+                This run couldn't grade your idea, so there is no version of it to research.
+                Deep Research will cover {selectedIdeas.map(solutionDisplayTitle).join(" · ")}.
+                What stopped the check stays recorded on this run.
               {:else}
                 Your submitted idea isn't available for research on this run, so Deep
                 Research will cover {selectedIdeas.map(solutionDisplayTitle).join(" · ")}.

@@ -348,8 +348,9 @@ const SENTENCE_RULES: [RegExp, string][] = [
     "The product has no data until a customer supplies it. It would run on: ",
   ),
   // ONE SURFACE OVER, THE SAME LABEL-AND-LIST SHAPE: `Already well-served — <partial|shipped>
-  // by <incumbent>: <evidence>` is a label, not two clauses. `idea_validation_block.py:169`
-  // rewrites this dash to a colon itself, but only on `demotion_reason`.
+  // by <incumbent>: <evidence>` is a label, not two clauses. `idea_validation_block.py`'s
+  // `_display_embedded` rewrites this dash to a colon itself, but only on `demotion_reason`.
+  // (Cited by symbol: the line number this carried had gone stale and pointed elsewhere.)
   sentenceRule(
     String.raw`^Already well-served%(partial|shipped) by `,
     "Already well-served: $1 by ",

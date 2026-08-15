@@ -44,6 +44,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const selectionUiActive =
     ['AWAITING_SELECTION', 'REGENERATING'].includes(rawJob.status)
     || selectionMutationActive;
+  // Phase 2 authorized and waiting for a worker — the progress screen's other half.
+  const deepResearchQueued =
+    rawJob.activeDispatchKind === 'DEEP_RESEARCH' && rawJob.status === 'QUEUED';
 
   // Do not normalize or use a generic job payload's pool in selection states. The backend
   // omits it there, and the only candidate/artifact snapshot this loader consumes is
@@ -235,6 +238,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           .catch(() => { previewReportFetchFailed = true; })
       );
     }
+  }
+
+  // QUEUED with Deep Research authorized: the same focused progress screen as
+  // RUNNING_PHASE2, for the whole queue wait. It renders the idea check's OUTCOME, and
+  // without the artifact it falls back to the graded wording on runs the pipeline refused
+  // to grade — which is exactly where /selection/review sends a refused run. The backend
+  // half of this landed in the same change (`isQueuedDeepResearch`, routes/jobs.ts); either
+  // one alone is inert.
+  //
+  // preview-report ONLY. `discovery-data` still 400s for QUEUED, so fetching it here would
+  // set `discoveryDataFetchFailed` and offer a Retry that can never succeed — the same
+  // reason AWAITING_GATE is absent above.
+  if (deepResearchQueued) {
+    conditionalFetches.push(
+      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
+        .then(async (response) => {
+          if (response.ok) previewReport = await response.json();
+          else if (![204, 404].includes(response.status)) previewReportFetchFailed = true;
+        })
+        .catch(() => { previewReportFetchFailed = true; })
+    );
   }
 
   await Promise.all(conditionalFetches);

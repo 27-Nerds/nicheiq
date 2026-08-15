@@ -14,6 +14,7 @@ import { EVIDENCE_WITHHELD_DETAIL, EVIDENCE_WITHHELD_TITLE } from "$lib/selectio
  * `noEscapingTestImports.test.ts` is the guard that keeps that from recurring.
  */
 import capturedCommunities from "./fixtures/discoveryCommunities.captured.json";
+import { gradedBlock, notEvaluatedBlock } from "./fixtures/ideaValidationBlocks";
 
 const capturedValue = <T,>(path: string): T => {
   const hit = capturedCommunities.find((entry) => entry.path === path);
@@ -67,47 +68,35 @@ describe("SharedDiscoveryView research topic header", () => {
 
   it("renders the complete idea check as a read-only shared report", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
-    const ideaValidation: IdeaValidation = {
-      provisional: true,
+    /**
+     * GENERATED, then narrated (2026-08-15). Every list on this block used to be typed here
+     * — three parts, one anchored pain, one competitor, one kill risk — beside two fields
+     * correctly taken from the builder. The graded block the pipeline really emits carries
+     * twelve competitors and a populated `score_bands`/`breadth`, so the hand-written
+     * version was a shape it cannot produce: the same defect the two derived fields below
+     * were added to fix, still live on five more.
+     *
+     * Only the NARRATIVE this test is about is overridden: the outcome, the name, and the
+     * adversarial-review verdict whose rendering the assertions below check.
+     */
+    const ideaValidation: IdeaValidation = gradedBlock({
       outcome: "premise_unproven",
       idea_name: "Context-aware support reply extension",
       headline: "The problem is real, but the product premise is unproven.",
-      parts: [
-        { key: "problem_real", state: "supported", answer: "Supported", detail: "Named in captured discussions." },
-        { key: "space_occupied", state: "review_concerns", answer: "Concerns found", detail: "Adjacent tools overlap." },
-        { key: "demand", state: "not_measured", answer: "Not measured", detail: "Requires Deep Research." },
-      ],
-      evidence_confidence: "High",
-      evidence_confidence_reason: "Repeated discussion from distinct accounts.",
-      anchored_pains: [{
-        pain_title: "Agents reconstruct order context",
-        severity_band: "medium",
-        severity_label: "Medium",
-        mention_count: 9,
-        quotes: ["I still handle the edge cases myself."],
-      }],
-      assumed_fields: [],
       user_idea_text: "A browser extension that drafts context-aware support replies.",
       user_idea_brief: "A browser extension that drafts context-aware support replies.",
       derived_market: "Shopify merchant support tools",
       derived_buyer: "Independent Shopify merchants",
-      competitors: [{ name: "Existing Helpdesk", what_they_ship: "Order-aware reply drafts", price_note: "$50/mo" }],
       red_team_verdict: "killed",
       red_team_findings: [{
         claim: "The incumbent already ships the same workflow.",
         kind: "verified_incumbent_overlap",
       }],
-      kill_risks: [{ claim: "Existing helpdesks already cover much of the workflow.", source: "adversarial_review" }],
-      pivot: { attempted: false, outcome: "not_attempted" },
-      alternatives: { count: 1, top: [] },
       seed_idea_id: "idea-seed",
       seed_idea_revision: 1,
       seed_purchasable: true,
       seed_display_composite_score: 55,
-      desk_limits: ["No commitment evidence was collected."],
-      experiment_ladder: [{ rung: 1, action: "Interview five merchants", kill_number: "kill if none name the problem", cost_note: "free" }],
-      next_experiment_index: 0,
-    };
+    } as Partial<IdeaValidation>);
     const validateShare: DiscoveryShareData = {
       ...data,
       nicheDisplay: "Context-aware support reply extension",
@@ -131,7 +120,17 @@ describe("SharedDiscoveryView research topic header", () => {
     expect(view.getByRole("heading", { level: 1, name: "Context-aware support reply extension" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "How we read your idea" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Evidence for your idea" })).toBeInTheDocument();
-    expect(view.getByRole("heading", { name: "Competitors and adjacent tools" })).toBeInTheDocument();
+    // The competitor card's heading is keyed on the `space_occupied` part's state, so it is
+    // read from the generated block rather than typed: the hand-written fixture this
+    // replaced said `review_concerns`, and the block the pipeline really emits for this run
+    // says `none_found`, which renders the OTHER heading. Asserting the literal here is how
+    // a spec ends up pinning a card the real shape never shows.
+    const spaceState = ideaValidation.parts?.find((p) => p.key === "space_occupied")?.state;
+    expect(view.getByRole("heading", {
+      name: spaceState === "none_found"
+        ? "Who ships in this category"
+        : "Competitors and adjacent tools",
+    })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "What would kill it" })).toBeInTheDocument();
     expect(view.getByText(/The adversarial review found verified incumbent overlap/))
       .toBeInTheDocument();
@@ -444,5 +443,67 @@ describe("SharedDiscoveryView portfolio guidance", () => {
     );
     const table = await view.findByRole("table", { name: "Ranked ideas" });
     expect(table).not.toHaveTextContent("Recommended");
+  });
+});
+
+/**
+ * A share of a run that REFUSED to grade the submitted idea. `idea_validation` is present
+ * on that outcome too, so `isIdeaCheckShare` (block presence) answered a different question
+ * from "was an idea checked" — and every visitor-facing line keyed on it asserted a verdict,
+ * a ranked submission and a completed check that do not exist.
+ */
+describe("SharedDiscoveryView · shared run that could not grade the idea", () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  const notEvaluatedShare = (): DiscoveryShareData => ({
+    ...data,
+    nicheDisplay: "Shopify merchant support tools",
+    solutions: [{
+      solution_name: "Order-context reply drafts",
+      description: "Draft support replies with order context.",
+      value_proposition: "Answer repetitive tickets without switching tabs.",
+      idea_id: "idea-alt",
+      idea_revision: 1,
+      adjusted_composite_score: 0.61,
+    }],
+    // GENERATED, not hand-written. The version here carried `experiment_ladder` with one
+    // rung and one desk limit — the pipeline emits four rungs and three limits on a refusal
+    // (both fields are stamped before the refusal branch), so the read-only share's real
+    // last card was a four-rung testing plan for an idea that was never graded, and no
+    // assertion in this file could see it. Regenerate via
+    // tests/unit/report/test_not_evaluated_fixture_contract.py.
+    previewReport: {
+      idea_validation: notEvaluatedBlock({
+        user_idea_text: "A browser extension that drafts context-aware support replies.",
+        user_idea_brief: "A browser extension that drafts context-aware support replies.",
+        // Derived, not typed: the narrative varies the pool COUNT, and the rest of the
+        // record keeps the shape the builder emits.
+        alternatives: { ...notEvaluatedBlock().alternatives, count: 1, top: [] },
+      }),
+    } as unknown as NonNullable<DiscoveryShareData["previewReport"]>,
+  });
+
+  it("never tells a visitor the submitted idea was checked, ranked or verdicted", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const view = render(SharedDiscoveryView, {
+      props: { data: notEvaluatedShare(), shareToken: "share-token" },
+    });
+
+    expect(view.queryByText(/Review the submitted idea's verdict/)).not.toBeInTheDocument();
+    expect(
+      view.queryByRole("heading", { name: "Your idea, ranked with the alternatives" }),
+    ).not.toBeInTheDocument();
+    expect(view.container.textContent ?? "").not.toContain("You saw one idea checked.");
+
+    expect(view.getByRole("heading", { name: "The approaches this run generated" }))
+      .toBeInTheDocument();
+    expect(view.getByText(/could not check the submitted idea/)).toBeInTheDocument();
+    expect(view.getByText(/this run could not grade it, so no version of it was built/))
+      .toBeInTheDocument();
+    expect(view.container.textContent ?? "").toContain("That check couldn't finish.");
   });
 });

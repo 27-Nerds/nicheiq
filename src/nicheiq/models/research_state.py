@@ -1995,6 +1995,29 @@ class ResearchState(BaseModel):
         description="validate_idea: display-only parity note from the brief-derived "
                     "probe of the PITCHED mechanism (same note format as "
                     "incumbent_parity). Never feeds outcome/confidence/pivot.")
+    user_idea_failure_reason: Optional[str] = Field(
+        default=None,
+        description="validate_idea: TYPED cause when the seed pipeline refused to produce an "
+                    "idea — one of generation_produced_no_candidate | "
+                    "identity_judge_unavailable | judged_a_different_product | "
+                    "identity_changed_at_birth | identity_changed_during_scoring | "
+                    "identity_changed_in_final_evaluation | identity_check_could_not_run | "
+                    "unknown. Stamped by "
+                    "`execute_seed_pipeline` AND by `_inject_validate_seed._refuse_seed`, "
+                    "and rendered "
+                    "as the not_evaluated headline AND the page's next step (SEED_FAILURE_COPY "
+                    "in report/idea_validation_block.py). Every refusal previously returned a "
+                    "bare None, so three distinct defects in one week were indistinguishable "
+                    "to the user and in the logs. This list is a SURFACE that drifts: it named "
+                    "the deleted `stated_clause_not_preserved` and omitted the live "
+                    "`identity_judge_unavailable` until 2026-08-14, so "
+                    "`tests/unit/crews/test_seed_pipeline.py` now parses it and pins it to the "
+                    "causes the crew AND the flow actually stamp — the flow was invisible to "
+                    "that scan until 2026-08-15, which is how a network-outage next step "
+                    "('wait a few minutes first') came to be shown for a deterministic, "
+                    "network-free field diff. Keep the `one of a | b | c.` "
+                    "shape — that test reads it. Display/diagnostic only — never feeds a "
+                    "score.")
 
     # Niche-fidelity telemetry (non-scoring; surfaced as report caveats in Stage 10).
     # Keys may include: anchors_active (bool), anchor_entity_count (int),

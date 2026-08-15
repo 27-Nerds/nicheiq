@@ -195,7 +195,7 @@ describe('notificationService', () => {
     it('sends email when preferences allow', async () => {
       vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
       await notifySolutionsReady('user-123', 'test@example.com', 'job-456', 'test niche', 5);
-      expect(sendSolutionsReadyEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 5);
+      expect(sendSolutionsReadyEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 5, { state: 'none' });
     });
 
     it('skips when master emailEnabled is false', async () => {
@@ -230,7 +230,7 @@ describe('notificationService', () => {
     it('sends reminder email when preferences allow', async () => {
       vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
       await notifySelectionReminder('user-123', 'test@example.com', 'job-456', 'test niche', 5);
-      expect(sendSelectionReminderEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 5);
+      expect(sendSelectionReminderEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 5, { state: 'none' });
     });
 
     it('skips when notifications disabled', async () => {

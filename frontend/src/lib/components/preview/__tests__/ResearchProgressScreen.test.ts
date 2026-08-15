@@ -222,3 +222,64 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
     expect(view.getByText("0%")).toBeInTheDocument();
   });
 });
+
+/**
+ * D-5 — THE DEFAULT IS THE WHOLE SAFETY PROPERTY, AND NOTHING PINNED IT.
+ *
+ * `ideaCheckOutcome` replaced a boolean whose `false` meant "graded", precisely so a caller
+ * that cannot read a verified artifact never invents an outcome. Measured before this
+ * suite existed: flipping the default from `"unknown"` to `"graded"` left the ENTIRE
+ * frontend suite green — every existing spec passes the prop explicitly, so the one value
+ * that protects every caller who forgets was the one value nothing asserted.
+ *
+ * These render WITHOUT the prop on purpose. Do not add `ideaCheckOutcome` to them.
+ */
+describe("ResearchProgressScreen · the default outcome asserts nothing", () => {
+  afterEach(cleanup);
+
+  const squash = (s: string | null) => (s ?? "").replace(/\s+/g, " ").trim();
+
+  it("states neither result past Phase 1 when the caller passes no outcome", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "deep_research" as const,
+        jobStatus: "RUNNING_PHASE2",
+        niche: "A tracker for green coffee lots",
+        entryMode: "validate_idea",
+      },
+    });
+    const text = squash(view.container.textContent);
+
+    // Not the graded promise...
+    expect(text).not.toContain("Checking your idea against this market");
+    expect(text).not.toContain("write your pitch up as a complete product spec");
+    // ...and not the refusal either.
+    expect(text).not.toContain("This run couldn't grade your idea");
+    expect(text).not.toContain("Your pitch was not written up as a product spec");
+    // The one caption true whichever way the check went.
+    expect(text).toContain("Started from your idea");
+
+    // The middle segment is named for the work that certainly happened.
+    const labels = [...view.container.querySelectorAll(".rp-seg-label")].map(
+      (n) => squash(n.textContent),
+    );
+    expect(labels).toEqual(["Research", "Idea check", "Deep Research"]);
+  });
+
+  it("still promises the spec during Phase 1, where the default means 'not yet'", () => {
+    // The control: "unknown" is the state of every discovery-phase run, and withholding
+    // the method sentence there would delete it from the happy path.
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        niche: "A tracker for green coffee lots",
+        entryMode: "validate_idea",
+      },
+    });
+    const text = squash(view.container.textContent);
+    expect(text).toContain("Checking your idea against this market");
+    expect(text).toContain("write your pitch up as a complete product spec");
+    expect(text).not.toContain("Started from your idea");
+  });
+});
