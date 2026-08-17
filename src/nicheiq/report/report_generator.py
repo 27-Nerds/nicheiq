@@ -1789,12 +1789,25 @@ class ReportGenerator:
                     f"Niche-fidelity: only {_format_percent(ev_cov)} of supporting evidence mentions "
                     f"niche-specific terms — review for possible off-topic drift."
                 )
-            q_pct = drift.get("query_anchor_pct")
-            if q_pct is not None and q_pct < 0.4:
-                quality_caveats.append(
-                    f"Only {_format_percent(q_pct)} of search queries were niche-anchored — "
-                    f"collected content may include adjacent topics."
-                )
+            # DELIBERATELY ABSENT: the `query_anchor_pct < 0.4` caveat ("Only X% of search
+            # queries were niche-anchored — collected content may include adjacent topics").
+            # Removed 2026-08-17; do NOT re-add it. Three independent reasons:
+            #   1. It does not measure what it claims. query_anchor_pct is the share of
+            #      discovery queries containing a literal niche ANCHOR ENTITY
+            #      (utils/generation/query_generator.py). A perfectly on-niche JTBD query
+            #      ("how do I reconcile door splits after a show") scores 0. Named-entity
+            #      presence is not on-nicheness.
+            #   2. Its threshold fought the pipeline. It fired below 0.4 — the same number
+            #      `_cap_named_entities` actively caps query anchor share TOWARD
+            #      (settings.query_named_entity_cap default 0.4). The generator aims at the
+            #      value the caveat calls a defect.
+            #   3. Anchor-share enforcement is switched off by design: QueryGenerator's
+            #      ANCHOR_PCT_FLOOR = 0.0, so nothing acts on a low share anyway.
+            # Measured before removal (2026-08-17): it fired on 11 of the 13 reports in
+            # ~/work/output that carry this telemetry — including runs whose evidence was
+            # verifiably on-niche — i.e. it was a near-constant, so it carried no signal.
+            # If a genuine on-nicheness caveat is wanted, measure derived-topic drift
+            # (see the audience_scope reframe disclosure in UnifiedHero), not anchor tokens.
             # Coverage gaps from idea generation (high-severity pains left uncovered).
             cov_caveats = getattr(self.state, "idea_coverage_caveats", None)
             if isinstance(cov_caveats, list):
@@ -4302,17 +4315,37 @@ It differentiates through {diff_text}.
             if twitter_channel:
                 channels.append(twitter_channel)
 
-            # Flag content gap opportunities for zero-result platforms
+            # Zero-result platforms. `posts_found` is NOT a competitor census: it counts the
+            # platform's own posts that this run's queries retrieved AND that survived the
+            # relevance gate (`_search_hackernews_pipeline` returns
+            # `collection.posts`, i.e. `relevant_count` of `candidate_count`), and for
+            # hackernews the discovery view recounts it as surviving generic_posts
+            # (`research_flow._write_discovery_data`). So a zero is a retrieval-and-filter
+            # outcome over community discussion, not evidence about competing content, and
+            # the state does not record which of the two produced it. Copy here may claim
+            # only that, and may not infer a market position from it.
             sources = getattr(self.state, "sources_searched", None) or {}
             for platform, info in sources.items():
                 if info.get("enabled") and info.get("posts_found", 0) == 0:
                     label = {"hackernews": "Hacker News", "youtube": "YouTube"}.get(platform, platform)
                     channels.append(MarketingChannel(
-                        channel_name=f"{label} (Content Gap)",
-                        channel_type="Content Gap",
-                        target_audience_size="0 competing posts found",
-                        rationale=f"Searched {label} and found no existing content for this niche. Potential first-mover opportunity if audience overlaps.",
-                        strategy=f"Research {label}'s audience to validate fit before investing content creation effort.",
+                        channel_name=f"{label} (Unvalidated)",
+                        channel_type="Unvalidated",
+                        target_audience_size="unmeasured — 0 posts matched our queries",
+                        rationale=(
+                            f"Our {label} queries returned no posts that passed this run's "
+                            f"relevance gate. The queries are built from this run's own niche "
+                            f"wording, so content phrased differently can be missed — read this "
+                            f"as nothing surfaced, not as a proven empty platform. A zero here "
+                            f"is more often a query that did not match than an absent audience, "
+                            f"so it is not evidence that this channel is open and not evidence "
+                            f"that anyone there wants this."
+                        ),
+                        strategy=(
+                            f"Treat {label} as unresearched rather than as an opening. Before "
+                            f"spending anything here, check by hand whether this audience and "
+                            f"this topic are present on {label} at all."
+                        ),
                         priority="Low",
                     ))
 

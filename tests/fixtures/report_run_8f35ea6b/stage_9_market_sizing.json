@@ -1,0 +1,52 @@
+{
+  "total_addressable_market": "$0.92-1.97M",
+  "serviceable_available_market": "$0.08-0.17M",
+  "serviceable_obtainable_market_y1": "$0.0004-0.003M",
+  "serviceable_obtainable_market_y3": "$0.004-0.017M",
+  "primary_methodology": "Hybrid",
+  "methodology_explanation": "The estimate combines keyword-based sizing with qualitative top-down and bottom-up validation. SAM uses the 74,000 monthly beachhead searches, a conservative 0.05%-0.08% search-to-customer conversion, and the lower pricing-anchor value of $15-$20 per month ($180-$240 annually): 74,000 × 0.05%-0.08% × $180-$240 = approximately $0.08-$0.17M. TAM uses the conservative 855,980 monthly-search topic-cluster ceiling as the follow-on reach proxy: 855,980 × 0.05%-0.08% × $180-$240 = approximately $0.92-$1.97M; SOM applies 0.5%-2% of SAM in Year 1 and 5%-10% in Year 3. The solution is serviceable to 8 of the 21 validated pains, a subset of the niche, so SAM and SOM confidence is Moderate-to-Low; the 1,419-2,559 monthly organic traffic ceiling also indicates that the higher SOM range requires non-content channels such as data-product licensing, API access, partnerships, and referral revenue rather than SEO monetization alone.",
+  "data_sources_used": [
+    "Beachhead keyword demand: 74,000 monthly searches for green coffee",
+    "Broader keyword demand: 904,800 monthly searches across the supplied keyword universe",
+    "Conservative follow-on reach proxy: 855,980 monthly searches across five topic clusters; the raw 904,800 total was not used as the ceiling because keyword overlap is possible",
+    "Pricing anchor: $15-$40 per month estimated advertising revenue and approximately $20 per month affiliate revenue; the conservative $15-$20 per month range was used",
+    "Commercial intent ratio: 68%, including 218,940 commercial-intent searches per month",
+    "Pain-point frequency: 91 niche-wide mentions across 21 validated pains, with 8 pains in scope and 3 high-severity pains",
+    "Competitive landscape: 6 identified competitors and incumbent products",
+    "SEO difficulty-weighted organic traffic ceiling: 1,419-2,559 visits per month in Year 1 and 1,525-2,840 visits per month in Year 3",
+    "No industry report or historical keyword trend data was provided; therefore, no external top-down market figure or CAGR was substituted"
+  ],
+  "segment_sizing": [
+    {
+      "segment_name": "Coffee-specific safety hazards, supplier-risk intelligence, and roastery practices",
+      "tam_estimate": "$0.92-1.97M",
+      "sam_estimate": "$0.08-0.17M",
+      "som_estimate": "$0.0004-0.003M in Year 1; $0.004-0.017M in Year 3",
+      "sizing_methodology": "Hybrid: the 855,980 monthly-search five-cluster universe is used as the conservative follow-on TAM ceiling, while the 74,000 monthly green-coffee beachhead demand anchors SAM; SOM is calculated as 0.5%-2% of SAM in Year 1 and 5%-10% in Year 3.",
+      "confidence_level": "Low"
+    }
+  ],
+  "keyword_demand_signal": "74K searches/month",
+  "pain_point_frequency": "91 mentions across 21 discussions",
+  "competitor_market_presence": "6 established players",
+  "market_growth_rate": null,
+  "growth_drivers": [
+    "Strong commercial intent, with a 68% commercial-intent ratio and 218,940 commercial searches per month",
+    "Increasing need for defensible supplier and import-risk verification independent of importer marketing claims",
+    "Availability of structured FDA Import Refusal Reports and EU RASFF notification data that can be transformed into searchable risk intelligence",
+    "Fifteen identified market gaps despite six known competitors",
+    "High SEO accessibility, with 84% of supplied keyword opportunities classified as easy difficulty"
+  ],
+  "market_saturation_level": "Medium",
+  "market_timing_assessment": "Mature",
+  "risk_factors": [
+    "The validated beachhead demand is only 74,000 searches per month, below the 100,000-search STRIVE Searchable threshold",
+    "The in-scope pain set represents only 8 of 21 niche pains, limiting the initial serviceable market",
+    "Average willingness-to-pay is low at 0.37, and the supplied pricing model is primarily advertising- and affiliate-supported",
+    "Free tools and established products coexist with paid products, creating monetization and differentiation pressure",
+    "FDA and RASFF data interpretation, freshness, completeness, and regulatory context may create accuracy and liability risks"
+  ],
+  "market_viability_verdict": "Moderate",
+  "viability_rationale": "Moderate viability: the market has 91 pain-point mentions (Talked About), 6 competitors (Rivalry), and clear entry channels through SEO, specialty coffee communities, roaster associations, importer partnerships, and compliance-oriented content (Enterable). Searchable is not met because the 74K beachhead is below 100K monthly searches, Income Potential is not met because the beachhead SAM is approximately $0.08-$0.17M rather than above $50M, and Velocity is not scoreable because historical trend data is unavailable; therefore, 3 of 5 scoreable STRIVE criteria are met. The estimate satisfies the hierarchy: TAM is approximately 5.4x-24.6x SAM, SAM is at least 2x Year 1 SOM, and Year 3 SOM remains below SAM.",
+  "recommended_entry_strategy": "Measured Expansion"
+}

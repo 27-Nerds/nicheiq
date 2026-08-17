@@ -2088,7 +2088,11 @@
   const INCUMBENT_LABEL: Record<ThesisIncumbentStatus, string> = {
     occupied: "Incumbent: occupied",
     partial: "Incumbent: partial cover",
-    open: "Incumbent: no direct tool found",
+    // "no direct tool found" asserted absence in a chip that is read without hovering the
+    // tooltip beside it. The rollup is over member `incumbent_parity` stamps and a "none"
+    // stamp is only a search result, so the chip states the search — the same reading the
+    // Python report block ships for one idea ("No equivalent surfaced").
+    open: "Incumbent: none surfaced",
     unknown: "Incumbent: not checked",
   };
   const INCUMBENT_TAG: Record<ThesisIncumbentStatus, string> = {
@@ -2139,7 +2143,13 @@
     const vendors = thesis.incumbent_vendors ?? [];
     if (vendors.length > 0) return `Already shipped by: ${vendors.join(", ")}`;
     if (thesis.incumbent_status === "open") {
-      return "No direct incumbent surfaced for this buyer job during the parity probe.";
+      // The rollup is over member `incumbent_parity` stamps, and a "none" stamp is the
+      // result of queries built from that idea's OWN wording — so the tooltip states the
+      // search and the reason it can miss, not an empty lane. Same reading as the phrase
+      // `incumbentParityPhrase` renders for a single idea.
+      return "Our parity searches did not surface a direct incumbent for this buyer job. "
+        + "They run on each idea's own wording, so a rival that describes itself differently "
+        + "can be missed.";
     }
     return "Incumbent coverage for this buyer job was not established.";
   }

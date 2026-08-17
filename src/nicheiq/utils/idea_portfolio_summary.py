@@ -234,7 +234,36 @@ def _idea_digest_line(idea) -> str:
     pay = getattr(idea, "source_segment_payability", None)
     pay_band = score_band(pay)
     pay_class = getattr(idea, "source_segment_payability_class", None) or "unclassified"
-    parity = (getattr(idea, "incumbent_parity", None) or "").strip() or "no incumbent match found"
+    # THREE states reach this line and the system knows something different in each.
+    # The old one-liner collapsed the first two into "no incumbent match found" — a
+    # NEGATIVE FINDING manufactured out of missing data, fed verbatim into the
+    # portfolio-summary prompt, which is where the analyst narrative the user reads
+    # comes from. Measured on output/checkpoints: 94 ideas carry a blank/absent stamp
+    # (the probe only runs over the top slice), so 94 unchecked ideas were being
+    # described to the LLM as checked-and-clear.
+    #
+    #   blank/absent -> the parity probe produced no record for this idea. UNKNOWN.
+    #   "none ..."   -> the probe RAN and its queries returned nothing. A retrieval
+    #                   result, not a fact about the market: the queries are built from
+    #                   the idea's own wording (`_probe_mechanism_parity`), and 533 of
+    #                   the 591 "none" stamps in the corpus (90.2%) sit in a run that
+    #                   already holds a NAMED incumbent finding on another idea.
+    #   anything else -> a real stamp; passes through verbatim (the LLM must see the
+    #                   vendor and the evidence).
+    parity_stamp = (getattr(idea, "incumbent_parity", None) or "").strip()
+    if not parity_stamp:
+        parity = ("not checked — the competitor probe recorded no result for this idea "
+                  "(unknown, not a clear field)")
+    elif parity_stamp.lower().startswith("none"):
+        # The raw stamp is deliberately NOT echoed: "none found" quoted into prose is the
+        # exact phrase the summary must not repeat back at the user as a market fact.
+        # No ';' inside the value: the digest line is ';'-delimited, so a semicolon here
+        # would read as a new field to the model (and to anything that splits the line).
+        parity = ("our searches surfaced no direct competitor — the queries are built "
+                  "from this idea's own wording, so treat this as a retrieval result "
+                  "rather than proof that the field is clear")
+    else:
+        parity = parity_stamp
     adjacent = (getattr(idea, "adjacent_market_parity", None) or "").strip() or "n/a"
     dev_time = getattr(idea, "estimated_development_time", None) or "unestimated"
     tags = getattr(idea, "tags", None)

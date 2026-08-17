@@ -1,0 +1,96 @@
+{
+  "_provenance": {
+    "source_file": "/home/syzspectroom/work/output/final_report_20260816_203815.json",
+    "source_sha256": "a6bbacc5bc3d5fe30da21b81e55ea55dee5267f55dde593f8bb3d66989013a82",
+    "json_paths": [
+      ".niche",
+      ".generated_at",
+      ".executive_summary",
+      ".selected_solution_name",
+      ".selection_rationale",
+      ".niche_context"
+    ],
+    "sliced_by": "python3 -c \"import json;d=json.load(open(SRC));json.dump({k:d[k] for k in ['niche','generated_at','executive_summary','selected_solution_name','selection_rationale','niche_context'] if k in d},open(DEST,'w'),indent=2)\"",
+    "note": "Real run for job 8500b97d. Stage 1 classified the submitted text as audience_scope='segment_of_niche' and researched the parent market instead: the run whose reader must be told the subject changed. Values are copied by script, never hand-typed; the source lives under the gitignored output/ tree, so only the fields these tests read are vendored."
+  },
+  "niche": "The local digital search and visibility optimization market encompasses the tools, strategies, and services used by brick-and-mortar businesses to manage their online presence across search engines, maps, and discovery platforms. This market focuses on improving discoverability, reputation management, and conversion for businesses operating within specific geographic catchments.",
+  "generated_at": "2026-08-16T17:36:58.808198",
+  "executive_summary": "Reclaim Packet QA can create indexable landing pages from structured recovery scenarios, business-profile conditions, documentation requirements, and location or industry contexts, supporting a planned set of 50 pages. Users are likely to discover the solution through searches related to restoring a Google Business Profile after verification failure, recovering ownership, and preparing a recovery packet, with content clearly distinguishing the product from general local SEO tools. Programmatic SEO can scale by applying consistent templates to these scenario and intent combinations while linking them to guides, checklists, and product workflows that address the validated pain point. This approach should prioritize high-intent recovery queries rather than broadly targeting the full category, since solution-specific beachhead demand was not validated and overall SEO scalability is rated 4.5/10. Organic growth should therefore be tested incrementally, using early page performance and conversion evidence to refine the page set, messaging, and acquisition investment.",
+  "selected_solution_name": "Reclaim Packet QA",
+  "selection_rationale": "Reclaim Packet QA was auto-selected as the top-ranked eligible concept from the per-cell tournament, scoring highest on the blended market-fit, feasibility, novelty and SEO composite (0.64) across 9 candidate ideas. Runner-up concepts are retained for comparison in all_solution_scores.",
+  "niche_context": {
+    "niche_input": "AI visibility for local businesses in London",
+    "audience_scope": "segment_of_niche",
+    "user_target_audience": "local businesses in London",
+    "niche_description": "The local digital search and visibility optimization market encompasses the tools, strategies, and services used by brick-and-mortar businesses to manage their online presence across search engines, maps, and discovery platforms. This market focuses on improving discoverability, reputation management, and conversion for businesses operating within specific geographic catchments.",
+    "market_segments": [
+      "High-street retail stores seeking foot traffic",
+      "Independent hospitality and restaurant owners",
+      "Local professional service providers like dentists and solicitors",
+      "Tradespeople and home service contractors",
+      "Boutique fitness and wellness studio operators",
+      "Independent boutique hotels and guest houses"
+    ],
+    "industry_boundaries": "This market includes local SEO, Google Business Profile management, and geo-targeted digital advertising. It excludes broad-scale enterprise SaaS platforms, general brand-building marketing agencies, and national e-commerce logistics or infrastructure services.",
+    "anchor_entities": [
+      "Google Business Profile",
+      "Google Maps",
+      "Google AI Overviews",
+      "Google Local Services Ads",
+      "Google Business Profile Performance",
+      "Apple Business Connect",
+      "Bing Places for Business",
+      "Yell.com",
+      "Trustpilot",
+      "BrightLocal",
+      "Whitespark Local Citation Finder",
+      "Local Falcon",
+      "ChatGPT Search",
+      "Perplexity",
+      "Schema.org LocalBusiness",
+      "Google Knowledge Panel"
+    ],
+    "disambiguation_exclusions": [
+      "general national or international SEO without a physical-location focus",
+      "e-commerce-only search marketing",
+      "paid-search management unrelated to local discovery",
+      "computer-vision or AI model visibility research",
+      "London, Ontario local-business marketing",
+      "local government digital-services visibility"
+    ],
+    "anchor_communities": [
+      "Local Search Forum",
+      "Google Business Profile Help Community",
+      "r/localseo",
+      "BrightLocal Community",
+      "LocalU",
+      "UK Business Forums",
+      "r/Local_SEO_for_AI (Reddit, discovered)",
+      "r/localseoadvice (Reddit, discovered)",
+      "r/AI_SearchOptimization (Reddit, discovered)",
+      "r/localsearch (Reddit, discovered)"
+    ],
+    "audience_jargon": [
+      "local pack",
+      "map pack",
+      "NAP (name, address, phone) consistency",
+      "GEO (generative engine optimization)",
+      "AI search optimization",
+      "citation cleanup",
+      "review velocity",
+      "geo-grid rank tracking",
+      "service-area business",
+      "zero-click search",
+      "entity prominence",
+      "catchment area"
+    ],
+    "community_search_terms": [
+      "local SEO",
+      "Google Business Profile",
+      "London SEO",
+      "AI search",
+      "local search"
+    ],
+    "resolved_primary_audience": "local businesses in London"
+  }
+}

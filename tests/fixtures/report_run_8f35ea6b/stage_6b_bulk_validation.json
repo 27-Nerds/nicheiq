@@ -1,0 +1,1337 @@
+{
+  "validated_keywords": [
+    {
+      "keyword": "quality control",
+      "search_volume": 74000,
+      "competition": 0.03,
+      "competition_index": 3,
+      "competition_scale": "0-1",
+      "cpc": 5.57,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 74000
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 90500
+        }
+      ]
+    },
+    {
+      "keyword": "coffee safety",
+      "search_volume": 880,
+      "competition": 0.32,
+      "competition_index": 32,
+      "competition_scale": "0-1",
+      "cpc": 1.34,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 880
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 880
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 880
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 1000
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 880
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 1000
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 880
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 880
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 1000
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 1000
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 1000
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 880
+        }
+      ]
+    },
+    {
+      "keyword": "food safety",
+      "search_volume": 90500,
+      "competition": 0.14,
+      "competition_index": 14,
+      "competition_scale": "0-1",
+      "cpc": 2.49,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 90500
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 60500
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 74000
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 60500
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 74000
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 60500
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 74000
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 90500
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 110000
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 110000
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 110000
+        }
+      ]
+    },
+    {
+      "keyword": "fda alerts",
+      "search_volume": 590,
+      "competition": 0.0,
+      "competition_index": 0,
+      "competition_scale": "0-1",
+      "cpc": 1.96,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 590
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 590
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 720
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 590
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 720
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 880
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 720
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 480
+        }
+      ]
+    },
+    {
+      "keyword": "rasff notifications",
+      "search_volume": 170,
+      "competition": 0.01,
+      "competition_index": 1,
+      "competition_scale": "0-1",
+      "cpc": 0,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 170
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 260
+        }
+      ]
+    },
+    {
+      "keyword": "supplier due diligence",
+      "search_volume": 320,
+      "competition": 0.21,
+      "competition_index": 21,
+      "competition_scale": "0-1",
+      "cpc": 7.76,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 210
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 390
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 320
+        }
+      ]
+    },
+    {
+      "keyword": "traceability records",
+      "search_volume": 110,
+      "competition": 0.04,
+      "competition_index": 4,
+      "competition_scale": "0-1",
+      "cpc": 5.91,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 90
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 90
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 110
+        }
+      ]
+    },
+    {
+      "keyword": "contamination risk",
+      "search_volume": 260,
+      "competition": 0.01,
+      "competition_index": 1,
+      "competition_scale": "0-1",
+      "cpc": 0,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 210
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 260
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 260
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 260
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 260
+        }
+      ]
+    },
+    {
+      "keyword": "safety database",
+      "search_volume": 1600,
+      "competition": 0.03,
+      "competition_index": 3,
+      "competition_scale": "0-1",
+      "cpc": 12.92,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 1300
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 1300
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 1300
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 1600
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 1300
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 1300
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 1300
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 1300
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 1600
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 1900
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 1900
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 1900
+        }
+      ]
+    },
+    {
+      "keyword": "supplier verification",
+      "search_volume": 110,
+      "competition": 0.2,
+      "competition_index": 20,
+      "competition_scale": "0-1",
+      "cpc": 9.81,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 210
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 70
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 90
+        }
+      ]
+    },
+    {
+      "keyword": "lot traceability",
+      "search_volume": 170,
+      "competition": 0.08,
+      "competition_index": 8,
+      "competition_scale": "0-1",
+      "cpc": 22.59,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 260
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 170
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 210
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 170
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 170
+        }
+      ]
+    },
+    {
+      "keyword": "origin records",
+      "search_volume": 390,
+      "competition": 0.0,
+      "competition_index": 0,
+      "competition_scale": "0-1",
+      "cpc": 0,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 590
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 320
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 480
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 390
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 390
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 390
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 320
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 590
+        }
+      ]
+    },
+    {
+      "keyword": "food alerts",
+      "search_volume": 2900,
+      "competition": 0.02,
+      "competition_index": 2,
+      "competition_scale": "0-1",
+      "cpc": 3.11,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 2400
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 2400
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 2400
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 2900
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 2900
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 2900
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 2400
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 2900
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 2900
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 2900
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 2400
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 2900
+        }
+      ]
+    },
+    {
+      "keyword": "roast profiles",
+      "search_volume": 480,
+      "competition": 0.04,
+      "competition_index": 4,
+      "competition_scale": "0-1",
+      "cpc": 0.72,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 390
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 480
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 480
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 480
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 480
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 590
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 590
+        }
+      ]
+    },
+    {
+      "keyword": "cupping protocols",
+      "search_volume": 110,
+      "competition": 0.01,
+      "competition_index": 1,
+      "competition_scale": "0-1",
+      "cpc": 0,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 90
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 90
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 170
+        }
+      ]
+    },
+    {
+      "keyword": "cogs coffee",
+      "search_volume": 110,
+      "competition": 0.04,
+      "competition_index": 4,
+      "competition_scale": "0-1",
+      "cpc": 0,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 110
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 140
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 170
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 140
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 70
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 110
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 90
+        }
+      ]
+    },
+    {
+      "keyword": "supply planning",
+      "search_volume": 1600,
+      "competition": 0.14,
+      "competition_index": 14,
+      "competition_scale": "0-1",
+      "cpc": 5.07,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 1000
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 1000
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 1000
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 1900
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 1300
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 1000
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 720
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 880
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 1300
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 5400
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 1600
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 1600
+        }
+      ]
+    },
+    {
+      "keyword": "coffee subscriptions",
+      "search_volume": 18100,
+      "competition": 1.0,
+      "competition_index": 100,
+      "competition_scale": "0-1",
+      "cpc": 7.18,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 18100
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 12100
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 12100
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 12100
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 14800
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 18100
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 40500
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 27100
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 18100
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 18100
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 18100
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 14800
+        }
+      ]
+    },
+    {
+      "keyword": "coffee records",
+      "search_volume": 5400,
+      "competition": 0.03,
+      "competition_index": 3,
+      "competition_scale": "0-1",
+      "cpc": 0.89,
+      "monthly_searches": [
+        {
+          "year": 2026,
+          "month": 6,
+          "search_volume": 4400
+        },
+        {
+          "year": 2026,
+          "month": 5,
+          "search_volume": 5400
+        },
+        {
+          "year": 2026,
+          "month": 4,
+          "search_volume": 5400
+        },
+        {
+          "year": 2026,
+          "month": 3,
+          "search_volume": 5400
+        },
+        {
+          "year": 2026,
+          "month": 2,
+          "search_volume": 4400
+        },
+        {
+          "year": 2026,
+          "month": 1,
+          "search_volume": 4400
+        },
+        {
+          "year": 2025,
+          "month": 12,
+          "search_volume": 5400
+        },
+        {
+          "year": 2025,
+          "month": 11,
+          "search_volume": 6600
+        },
+        {
+          "year": 2025,
+          "month": 10,
+          "search_volume": 8100
+        },
+        {
+          "year": 2025,
+          "month": 9,
+          "search_volume": 5400
+        },
+        {
+          "year": 2025,
+          "month": 8,
+          "search_volume": 5400
+        },
+        {
+          "year": 2025,
+          "month": 7,
+          "search_volume": 5400
+        }
+      ]
+    }
+  ],
+  "original_count": 45,
+  "passed_count": 19,
+  "threshold_used": 500
+}

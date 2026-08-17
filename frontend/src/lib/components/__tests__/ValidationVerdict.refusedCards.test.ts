@@ -1,4 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
+
+/** The two policy tests below parse every spec in the tree with the TypeScript compiler
+ *  API. That is ~2.2s of work in isolation and comfortably over vitest's 5s default when
+ *  the suite runs in parallel — measured 2026-08-16: both passed 3/3 alone and BOTH timed
+ *  out inside the full-suite run on this machine. CI runners are slower and 2-4 core, so
+ *  the default would make the new Python/frontend CI intermittently red for a reason that
+ *  has nothing to do with the code under test, and a pipeline that is red for environmental
+ *  reasons stops being read. This is a budget for a genuinely slow scan, NOT a mask for a
+ *  hang: the scan is bounded by the file count, so if it ever approaches this it is because
+ *  the tree grew, not because something is stuck. */
+const SCAN_TIMEOUT_MS = 30_000;
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1036,7 +1047,7 @@ describe("no spec hand-authors the pipeline's idea-check copy", () => {
           + "vacuously, and HOW the value is spelled has nothing to do with it."
         : undefined,
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("has no refusal copy a spec invented instead of taking from the producer", () => {
     const { blaming } = scanTree();
@@ -1051,7 +1062,7 @@ describe("no spec hand-authors the pipeline's idea-check copy", () => {
           + "have to guess which words it would be spelled with."
         : undefined,
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });
 
 describe("ValidationVerdict · the graded control (withheld, not deleted)", () => {

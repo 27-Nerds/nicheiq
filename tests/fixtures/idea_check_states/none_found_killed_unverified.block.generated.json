@@ -1,0 +1,259 @@
+{
+ "provisional": true,
+ "user_idea_text": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, so they stop spending evenings writing the same answers by hand",
+ "user_idea_brief": "A Chrome extension that drafts Reddit replies for community managers at small SaaS companies, automating repetitive responses to save time.",
+ "assumed_fields": [],
+ "derived_market": "The social media and community management software market encompasses tools designed to streamline engagement, content distribution, and customer support across digital forums and social platforms. It focuses on automating repetitive communication tasks, managing brand presence, and fostering user interactions for businesses of various sizes.",
+ "derived_buyer": "Small SaaS Community Managers Owning Product Communities",
+ "desk_limits": [
+  "We read what people said unprompted. We could not ask them the follow-up question.",
+  "Nothing here is commitment evidence. No one has paid, pre-ordered, or given up anything for this idea.",
+  "Severity and mention counts describe this run's captured discussions, not the whole market."
+ ],
+ "experiment_ladder": [
+  {
+   "rung": 1,
+   "action": "Run 5 problem interviews with the buyer you named",
+   "kill_number": "kill if no interview independently describes the problem",
+   "cost_note": "free"
+  },
+  {
+   "rung": 2,
+   "action": "Put up a landing page and drive ~50 clicks to it",
+   "kill_number": "kill below 1% click-to-email",
+   "cost_note": "under $100"
+  },
+  {
+   "rung": 3,
+   "action": "Offer 3 pre-sales at half price",
+   "kill_number": "kill below 3 paid commitments",
+   "cost_note": "reputation only"
+  },
+  {
+   "rung": 4,
+   "action": "Deliver the outcome by hand for one customer (concierge)",
+   "kill_number": "kill if they stop showing up",
+   "cost_note": "a weekend"
+  }
+ ],
+ "next_experiment_index": 0,
+ "pivot": {
+  "attempted": false,
+  "outcome": "not_attempted",
+  "trigger_finding": null,
+  "because": null,
+  "keeps": null,
+  "changes": null,
+  "reason_not_shown": null,
+  "ries_label": null,
+  "name": null
+ },
+ "outcome": "premise_unproven",
+ "idea_name": "RedditReplyRadar",
+ "headline": "The problem behind RedditReplyRadar shows up in real threads, but adversarial review could not confirm the premise. Demand is still unmeasured.",
+ "parts": [
+  {
+   "key": "problem_real",
+   "state": "supported",
+   "answer": "Supported",
+   "detail": "Linked to real discussion in this run."
+  },
+  {
+   "key": "space_occupied",
+   "state": "none_found",
+   "answer": "No equivalent surfaced",
+   "detail": "Our searches did not surface a direct competitor. They run on this idea's own wording, so a rival that describes itself differently can be missed \u2014 read this as not yet found, not as a proven empty lane. If the lane really is empty, that more often means nobody is paying for this yet than that it is open."
+  },
+  {
+   "key": "demand",
+   "state": "not_measured",
+   "answer": "Not measured",
+   "detail": "Search-demand probes are outside this check's scope. They're the Deep Research step."
+  }
+ ],
+ "score_bands": {
+  "market_fit": "limited",
+  "technical_feasibility": "moderate",
+  "novelty": "limited",
+  "seo_scalability": "weak"
+ },
+ "evidence_confidence": "Moderate",
+ "evidence_confidence_reason": "Real but not broad.",
+ "breadth": {
+  "posts": 7,
+  "distinct_authors": 7,
+  "distinct_communities": 5,
+  "months_spanned": 38,
+  "label": "7 posts \u00b7 7 accounts \u00b7 5 communities \u00b7 38 mo"
+ },
+ "anchored_pains": [
+  {
+   "pain_title": "Cannot detect important community conversations without dependable alerting",
+   "severity_band": "good",
+   "severity_label": "medium",
+   "mention_count": 5,
+   "quotes": [
+    "The reality is, I love the value of community spaces so much from my time working as a CM that as I start getting more involved with my kids' PTA I'm trying to figure out options to get them to stop using Google Docs and emails as planning and discussion spaces but it's difficult to figure out what platforms have the options to do what we need - preferably free and without everyone having the same email domain.",
+    "10+ listings that we need to constantly maintain, generate reviews for, reply to reviews, display those reviews on our website, report om them, etc."
+   ]
+  }
+ ],
+ "related_pains": [
+  {
+   "pain_title": "Cannot keep community discussions usable when bot spam adds automated replies",
+   "severity_label": "medium",
+   "mention_count": 5,
+   "note": "unmatched"
+  }
+ ],
+ "stronger_pain_count": 0,
+ "unanchored_hypothesis": false,
+ "incumbent_parity": "none found",
+ "existing_equivalent": null,
+ "competitors": [
+  {
+   "name": "Buffer",
+   "what_they_ship": "social media scheduling and analytics",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited community moderation features",
+   "url": null
+  },
+  {
+   "name": "Hootsuite",
+   "what_they_ship": "enterprise social media management",
+   "price_note": "$99+/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "high cost for small teams",
+   "url": null
+  },
+  {
+   "name": "Sprout Social",
+   "what_they_ship": "premium social media scheduling",
+   "price_note": "$99+/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "expensive for startups",
+   "url": null
+  },
+  {
+   "name": "Agorapulse",
+   "what_they_ship": "social media management and engagement",
+   "price_note": "$79-249/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no free plan for small users",
+   "url": null
+  },
+  {
+   "name": "SocialPilot",
+   "what_they_ship": "affordable multi-account scheduling",
+   "price_note": "$30-200/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "fewer advanced analytics",
+   "url": null
+  },
+  {
+   "name": "Metricool",
+   "what_they_ship": "social media analytics and scheduling",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "less known brand recognition",
+   "url": null
+  },
+  {
+   "name": "ManyChat",
+   "what_they_ship": "chatbot automation for social",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited to messaging platforms",
+   "url": null
+  },
+  {
+   "name": "Sprinklr",
+   "what_they_ship": "enterprise community management",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "enterprise-only pricing model",
+   "url": null
+  }
+ ],
+ "duplicate_of": null,
+ "red_team_verdict": "killed",
+ "red_team_findings": null,
+ "kill_risks": [
+  {
+   "claim": "The evidence names established categories and competitors the idea\u2019s vocabulary omits: F5Bot is described as a free keyword-to-email tool, while GummySearch is described as an upgrade in UI; other search results list ReddiReach, RedLeads, and Reddit marketing services, indicating a broader monitoring/lead-generation category than a Chrome extension.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The buyer already has free or bundled alternatives: the evidence explicitly says F5Bot is free and simple, and the search results surface Reddit communities, Google, YouTube, Instagram, and LinkedIn as existing places where Reddit-marketing discovery and discussion happen. It does not show that users need a new extension or would pay for approved-reply drafts.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The mechanism does not establish coverage of the modal pain. It only says it activates on Reddit pages and fetches or inspects relevant public search results; the evidence does not show passive/background monitoring, reliable alert delivery, Reddit API access, or that drafting addresses the main workflow rather than merely keyword discovery.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  }
+ ],
+ "alternatives": {
+  "count": 10,
+  "named_buyer_count": 1,
+  "top": [
+   {
+    "idea_id": "idea_ebb1c66e60be0fac6052cc917544fdb0",
+    "name": "SocialSpecLibrary",
+    "one_liner": "Give social teams one current, source-linked truth layer for platform requirements so scheduled content keeps its channel-specific format instead of failing sil"
+   },
+   {
+    "idea_id": "idea_c4ba00b44591d2c967a9aa8c0fcc6b91",
+    "name": "WikidataFeedbackHub",
+    "one_liner": "Turn fragmented marketplace reviews into a normalized, entity-linked, category-aware backlog without manually reconciling app and company aliases."
+   },
+   {
+    "idea_id": "idea_941f6ef6c7459b36855e4f4fd21d17a6",
+    "name": "BotSpamRegistry",
+    "one_liner": "Give moderators a shared, evidence-linked way to recognize recurring bot accounts and reply fingerprints before automated spam makes community discussions unusa"
+   },
+   {
+    "idea_id": "idea_ddf258d98ce69fade9d50772613811ba",
+    "name": "CoverageGap Archive",
+    "one_liner": "Give app support and review teams an API-independent audit showing which public app conversations their live monitoring failed to capture when APIs, rate limits"
+   },
+   {
+    "idea_id": "idea_e72b76f88c97407823c78f9624367bd9",
+    "name": "ReplySieve",
+    "one_liner": "Give community managers a human-approved queue that separates likely bot-generated replies from valuable conversation, with evidence and downloadable moderation"
+   }
+  ]
+ },
+ "seed_candidate_status": "active",
+ "seed_idea_id": "idea_c2733bd1d72c408056a17f23b7097e3f",
+ "seed_idea_revision": 1,
+ "seed_purchasable": true,
+ "seed_display_composite_score": 45,
+ "demotion_reason": null,
+ "evaluated_idea": {
+  "name": "RedditReplyRadar",
+  "value_proposition": "Give small SaaS community managers a passive Reddit discovery check and approved-reply drafts in one Chrome extension, so relevant conversations stop hiding in babysat searches and are answered faster.",
+  "mechanism_summary": "Instead of starting with an always-on social listening dashboard or a standalone AI writer, RedditReplyRadar makes the browser extension itself a passive discovery checkpoint: saved queries produce a new-match badge only when the manager opens Reddit, and the same click-through\u2026"
+ },
+ "refinement": {
+  "kept": [
+   "audience",
+   "problem",
+   "delivery"
+  ],
+  "changed": [
+   "mechanism"
+  ],
+  "because": "Cannot keep community discussions usable when bot spam adds automated replies"
+ },
+ "original_mechanism_parity": null
+}

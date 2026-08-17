@@ -1,0 +1,346 @@
+name: Mutation (advisory)
+
+# WHAT THIS IS
+# ------------
+# Across recent remediation rounds, every builder proved each new test the same
+# way: revert the production line, watch the named test fail, restore, verify by
+# checksum. That is mutation testing, performed by hand, one mutant at a time.
+# It repeatedly caught defective tests -- tests that passed with AND without the
+# fix, and "guards the guard" checks that gave no signal at all.
+#
+# This job does it by machine. It is the only structural check that catches a
+# BLIND METRIC AS A CLASS: a test that stays green when its subject is mutated is
+# a defective test, and it is found here rather than by a reviewer who happened
+# to try that particular mutation.
+#
+# ADVISORY ON PURPOSE. This workflow never fails a build. A mutation gate that
+# blocks merges on day one gets disabled by the second person who hits it. It
+# reports a score against a recorded baseline; a threshold can come later, once
+# the baseline has survived a few rounds and people trust the number.
+#
+# SILENCE IS NOT SUCCESS
+# ----------------------
+# The failure mode this whole effort exists to fix is a check that quietly covers
+# nothing while reporting green. A mutation run that says "0 mutants" or "all
+# killed" is indistinguishable, at a glance, from a perfect one. Four guards make
+# the number believable, and every one of them fired for real while this workflow
+# was being built:
+#
+#   1. mutmut's forced-fail probe replaces every mutated function with a raising
+#      stub and asserts the suite goes red. If the mutated source were not the
+#      source under test (stale editable install, bad sys.path, an uncopied
+#      fixture) the probe stays green and the run aborts.
+#   2. mutmut exits 1 with "could not find any test case for any mutant" when its
+#      stats phase associates no test with any mutated function. The FIRST config
+#      written for this repo produced a clean-looking stats phase with an EMPTY
+#      test-to-function map; this is what caught it.
+#   3. mutmut asserts "Filtered for specific mutants, but nothing matches" when a
+#      name glob is empty -- which is what a renamed or no-longer-covered function
+#      looks like.
+#   4. `make mutation-report` checks the MUTANT SET, not just the verdicts: every
+#      shard has a floor on mutant count and a list of functions that must have
+#      mutants. This catches the nastiest failure of the lot, described next.
+#   5. `make mutation-denominator` (probes/mutation_denominator.py) answers the
+#      question the score itself cannot: a fraction OF WHAT. See below.
+#
+# THE SCORE IS A FRACTION OF A SILENTLY-SHRUNK DENOMINATOR
+# --------------------------------------------------------
+# `mutate_only_covered_lines = true` is mandatory (see the truncation note
+# below) and it is also the reason a bare percentage here is not an honest
+# number. Mutants exist ONLY for lines the selection executes, so a function
+# nothing reaches generates zero mutants, contributes nothing to the
+# denominator, and is INDISTINGUISHABLE FROM A FUNCTION THAT DOES NOT EXIST.
+# Three measured instances, none of them visible in any score:
+#
+#   * seed_fidelity._alias_route_role_contexts -- 64 live lines, called from
+#     unpitched_core_dependencies, ZERO mutants. It was simply not in the number.
+#   * @CrewBase class UnifiedSolutionCrew -- mutmut skips DECORATED ClassDefs and
+#     all their children (mutation/file_mutation.py:292), so all 143 methods are
+#     unmutatable BY CONSTRUCTION however well tested, execute_seed_pipeline (120
+#     covered lines) and _semantic_seed_identity_matches (51) included. Read the
+#     crew-seed-paths score as a claim about TWO module-level functions.
+#   * The denominator is STICKY. mutmut regenerates a file's mutants on an MTIME
+#     comparison against the source alone (__main__.py:create_mutants_for_file)
+#     and never re-consults coverage, so a function a NEW TEST starts covering
+#     keeps zero mutants until `make mutation-clean`.
+#
+# So every score printed by this workflow is qualified -- "70.8% of 95.2%
+# covered", plus a count of the functions that are not in the denominator at all
+# -- and the denominator step FAILS LOUD on any zero-mutant function without a
+# written, mechanically re-verified reason. That check, not the score, is what
+# catches the next invisible function.
+#
+# A related understatement, handled in the same place: 57 seed-fidelity survivors
+# are case-flips inside regex tables applied with re.IGNORECASE (and, for the
+# replacement column, erased by a trailing .lower()). They cannot change
+# behaviour, so no test can ever kill them; they depress the score forever and
+# look exactly like real gaps. They are declared, with their proofs, in
+# probes/mutation_denominator.py and reported separately from real survivors.
+#
+# THE TRUNCATION HAZARD (found here, guarded here)
+# ------------------------------------------------
+# `mutate_only_covered_lines` makes the 12k-line crew file tractable, but mutmut
+# builds that coverage with pytest -x and DISCARDS the exit code
+# (mutmut/code_coverage.py: gather_coverage ignores what
+# collect_main_test_coverage returns). One failing test therefore truncates
+# coverage at that point, every later line counts as uncovered, and those mutants
+# are never generated -- while the run still prints a clean score over what is
+# left. Observed 2026-08-16: a red selection cut unified_solution_crew.py from 140
+# mutants in 10 functions to 95 in 13, with BOTH seed/identity functions absent.
+# Hence the "Clean-run sanity" step below, which must pass before mutating.
+#
+# WHY IT IS SHARDED, AND WHY MOST OF IT IS NOT ON pull_request
+# ------------------------------------------------------------
+# Measured on a 16-core box, 2026-08-16, from mutmut's own per-mutant durations:
+# 3,540 in-scope mutants totalling 326 minutes of single-mutant wall time
+# (seed-fidelity 140 min at 7.0s/mutant, idea-validation-block 182 min at
+# 4.8s/mutant, crew-seed-paths 2.8 min at 3.3s/mutant). That is ~30 min on 11
+# workers and ~81 min on 4 -- per run, per shard set. Mutation cost is
+# (mutants x covering tests) and two hot spots dominate the mutant count:
+# build_idea_validation_block (913) and unpitched_core_dependencies (292), both
+# covered by nearly every test in their file.
+# So running the whole scope on every PR would cost most of an hour per PR. Instead:
+#   * pull_request runs ONLY the crew-seed shard (~52 mutants, minutes) -- cheap,
+#     and it is the shard covering a 12,137-line file where a silent seed-path
+#     regression is most likely to slip through;
+#   * the full matrix runs weekly and on demand.
+# Whole thing locally: `source .venv/bin/activate && make mutation`.
+
+on:
+  pull_request:
+    paths:
+      - 'src/nicheiq/utils/seed_fidelity.py'
+      - 'src/nicheiq/report/idea_validation_block.py'
+      - 'src/nicheiq/crews/unified_solution_crew.py'
+      - 'tests/unit/utils/test_seed_*.py'
+      - 'tests/unit/crews/test_seed_*.py'
+      - 'tests/unit/report/test_idea_validation_*.py'
+      - '.github/workflows/mutation.yml'
+      - 'Makefile'
+      - 'pyproject.toml'
+      - 'probes/mutation_denominator.py'
+  workflow_dispatch:
+  schedule:
+    # Monday 04:00 UTC. Drift in the surviving-mutant count is the signal; a
+    # weekly datapoint is enough to see it.
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation:
+    name: Mutation — ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    # Belt and braces: every step below already swallows its own failure. This
+    # stops a runner-level problem from turning the check red either.
+    continue-on-error: true
+    timeout-minutes: ${{ matrix.timeout }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # On a PR: the cheap shard only. On schedule/dispatch: everything.
+        include: ${{ fromJSON(github.event_name == 'pull_request'
+          && '[{"shard":"crew-seed-paths","timeout":45}]'
+          || '[{"shard":"seed-fidelity","timeout":330},{"shard":"idea-validation-block","timeout":350},{"shard":"crew-seed-paths","timeout":45}]') }}
+
+    env:
+      # ---- BASELINES, measured 2026-08-16 (16-core box, warm sandbox) -------
+      # Recorded per shard so a future round can tell IMPROVEMENT from DRIFT.
+      # They are NOT a gate: nothing here compares against them to decide
+      # pass/fail. `make mutation-report` prints the delta and reads this exact
+      # variable, so the local and CI reports agree by construction.
+      #
+      # To refresh: `make mutation` (or one shard via
+      # `make mutation MUTMUT_TARGETS="'nicheiq.utils.seed_fidelity.*'"`), take
+      # the printed counts, and edit them here IN THE SAME COMMIT as the change
+      # that moved them, with a sentence saying why they moved.
+      #
+      # Format: SHARD=total:killed:survived:no_tests
+      #
+      #   seed-fidelity           1202 mutants   846 killed   349 SURVIVED   70.8%
+      #   idea-validation-block   2286 mutants  1810 killed   476 SURVIVED   79.2%
+      #   crew-seed-paths           52 mutants    36 killed    16 SURVIVED   69.2%
+      #   ------------------------------------------------------------------------
+      #   in scope                3540 mutants  2692 killed   841 SURVIVED   76.2%
+      #
+      # AND THE DENOMINATORS THOSE PERCENTAGES ARE FRACTIONS OF, measured
+      # 2026-08-16 by `make mutation-denominator` over mutmut's own test
+      # selection (18 files, 506 tests). Never quote the left column without the
+      # right one:
+      #
+      #   seed_fidelity.py          70.8% OF 95.2% of statements (416/437),
+      #                             26/27 functions carry mutants — 1 does not
+      #                             (_alias_route_role_contexts, 64 live lines)
+      #   idea_validation_block.py  79.2% OF 95.1% of statements (425/447),
+      #                             30/30 functions carry mutants
+      #   unified_solution_crew.py  69.2% OF 32.2% of statements (1679/5219),
+      #                             10/172 functions carry mutants — 143 are
+      #                             @CrewBase methods mutmut cannot touch at all,
+      #                             19 are outside the test selection
+      #
+      # Of seed-fidelity's 349 survivors, 57 are equivalent mutants that no test
+      # can ever kill (27 IGNORECASE regex keys + 27 replacements erased by a
+      # trailing .lower() in _normalize_route_language, + 3 IGNORECASE splits in
+      # _route_role_contexts). Net of those the shard scores 74.3%, not 70.8%.
+      # The declarations and their proofs live in
+      # probes/mutation_denominator.py and are re-verified on every run.
+      #
+      # Every mutant in every shard was executed. Zero came back "no tests", so the
+      # selected suite reaches all of it; nothing in the score is padded by mutants
+      # nobody ran. Seven seed-fidelity mutants time out reproducibly (re-run twice)
+      # and are counted in `total` but in neither killed nor survived.
+      MUTATION_BASELINES: >-
+        seed-fidelity=1202:846:349:0
+        idea-validation-block=2286:1810:476:0
+        crew-seed-paths=52:36:16:0
+
+      # The suite instantiates pydantic-settings at import time and six fields are
+      # required (openai_api_key, serper_api_key, reddit_client_id,
+      # reddit_client_secret, dataforseo_login, dataforseo_password). No network
+      # call is made: tests/conftest.py installs a `_no_live_llm` block, and the
+      # `-m "not integration"` spend guard in [tool.pytest.ini_options] -- which
+      # mutmut inherits, because it copies pyproject.toml into its sandbox --
+      # keeps the paid live-LLM judge eval out of every selection here.
+      # These are placeholders, not secrets, and must never be swapped for real keys.
+      OPENAI_API_KEY: 'sk-not-a-real-key-mutation-ci'
+      SERPER_API_KEY: 'not-a-real-key-mutation-ci'
+      REDDIT_CLIENT_ID: 'not-a-real-id-mutation-ci'
+      REDDIT_CLIENT_SECRET: 'not-a-real-secret-mutation-ci'
+      DATAFORSEO_LOGIN: 'not-a-real-login-mutation-ci'
+      DATAFORSEO_PASSWORD: 'not-a-real-password-mutation-ci'
+      CREWAI_TELEMETRY_OPT_OUT: 'true'
+      OTEL_SDK_DISABLED: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install project + mutmut
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+          uv pip install 'mutmut>=3.7,<4'
+
+      - name: Warm the tiktoken BPE cache
+        # A cold tiktoken cache adds ~18 teardown errors and flips the suite's
+        # exit code to 1. mutmut treats a non-zero clean-test run as a hard stop
+        # ("Failed to run clean test"), so a cold cache aborts the whole session
+        # before a single mutant runs. One download up front removes that class
+        # of failure. If it 404s, continue and let the run report it.
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); print('tiktoken cache warm')"
+
+      - name: Clean-run sanity (the selected tests must be green BEFORE mutating)
+        # Not a formality. See "THE TRUNCATION HAZARD" at the top of this file:
+        # a red selection silently shrinks the mutant set and the score still
+        # looks fine. This is also the exact precondition `make mutation` enforces
+        # locally, so the two entry points cannot diverge.
+        run: |
+          source .venv/bin/activate
+          make mutation-testcheck
+
+      - name: Resolve shard targets
+        id: targets
+        run: |
+          case "${{ matrix.shard }}" in
+            seed-fidelity)
+              echo "globs='nicheiq.utils.seed_fidelity.*'" >> "$GITHUB_OUTPUT" ;;
+            idea-validation-block)
+              echo "globs='nicheiq.report.idea_validation_block.*'" >> "$GITHUB_OUTPUT" ;;
+            crew-seed-paths)
+              # unified_solution_crew.py is 12,137 lines. Name the seed/identity
+              # functions explicitly rather than globbing the module: the covered-
+              # lines filter already cuts the file to ~140 mutants in 10 functions,
+              # and only these two are on the seed path.
+              echo "globs='nicheiq.crews.unified_solution_crew.x__seed_name_from_pitch__mutmut_*' 'nicheiq.crews.unified_solution_crew.x__stated_clause_lens_block__mutmut_*'" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "Unknown shard '${{ matrix.shard }}'" >&2; exit 1 ;;
+          esac
+
+      - name: Run scoped mutation testing
+        # Never fails the job. The score is read from the .meta files afterwards,
+        # not from this step's exit code: mutmut exits non-zero for reasons that
+        # are information ("survivors exist") rather than breakage.
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          # `make mutation` re-runs mutation-testcheck (~12s). That duplication is
+          # deliberate: one code path, no CI-only shortcut that could drift from
+          # what a developer runs.
+          #
+          # MUTMUT_CHILDREN=4: each child is a forked interpreter with CrewAI
+          # loaded, ~430 MB RSS. Sized to the runner's RAM, not its core count --
+          # oversubscribing drove a 14.7 GB dev box 9 GB into swap and cut
+          # throughput ~20x.
+          make mutation MUTMUT_TARGETS="${{ steps.targets.outputs.globs }}" \
+                        MUTMUT_CHILDREN=4
+
+      - name: Measure the denominator (and fail loud on invisible functions)
+        # Runs BEFORE the score step so every percentage below it can be printed
+        # with the qualifier it needs. `make mutation` already produced
+        # mutants/denominator-coverage.json; the probe is called directly here so
+        # the 506-test coverage pass is not paid a second time. If that file is
+        # missing (mutation step died early) the probe says so and exits 1
+        # instead of quietly reporting nothing.
+        #
+        # continue-on-error, like every other step here: this workflow is
+        # advisory by policy and never fails a build. The failure is not hidden,
+        # though -- it lands in the job summary as a "THE DENOMINATOR IS NOT
+        # TRUSTWORTHY" block directly above the scores it disqualifies. Locally,
+        # `make mutation-denominator` exits non-zero.
+        if: always()
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          python probes/mutation_denominator.py check | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Report score, and prove the harness had teeth
+        # Same reporter as local `make mutation-report`, so a CI number and a
+        # developer's number are produced by the same code reading the same files.
+        # It prints DO NOT TRUST THE NUMBERS ABOVE when the mutant set looks
+        # truncated, when a required function has no mutants, or when mutants
+        # exist but none executed.
+        if: always()
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          make mutation-report | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: List survivors
+        if: always()
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          make mutation-survivors | tee mutants/survivors.txt | head -n 200
+          echo "----"
+          echo "Inspect one locally with:  mutmut show <mutant name>"
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ matrix.shard }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            mutants/*.meta
+            mutants/**/*.meta
+            mutants/survivors.txt
+            mutants/denominator.json
+            mutants/denominator-report.txt

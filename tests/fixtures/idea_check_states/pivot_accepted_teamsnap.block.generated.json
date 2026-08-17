@@ -1,0 +1,280 @@
+{
+ "provisional": true,
+ "user_idea_text": "A web app for youth soccer coaches that auto-generates fair playing-time lineups from the roster and texts them to parents before each game, so coaches stop juggling spreadsheets on the sideline",
+ "user_idea_brief": "A web app for youth soccer coaches that auto-generates fair playing-time lineups from the roster and texts them to parents to replace manual spreadsheet management.",
+ "assumed_fields": [],
+ "derived_market": "The youth sports management software market encompasses digital tools designed to streamline administrative, logistical, and communication tasks for volunteer and professional organizers. It focuses on reducing the operational burden of managing team rosters, scheduling, and parent-coach communications in amateur athletics.",
+ "derived_buyer": "Volunteer Youth Soccer Team Coaches and Managers",
+ "desk_limits": [
+  "We read what people said unprompted. We could not ask them the follow-up question.",
+  "Nothing here is commitment evidence. No one has paid, pre-ordered, or given up anything for this idea.",
+  "Severity and mention counts describe this run's captured discussions, not the whole market."
+ ],
+ "experiment_ladder": [
+  {
+   "rung": 1,
+   "action": "Run 5 problem interviews with the buyer you named",
+   "kill_number": "kill if no interview independently describes the problem",
+   "cost_note": "free"
+  },
+  {
+   "rung": 2,
+   "action": "Put up a landing page and drive ~50 clicks to it",
+   "kill_number": "kill below 1% click-to-email",
+   "cost_note": "under $100"
+  },
+  {
+   "rung": 3,
+   "action": "Offer 3 pre-sales at half price",
+   "kill_number": "kill below 3 paid commitments",
+   "cost_note": "reputation only"
+  },
+  {
+   "rung": 4,
+   "action": "Deliver the outcome by hand for one customer (concierge)",
+   "kill_number": "kill if they stop showing up",
+   "cost_note": "a weekend"
+  }
+ ],
+ "next_experiment_index": 0,
+ "pivot": {
+  "attempted": true,
+  "outcome": "accepted",
+  "trigger_finding": "TeamSnap availability tracking and lineup tools",
+  "because": "Advanced analytics or pro-level media",
+  "keeps": "Volunteer youth soccer coaches managing weekly recreational games, Soccer parents who need timely attendance, kickoff, and lineup information, Cannot confirm player check-in and deliver timely game information",
+  "changes": "The wedge is not another availability tracker: it is a lightweight playing-time accountability layer for clubs that must measure, explain, and document fairness over a season.",
+  "reason_not_shown": null,
+  "ries_label": "zoom-in",
+  "name": "FairPlay Ledger: Season Fairness Analytics",
+  "idea_id": "idea_fad8f7df232a98eb3adfad3c6f53513d",
+  "idea_revision": 1
+ },
+ "outcome": "occupied",
+ "idea_name": "FairPlay Ledger",
+ "headline": "Real problem, and a named competitor already ships the core of FairPlay Ledger. That is demand proof and an entry constraint at the same time.",
+ "parts": [
+  {
+   "key": "problem_real",
+   "state": "supported",
+   "answer": "Supported",
+   "detail": "Linked to real discussion in this run."
+  },
+  {
+   "key": "space_occupied",
+   "state": "partial",
+   "answer": "Partially shipped",
+   "detail": "TeamSnap availability tracking and lineup tools"
+  },
+  {
+   "key": "demand",
+   "state": "not_measured",
+   "answer": "Not measured",
+   "detail": "Search-demand probes are outside this check's scope. They're the Deep Research step."
+  }
+ ],
+ "score_bands": {
+  "market_fit": "limited",
+  "technical_feasibility": "good",
+  "novelty": "limited",
+  "seo_scalability": "weak"
+ },
+ "evidence_confidence": "Moderate",
+ "evidence_confidence_reason": "Broad, repeated discussion from distinct accounts. Breadth is broad but the matched problem is mild.",
+ "breadth": {
+  "posts": 8,
+  "distinct_authors": 8,
+  "distinct_communities": 6,
+  "months_spanned": 14,
+  "label": "8 posts \u00b7 8 accounts \u00b7 6 communities \u00b7 14 mo"
+ },
+ "anchored_pains": [
+  {
+   "pain_title": "Cannot confirm player check-in and deliver timely game information",
+   "severity_band": "limited",
+   "severity_label": "medium",
+   "mention_count": 10,
+   "quotes": [
+    "100% of the parents have it, but I have to nag them to update the status and I have a couple that won\u2019t respond unless I directly text them for updates.",
+    "So far we\u2019re not having a ton of luck finding a scheduling program that is close to TeamSnap: able to add conflicts for teams and schedule games for specific times of specific days."
+   ]
+  }
+ ],
+ "related_pains": [
+  {
+   "pain_title": "Cannot prove equal playing time during active games",
+   "severity_label": "medium",
+   "mention_count": 16,
+   "note": "risk"
+  }
+ ],
+ "stronger_pain_count": 13,
+ "unanchored_hypothesis": false,
+ "incumbent_parity": "partial by TeamSnap: TeamSnap availability tracking and lineup tools",
+ "existing_equivalent": null,
+ "competitors": [
+  {
+   "name": "TeamSnap",
+   "what_they_ship": "Youth sports registration, scheduling, comms",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Advanced analytics or pro-level media",
+   "url": null,
+   "verdict_trigger": true,
+   "verdict_evidence": "availability tracking and lineup tools"
+  },
+  {
+   "name": "LeagueApps",
+   "what_they_ship": "Registration, payments, schedules, waivers",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Enterprise-scale analytics or media",
+   "url": null
+  },
+  {
+   "name": "SportsEngine",
+   "what_they_ship": "Youth sports management platform",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Free-tier or volunteer-only focus",
+   "url": null
+  },
+  {
+   "name": "SportsConnect",
+   "what_they_ship": "Online registration & sports management",
+   "price_note": "$3 per transaction",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Transparent flat pricing or unlimited plans",
+   "url": null
+  },
+  {
+   "name": "PlayMetrics",
+   "what_they_ship": "Youth sports management platform",
+   "price_note": "custom quote",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Transparent public pricing",
+   "url": null
+  },
+  {
+   "name": "TeamLinkt",
+   "what_they_ship": "Sports club management & registration",
+   "price_note": "$396/year (100 members)",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Enterprise or pro-team features",
+   "url": null
+  },
+  {
+   "name": "GameChanger",
+   "what_they_ship": "Game scheduling & team communication",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Full registration or payments",
+   "url": null
+  },
+  {
+   "name": "Blue Sombrero",
+   "what_they_ship": "Youth sports registration & websites",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Modern UI or advanced analytics",
+   "url": null
+  },
+  {
+   "name": "Stack Sports",
+   "what_they_ship": "Sports league & club management",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "Volunteer-first simplicity",
+   "url": null
+  },
+  {
+   "name": "Sportlyzer",
+   "what_they_ship": "Club & team admin tools",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "US-centric youth sports focus",
+   "url": null
+  }
+ ],
+ "duplicate_of": null,
+ "red_team_verdict": "killed",
+ "red_team_findings": null,
+ "kill_risks": [
+  {
+   "claim": "The search evidence shows established team-communication alternatives: Spond is described by a grassroots user as a \u201cgame changer,\u201d while TeamLinkt and Stack Team App are presented as apps with communication plus roster/team-management capabilities; this makes FairPlay Ledger\u2019s parent texting and roster workflow look bundled into broader platforms.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The strongest evidence for the specific fair-lineup concept is an App Store result for allPlay Soccer, whose snippet says \u201cJust balanced, fair lineups in seconds,\u201d indicating a direct category incumbent; the evidence does not establish its pricing, adoption, or feature depth.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The market's loudest complaint in this space. A product like yours must not trigger it: Cannot prove equal playing time during active games.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": "Man 12 kids on a team is brutal, we went from 8 to 9 players on my son\u2019s 4th grade team last season and just that 1 added player made it feel much harder to get everyone PT (travel ball so equal playing time is not required).",
+   "source": "market_signal",
+   "pain_title": "Cannot prove equal playing time during active games"
+  }
+ ],
+ "alternatives": {
+  "count": 10,
+  "named_buyer_count": 4,
+  "top": [
+   {
+    "idea_id": "idea_4ef7d949431b58dbca9d65083140317e",
+    "name": "FieldChangeAlert",
+    "one_liner": "FieldChangeAlert turns authoritative venue-calendar changes into timely, family-ready notifications without waiting for a coach to discover and re-enter the upd"
+   },
+   {
+    "idea_id": "idea_bbd3666858fa9462ac878237d858d51a",
+    "name": "DraftRuleLedger",
+    "one_liner": "Give youth-sports directors a defensible, consistent way to explain every roster placement without exposing sensitive player information or reconstructing decis"
+   },
+   {
+    "idea_id": "idea_71cee1da39cfe18e7d20d36007bcfa5a",
+    "name": "ClubTravelCompare",
+    "one_liner": "Give soccer families an evidence-based view of seasonal driving burden and club commitments before hidden travel expectations cause costly club changes."
+   },
+   {
+    "idea_id": "idea_f0472d609cc1f9fc66dbdc8eca42dfef",
+    "name": "RakeProof",
+    "one_liner": "Automate proof and deposit refunds for youth-sports volunteer duties without requiring a team parent to inspect every field or snack-bar shift."
+   },
+   {
+    "idea_id": "idea_c5185b53242ebe9b633c59d319da6199",
+    "name": "Saturday Scan",
+    "one_liner": "Give club directors one ranked Saturday view of cancellation risk across every field, then synchronize decisions and roster confirmations in batches instead of "
+   }
+  ]
+ },
+ "seed_candidate_status": "active",
+ "seed_idea_id": null,
+ "seed_idea_revision": 2,
+ "seed_purchasable": true,
+ "seed_display_composite_score": 51,
+ "demotion_reason": null,
+ "evaluated_idea": {
+  "name": "FairPlay Ledger",
+  "value_proposition": "For youth soccer coaches who want to stop juggling spreadsheets on the sideline, FairPlay Ledger is a web app that auto-generates fair playing-time lineups and texts them to parents, making rotations easier to run and easier to explain.",
+  "mechanism_summary": "The wedge is not another roster spreadsheet: it turns fair playing-time planning into a repeatable coach workflow, then proactively texts the resulting lineup to parents."
+ },
+ "refinement": {
+  "kept": [
+   "audience",
+   "problem",
+   "delivery"
+  ],
+  "changed": [
+   "mechanism"
+  ],
+  "because": "Cannot prove equal playing time during active games"
+ },
+ "original_mechanism_parity": null
+}

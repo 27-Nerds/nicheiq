@@ -38,7 +38,7 @@ class SocialContentValidator:
         """Initialize social content validator."""
         pass
 
-    def validate_quality(self, social_content) -> tuple[str, dict[str, int]]:
+    def validate_quality(self, social_content) -> tuple[str, dict[str, int | float]]:
         """
         Validate social content collection quality and return status classification.
 
@@ -48,7 +48,11 @@ class SocialContentValidator:
         Returns:
             Tuple of (quality_tier: str, metrics: dict)
                 quality_tier: EXCELLENT, GOOD, MINIMAL, or INSUFFICIENT
-                metrics: Dictionary containing collection metrics
+                metrics: Dictionary containing collection metrics. Every key is an int
+                    counter EXCEPT `avg_engagement_per_source`, which is a mean rounded
+                    to 1dp and is therefore a float. `ResearchState.social_content_metrics`
+                    is typed to match; narrowing either side back to int broke the state's
+                    own JSON round-trip.
         """
         from ...models.social_content import SocialContentCollection
 

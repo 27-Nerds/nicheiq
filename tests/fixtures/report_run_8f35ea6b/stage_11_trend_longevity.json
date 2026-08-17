@@ -1,0 +1,40 @@
+{
+  "is_fallback": false,
+  "trend_direction": "Declining",
+  "trend_confidence": "Medium",
+  "momentum_score": 0.12,
+  "keyword_volume_trend": "Decreasing",
+  "volume_growth_rate": "Stable",
+  "trend_duration": "2+ years established demand, currently declining",
+  "discussion_frequency_trend": "Stable",
+  "discussion_recency": "Moderate",
+  "community_growth_indicators": [
+    "Established community engagement - Source: discussion data showing 116 Reddit posts, 814 total comments, and an average of 7.0 comments per post.",
+    "High-quality engagement - Source: discussion quality metrics showing 7 posts with 20+ comments, including a 42-comment discussion on dark roast retail coffee and an 18-comment discussion on coffee scoring.",
+    "Recurring problem validation - Source: discussion data showing 21 identified pain points and 91 total mentions.",
+    "Stable evergreen demand - Source: keyword data showing 30 of 67 keywords stable, with evergreen keywords including green coffee, quality control, green beans coffee, green bean coffee company, and coffee records.",
+    "Competitive validation with whitespace - Source: competitive data showing 6 competitors and 15 market gaps, indicating an established market that still has room for differentiated entrants."
+  ],
+  "new_entrants_trend": null,
+  "competitive_activity_level": "Moderate",
+  "seasonal_pattern": "Year-Round",
+  "peak_periods": null,
+  "market_maturity": "Mature",
+  "longevity_verdict": "Sustainable",
+  "longevity_rationale": "Sustainable because the momentum score of 0.12 sits in the declining band, with decreasing keyword volume but substantial year-round demand of 325,010 monthly searches across 67 keywords; evergreen terms including \"green coffee,\" \"quality control,\" and \"coffee records\" remain stable. The 21 identified pain points generating 91 mentions, 116 discussions, 814 total comments, and 6 active competitors—including FoodChain ID, Decernis, and ImportGenius—support recurring operational demand rather than novelty-driven interest, although the 12-month trend is weakening.",
+  "trend_reversal_risks": [
+    "HIGH - Declining overall search interest - Evidence: keyword volume trend is decreasing, the momentum score is 0.12 in the declining band, and only 8 of 67 keywords are rising while 15 are declining.",
+    "HIGH - Demand concentration in a small number of large keywords - Evidence: food safety, green coffee, and quality control account for 90,500, 74,000, and 74,000 monthly searches respectively, while rising keywords represent only 1.7% of total search volume.",
+    "MEDIUM - Aging discussion activity may overstate current community momentum - Evidence: the five richest discussions are dated from 1 to 6 years ago, including 3-year-old and 6-year-old posts, while discussion recency is only moderate.",
+    "MEDIUM - Market saturation and competitive pressure - Evidence: 6 competitors are already active, including FDA Import Refusal Report, RASFF Window, FoodChain ID, Decernis, and ImportGenius, despite 15 identified market gaps.",
+    "LOW - Seasonal subsegment volatility - Evidence: supply planning, alert food defense, RASFF system, and coffee subscriptions are classified as seasonal keywords, even though the overall market pattern is year-round."
+  ],
+  "timing_recommendation": "Missed Window",
+  "data_sources_analyzed": [
+    "SEO strategy data (Stage 6)",
+    "Social discussions (Stage 5)",
+    "Competitive analysis (Stage 7)",
+    "Enriched keyword trends (Stage 9)"
+  ],
+  "analysis_timeframe": "12 months"
+}

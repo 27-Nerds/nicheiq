@@ -3782,7 +3782,7 @@ describe("SelectionWorkbench — thesis partition", () => {
     expect(view.getByText("Practice manager · File a Form 222 order · Avoids a compliance write-up"))
       .toBeInTheDocument();
     expect(view.getByText("Incumbent: occupied")).toBeInTheDocument();
-    expect(view.getByText("Incumbent: no direct tool found")).toBeInTheDocument();
+    expect(view.getByText("Incumbent: none surfaced")).toBeInTheDocument();
     // Flags are a COUNT, not a sentence in a chip; the text lives in the disclosure the
     // count opens, attributed to the one variant that carries it.
     const flagToggle = view.getByRole("button", { name: "1 flagged assumption" });

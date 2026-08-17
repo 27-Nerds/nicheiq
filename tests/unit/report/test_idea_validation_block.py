@@ -739,7 +739,23 @@ def test_quote_leading_markers_stripped_for_display():
     assert quotes[1] == "quoted complaint text"
 
 
-def test_reorder_anchored_pain_quotes_puts_idea_relevant_first():
+def test_reorder_anchored_pain_quotes_ranks_by_relevance_and_keeps_ties_in_order():
+    """The FULL resulting order, ties included — not just "the relevant one is first".
+
+    THE DEFECT THIS TEST USED TO BE. It fed the target quote LAST of five and asserted
+    only that it came out FIRST. At that position "sort by relevance descending" and
+    "reverse the list" agree on slot 0, so a mutant that replaced the sort key with the
+    negated INDEX — `key=lambda item: (-item[1], item[1])`, i.e. a plain reversal that
+    never reads the score — was indistinguishable from the real thing and survived. The
+    test was named for the property and blind to it.
+
+    The property has two halves and this pins both: quotes sort by descending focus
+    overlap, and equal-scoring quotes keep their ORIGINAL relative order (the `idx`
+    secondary key). A reversal breaks the first half; a flipped tie-break
+    (`(-item[0], -item[1])`) breaks the second. Neither is expressible against a
+    single-element assertion, and no realistic captured golden pins it either — real
+    pains rarely carry four equal-scoring quotes — so it is held here, by construction.
+    """
     from nicheiq.report.idea_validation_block import reorder_anchored_pain_quotes
 
     seed = _idea(pain_points_addressed=["anchored pain"], **SEED_KW)
@@ -747,20 +763,36 @@ def test_reorder_anchored_pain_quotes_puts_idea_relevant_first():
     state.user_idea_identity_terms = {
         "mechanism": ["utility bill splitting"], "problem": ["move-out disputes"],
         "audience": [], "delivery": []}
+    # focus == {util, bill, split, move, out, disput}; the overlap each quote scores is
+    # in the comment beside it. The two scoring quotes sit MID-LIST on purpose: a target
+    # at either end is reachable by an ordering that ignores the score entirely.
+    quotes = [
+        "I switched property software twice",                       # 0
+        "the utility bill is the part tenants argue about",         # 2
+        "double entry accounting is essential",                     # 0
+        "splitting the utility bill between tenants "
+        "causes move-out disputes",                                 # 6
+        "late fees pile up",                                        # 0
+        "landlord here, no idea how to handle it",                  # 0
+    ]
+    assert 0 < quotes.index(
+        "splitting the utility bill between tenants causes move-out disputes"
+    ) < len(quotes) - 1, "the top-scoring quote must start mid-list, never at an end"
+
     pain_dicts = [
-        {"title": "anchored pain", "representative_quotes": [
-            "I switched property software twice",
-            "double entry accounting is essential",
-            "late fees pile up",
-            "landlord here, no idea how to handle it",
-            "splitting the utility bill between tenants causes move-out disputes",
-        ]},
+        {"title": "anchored pain", "representative_quotes": list(quotes)},
         {"title": "other pain", "representative_quotes": ["b", "a"]},
     ]
     reorder_anchored_pain_quotes(state, pain_dicts)
-    # The idea-relevant excerpt (was 5th, invisible behind the card's 3-slice) leads.
-    assert pain_dicts[0]["representative_quotes"][0] == (
-        "splitting the utility bill between tenants causes move-out disputes")
+
+    assert pain_dicts[0]["representative_quotes"] == [
+        quotes[3],  # 6 — the idea's own excerpt, previously invisible behind the 3-slice
+        quotes[1],  # 2 — partial overlap, ahead of every zero
+        quotes[0],  # 0 ┐
+        quotes[2],  # 0 ├ ties, in their ORIGINAL relative order
+        quotes[4],  # 0 │
+        quotes[5],  # 0 ┘
+    ]
     # Non-anchored pains keep their own order.
     assert pain_dicts[1]["representative_quotes"] == ["b", "a"]
 

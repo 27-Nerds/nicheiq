@@ -34,9 +34,20 @@ UNANCHORED_NOTE = (
 THIN_EVIDENCE_NOTE = "Not enough linked evidence to grade the problem's breadth."
 DEMAND_NOT_MEASURED = ("Search-demand probes are outside this check's scope. "
                        "They're the Deep Research step.")
+# A "none" parity stamp is a RETRIEVAL RESULT, never a fact about the market. The probe
+# builds its queries out of the idea's OWN wording (`_probe_mechanism_parity` searches
+# `f"{mechanism_keywords} software {niche_label}"`), so the phrasing of the pitch decides
+# the verdict: a live run shipped "none found" for a #1 recommendation while a same-pain
+# sibling carried "partial by Synup", because the first idea's value proposition contained
+# none of the vocabulary that finds its own incumbent. Measured on output/checkpoints
+# (457 runs, 101 carrying parity-stamped ideas, 1228 ideas): 591 ideas carry a "none"
+# stamp and 533 of them (90.2%) sit in a run that already holds a NAMED incumbent finding
+# on another idea. So the copy states the search result and not the conclusion.
 NONE_FOUND_NOTE = (
-    "No direct competitor turned up. On this evidence that more often means nobody is "
-    "paying for this yet than that the lane is open.")
+    "Our searches did not surface a direct competitor. They run on this idea's own "
+    "wording, so a rival that describes itself differently can be missed — read this as "
+    "not yet found, not as a proven empty lane. If the lane really is empty, that more "
+    "often means nobody is paying for this yet than that it is open.")
 PRICE_CAVEAT = "snippet-derived, ±1 tier"
 MARKET_SIGNAL_PREFIX = ("The market's loudest complaint in this space. A product like "
                         "yours must not trigger it: ")
@@ -285,10 +296,12 @@ def resolve_idea_validation_outcome(
         if brief_parity_hit:
             return (
                 "worth_testing",
+                # "has no direct shipper" asserted absence; only the retrieval is
+                # known. The scope rides in the same clause as the negative.
                 f"The problem behind {idea_name or 'your idea'} is real. Your "
-                "original mechanism already has tools shipping in it; the "
-                "sharpened version we evaluated has no direct shipper. Demand "
-                "is still unmeasured.",
+                "original mechanism already has tools shipping in it; for the "
+                "sharpened version we evaluated, our searches surfaced no direct "
+                "shipper. Demand is still unmeasured.",
             )
         return (
             "worth_testing",
@@ -1070,7 +1083,14 @@ def build_idea_validation_block(state, entry_mode: str | None) -> dict | None:
     elif parity.startswith("none"):
         # NOT "None found": the category-incumbents table two cards below lists named
         # tools, and the two truths must not read as a contradiction.
-        space_state, space_answer = "none_found", "No direct equivalent"
+        #
+        # NOT "No direct equivalent" either (the previous copy): that chip asserted a fact
+        # about the market — there is no equivalent — where the system holds only a fact
+        # about its own retrieval: our queries, built from this idea's wording, did not
+        # return one. `surfaced` carries the search scope into the chip itself, so the
+        # answer cannot be read as absence-proved even when it is quoted alone.
+        # `space_state` is UNCHANGED — the enum is what the frontend keys on.
+        space_state, space_answer = "none_found", "No equivalent surfaced"
     elif red_team_evidence_incomplete:
         space_state, space_answer = "evidence_incomplete", "Evidence incomplete"
     elif red_team_raised_concerns:

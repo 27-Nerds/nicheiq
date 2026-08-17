@@ -1321,7 +1321,11 @@ function buildRuledOutSection(
 const THESIS_INCUMBENT_PHRASE: Record<string, string> = {
   occupied: 'a named vendor already ships this capability',
   partial: 'a named vendor partly covers it',
-  open: 'no incumbent found for any variant',
+  // NOT 'no incumbent found for any variant': the rollup is over member `incumbent_parity`
+  // stamps, and a "none" stamp is the result of queries built from that idea's OWN wording
+  // (~90% of the "none"-stamped ideas on disk sit in a run that names an incumbent elsewhere).
+  // Stated flat, the analyst reads an empty lane and sells it as one.
+  open: 'our parity searches did not surface an incumbent for any variant — a search result, built from each idea’s own wording, and not proof the lane is empty',
   unknown: 'competition not established',
 };
 

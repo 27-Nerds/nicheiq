@@ -1,0 +1,713 @@
+{
+  "total_keywords_analyzed": 67,
+  "total_monthly_volume": 325010,
+  "offtopic_volume_share": 0.0679,
+  "category_volume_share": 0.8971,
+  "idea_intent_monthly_volume": 11370,
+  "key_findings": [
+    "The strongest opportunity is to own the green-coffee safety intelligence journey—from broad research on contamination risk and quality control through FDA import alerts, RASFF notifications, origin records, and supplier clearance. This aligns directly with wholesale roasters’ need to make defensible procurement decisions rather than rely solely on supplier claims.",
+    "The keyword portfolio maps closely to the highest-value operational pain points: supplier verification, lot traceability, raw-material inspection, supply planning, and alert response. The strategic implication is to position OriginSafetyClearanceIndex as a procurement-control layer that connects regulatory evidence to everyday roasting and inventory workflows.",
+    "Competitive differentiation should come from combining FDA refusal data, EU RASFF records, origin history, and supplier research in one evidence-led experience. Existing competitors such as FDA Import Refusal Report and RASFF Window are primarily associated with individual data sources, while FoodChain ID and Decernis are broader compliance platforms and ImportGenius and Panjiva emphasize trade intelligence.",
+    "The category structure supports a scalable hub-and-spoke SEO program across coffee safety, traceability, supplier due diligence, foreign supplier verification, FDA intelligence, RASFF research, and food-alert response. Canonical pages should consolidate close keyword variants and support programmatic country, origin, supplier, and alert records without creating thin or duplicative pages.",
+    "No geographic keyword groups were supplied in the geographic analysis, so regional expansion should remain a later phase. The immediate growth path is category-led and workflow-led: build authority around safety and supplier-risk use cases first, then create geographic pages only when validated regional keyword and data coverage becomes available."
+  ],
+  "tier_0_keywords": [
+    {
+      "keyword": "green coffee",
+      "search_volume": 74000,
+      "competition": "MEDIUM (43)",
+      "opportunity_score": 1720.9302325581396,
+      "strategy": "Create a definitive hub connecting green coffee sourcing with safety records, supplier verification, FDA refusals, and RASFF alerts. Use it as a top-of-funnel page that funnels wholesale buyers toward country and supplier risk assessments.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 74000, Comp: 43, Opp: 1720.9, Diff: 16",
+      "keyword_difficulty": 16.0
+    },
+    {
+      "keyword": "quality control",
+      "search_volume": 74000,
+      "competition": "MEDIUM (3)",
+      "opportunity_score": 24666.666666666668,
+      "strategy": "Target this broad term with a green coffee quality-control framework covering contamination checks, origin documentation, import alerts, and defensible supplier scoring. Position OriginSafetyClearanceIndex as a practical tool for roasters building procurement controls.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 74000, Comp: 3, Opp: 24666.7, Diff: 42",
+      "keyword_difficulty": 42.0
+    },
+    {
+      "keyword": "contamination risk",
+      "search_volume": 260,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 260.0,
+      "strategy": "Publish a focused guide explaining contamination risks in green coffee and how FDA refusal records and EU RASFF notifications support evidence-based screening. Include clear calls to review country-level safety records before purchase.",
+      "intent": "Informational",
+      "tier": 0,
+      "tier_rationale": "Volume: 260, Comp: 1, Opp: 260.0, Diff: 4",
+      "keyword_difficulty": 4.0
+    },
+    {
+      "keyword": "origin records",
+      "search_volume": 390,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Build an origin-records resource that explains how documented country histories strengthen green coffee supplier due diligence. Link each section to searchable origin safety records and risk comparisons.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 390, Comp: 0, Diff: 34",
+      "keyword_difficulty": 34.0
+    },
+    {
+      "keyword": "food alerts",
+      "search_volume": 2900,
+      "competition": "MEDIUM (2)",
+      "opportunity_score": 1450.0,
+      "strategy": "Capture this high-volume alert-oriented query with a regularly updated page connecting food alerts to green coffee import risk. Provide filters, source links, dates, and concise explanations so procurement teams can act on relevant notifications.",
+      "intent": "Informational",
+      "tier": 0,
+      "tier_rationale": "Volume: 2900, Comp: 2, Opp: 1450.0, Diff: 41",
+      "keyword_difficulty": 41.0
+    },
+    {
+      "keyword": "coffee records",
+      "search_volume": 5400,
+      "competition": "MEDIUM (3)",
+      "opportunity_score": 1800.0,
+      "strategy": "Develop a central coffee records page covering import refusals, RASFF notifications, country histories, and supplier evidence. Make the page a searchable gateway into the platform’s defensible coffee safety intelligence.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 5400, Comp: 3, Opp: 1800.0, Diff: 3",
+      "keyword_difficulty": 3.0
+    },
+    {
+      "keyword": "fda import alert",
+      "search_volume": 880,
+      "competition": "MEDIUM (3)",
+      "opportunity_score": 293.3333333333333,
+      "strategy": "Create an authoritative explainer and live-reference page for FDA import alerts relevant to coffee and agricultural products. Show how buyers can interpret alert scope and connect findings to green coffee supplier-risk reviews.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 880, Comp: 3, Opp: 293.3, Diff: 17",
+      "keyword_difficulty": 17.0
+    },
+    {
+      "keyword": "green beans coffee",
+      "search_volume": 18100,
+      "competition": "MEDIUM (19)",
+      "opportunity_score": 952.6315789473684,
+      "strategy": "Target this broad product query with a buyer-oriented guide to green coffee beans, including origin verification, contamination risk, regulatory records, and supplier qualification. Use comparison tables and internal links to country safety pages.",
+      "intent": "Commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 18100, Comp: 19, Opp: 952.6, Diff: 13",
+      "keyword_difficulty": 13.0
+    },
+    {
+      "keyword": "green bean coffee company",
+      "search_volume": 18100,
+      "competition": "MEDIUM (19)",
+      "opportunity_score": 952.6315789473684,
+      "strategy": "Address company-selection intent with a supplier due-diligence guide covering green coffee company verification, traceability, safety history, and regulatory evidence. Present the platform as an independent check beyond supplier marketing claims.",
+      "intent": "Commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 18100, Comp: 19, Opp: 952.6, Diff: 15",
+      "keyword_difficulty": 15.0
+    },
+    {
+      "keyword": "rapha green coffee",
+      "search_volume": 720,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Create a narrowly targeted entity page clarifying the relationship between Rapha Green Coffee and available origin, compliance, or safety records, using only verifiable public sources. Include transparent sourcing notes and a path to broader supplier-risk research.",
+      "intent": "Navigational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 720, Comp: 0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "green coffee lanang",
+      "search_volume": 1300,
+      "competition": "MEDIUM (2)",
+      "opportunity_score": 650.0,
+      "strategy": "Publish a dedicated location or product page for Green Coffee Lanang that combines sourcing context with available safety, origin, and regulatory records. Optimize for buyers evaluating the provenance and risk profile of this specific coffee source.",
+      "intent": "Commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 1300, Comp: 2, Opp: 650.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "green and coffee roasters",
+      "search_volume": 480,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 480.0,
+      "strategy": "Create an entity-focused page for Green and Coffee Roasters with verified business, sourcing, and safety-record information. Avoid unsupported claims and use the page to demonstrate how independent clearance checks can support roaster procurement.",
+      "intent": "Navigational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 480, Comp: 1, Opp: 480.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "import alert",
+      "search_volume": 390,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 390.0,
+      "strategy": "Build a concise import-alert glossary and searchable resource explaining how alerts affect green coffee purchasing and supplier clearance. Link regulatory terminology to practical screening workflows and relevant FDA records.",
+      "intent": "Informational",
+      "tier": 0,
+      "tier_rationale": "Volume: 390, Comp: 1, Opp: 390.0, Diff: 9",
+      "keyword_difficulty": 9.0
+    },
+    {
+      "keyword": "rasff alert",
+      "search_volume": 390,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Develop a dedicated RASFF alert explainer and alert index showing how EU notifications can reveal food-safety risks in coffee supply chains. Emphasize source dates, product categories, countries, and implications for wholesale buyers.",
+      "intent": "Informational and commercial investigation",
+      "tier": 0,
+      "tier_rationale": "Volume: 390, Comp: 0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "caydence records and coffee",
+      "search_volume": 390,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Create a carefully sourced entity page for Caydence Records and Coffee that distinguishes the business or brand from unrelated results and documents any relevant public information. Use transparent evidence standards and link to the platform’s broader supplier and origin-risk methodology.",
+      "intent": "Navigational",
+      "tier": 0,
+      "tier_rationale": "Volume: 390, Comp: 0, Diff: 0",
+      "keyword_difficulty": 0.0
+    }
+  ],
+  "tier_0_strategy": "Prioritize a topical authority cluster around green coffee safety intelligence: use the broad, high-volume terms as evergreen hubs and connect them to evidence-led pages for FDA import alerts, EU RASFF alerts, contamination risk, origin records, and coffee supplier entities. Pair recurring regulatory and safety content with searchable country and supplier records, clear source citations, freshness dates, and procurement-focused calls to action so wholesale roasters can move from general research to defensible supplier-risk clearance.",
+  "tier_1_keywords": [
+    {
+      "keyword": "rasff notifications",
+      "search_volume": 170,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 170.0,
+      "strategy": "Create a concise explainer and searchable archive connecting RASFF notifications to EU green coffee supplier risk, with filters for country, product, hazard, date, and company. Target users conducting regulatory research and pre-purchase due diligence, and link each result to the OriginSafetyClearanceIndex risk methodology.",
+      "intent": "Informational and commercial investigation",
+      "tier": 1,
+      "tier_rationale": "Volume: 170, Comp: 1, Opp: 170.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "roast profiles",
+      "search_volume": 480,
+      "competition": "MEDIUM (4)",
+      "opportunity_score": 120.0,
+      "strategy": "Publish an educational guide explaining roast profiles and how green coffee origin, defects, and safety considerations affect roast development, supported by practical profile examples. Use the page to introduce supplier verification as a complementary step for professional roasters evaluating green coffee.",
+      "intent": "Informational",
+      "tier": 1,
+      "tier_rationale": "Volume: 480, Comp: 4, Opp: 120.0, Diff: 0",
+      "keyword_difficulty": 0.0
+    },
+    {
+      "keyword": "cupping protocols",
+      "search_volume": 110,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 110.0,
+      "strategy": "Develop a practical cupping protocols resource covering preparation, sample documentation, defect identification, repeatability, and how to record supplier-quality observations. Add a section showing how cupping results can be combined with import refusal and RASFF data for more defensible sourcing decisions.",
+      "intent": "Informational and commercial investigation",
+      "tier": 1,
+      "tier_rationale": "Volume: 110, Comp: 1, Opp: 110.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "supply planning",
+      "search_volume": 1600,
+      "competition": "MEDIUM (14)",
+      "opportunity_score": 114.28571428571429,
+      "strategy": "Target this broad operational query with a guide for coffee supply planning that covers demand forecasting, inventory buffers, lead times, seasonal risks, and supplier contingency planning. Position OriginSafetyClearanceIndex as a risk-input layer that helps wholesale roasters account for country and supplier safety history when planning purchases.",
+      "intent": "Informational and commercial investigation",
+      "tier": 1,
+      "tier_rationale": "Volume: 1600, Comp: 14, Opp: 114.3, Diff: 0",
+      "keyword_difficulty": 0.0
+    },
+    {
+      "keyword": "coffee subscriptions",
+      "search_volume": 18100,
+      "competition": "MEDIUM (100)",
+      "opportunity_score": 181.0,
+      "strategy": "Create a useful comparison or planning page addressing coffee subscription models, purchasing considerations, freshness, sourcing transparency, and supplier accountability. Since the query is broad and highly competitive, differentiate with evidence-based sourcing and safety transparency while targeting long-tail variations such as wholesale, green coffee, and ethically sourced subscriptions.",
+      "intent": "Commercial investigation",
+      "tier": 1,
+      "tier_rationale": "Volume: 18100, Comp: 100, Opp: 181.0, Diff: 2",
+      "keyword_difficulty": 2.0
+    },
+    {
+      "keyword": "coffee greens",
+      "search_volume": 3600,
+      "competition": "MEDIUM (30)",
+      "opportunity_score": 120.0,
+      "strategy": "Build a foundational page clarifying the meaning of coffee greens and the green coffee buying process, including origin, processing, quality checks, documentation, and safety verification. Optimize for related long-tail searches and connect the topic directly to country-level safety records and supplier-risk evaluation.",
+      "intent": "Informational and commercial investigation",
+      "tier": 1,
+      "tier_rationale": "Volume: 3600, Comp: 30, Opp: 120.0, Diff: 0",
+      "keyword_difficulty": 0.0
+    },
+    {
+      "keyword": "coffee and records",
+      "search_volume": 260,
+      "competition": "MEDIUM (2)",
+      "opportunity_score": 130.0,
+      "strategy": "Treat this ambiguous query with a focused landing page that explains the coffee-and-records concept represented by the brand or venue, while clearly incorporating menu, location, hours, and current offerings where relevant. Use structured data and prominent navigational information to capture branded or local intent, and avoid forcing the regulatory product into an unrelated interpretation.",
+      "intent": "Navigational and local",
+      "tier": 1,
+      "tier_rationale": "Volume: 260, Comp: 2, Opp: 130.0, Diff: 11",
+      "keyword_difficulty": 11.0
+    },
+    {
+      "keyword": "coffee records menu",
+      "search_volume": 170,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Create or optimize a dedicated menu page with current food and beverage items, prices where appropriate, dietary details, location information, and an easy-to-scan layout. Add LocalBusiness and Menu structured data plus clear internal links so users with immediate menu intent can find the correct destination quickly.",
+      "intent": "Navigational and local",
+      "tier": 1,
+      "tier_rationale": "Volume: 170, Comp: 0, Diff: 0",
+      "keyword_difficulty": 0.0
+    }
+  ],
+  "tier_1_quick_win_strategy": "Prioritize one tightly aligned, search-intent-specific page per keyword, using concise definitions, practical workflows, searchable tables, FAQs, and strong internal linking to capture low-competition demand quickly. For OriginSafetyClearanceIndex, connect relevant coffee sourcing and operations topics to country-level FDA import refusal and EU RASFF evidence without overstating what the data proves; include transparent methodology, source citations, freshness dates, filters, and clear calls to evaluate supplier risk. Broad or ambiguous terms should be handled with differentiated landing pages and long-tail subtopics, while duplicate keywords should consolidate into one canonical URL to avoid cannibalization. Refresh declining or seasonal topics with current examples and maintain structured data, expert review, and direct navigation paths for both informational researchers and commercial wholesale buyers.",
+  "tier_2_keywords": [
+    {
+      "keyword": "food safety",
+      "search_volume": 90500,
+      "competition": "MEDIUM (14)",
+      "opportunity_score": 6464.285714285715,
+      "strategy": "Use this as a broad topical-authority hub that defines food safety in the context of imported green coffee, supplier verification, FDA refusals, and EU notifications. Link it to country-level safety-record pages and explain how OriginSafetyClearanceIndex supports defensible wholesale sourcing decisions.",
+      "intent": "Informational",
+      "tier": 2,
+      "tier_rationale": "Volume: 90500, Comp: 14, Opp: 6464.3, Diff: 65",
+      "keyword_difficulty": 65.0
+    },
+    {
+      "keyword": "fda alerts",
+      "search_volume": 590,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Create a dedicated guide explaining how FDA alerts and import refusal data affect green coffee buyers, with examples of how to interpret product, country, importer, and supplier signals. Position the platform as a research layer that organizes FDA information into actionable origin-risk checks rather than presenting itself as an official FDA source.",
+      "intent": "Informational and research",
+      "tier": 2,
+      "tier_rationale": "Volume: 590, Comp: 0, Diff: 51",
+      "keyword_difficulty": 51.0
+    },
+    {
+      "keyword": "safety database",
+      "search_volume": 1600,
+      "competition": "MEDIUM (3)",
+      "opportunity_score": 533.3333333333334,
+      "strategy": "Target this with a product-adjacent educational landing page describing what a food safety database should contain and how buyers can use refusal and notification records during supplier due diligence. Demonstrate the platform’s searchable country and origin views, while supporting the page with methodology, source citations, and data-update documentation.",
+      "intent": "Commercial investigation",
+      "tier": 2,
+      "tier_rationale": "Volume: 1600, Comp: 3, Opp: 533.3, Diff: 62",
+      "keyword_difficulty": 62.0
+    },
+    {
+      "keyword": "raw material inspection",
+      "search_volume": 210,
+      "competition": "MEDIUM (3)",
+      "opportunity_score": 70.0,
+      "strategy": "Publish a practical inspection and verification guide for green coffee raw materials covering documentation review, origin-risk screening, physical checks, and escalation when regulatory records raise concerns. Connect manual inspection workflows to OriginSafetyClearanceIndex so roasters can add independent regulatory evidence to supplier evaluations.",
+      "intent": "Informational",
+      "tier": 2,
+      "tier_rationale": "Volume: 210, Comp: 3, Opp: 70.0, Diff: 0",
+      "keyword_difficulty": 0.0
+    },
+    {
+      "keyword": "green bean kopi",
+      "search_volume": 2400,
+      "competition": "MEDIUM (35)",
+      "opportunity_score": 68.57142857142857,
+      "strategy": "Build a narrowly scoped origin and product-intelligence page addressing green bean kopi terminology, sourcing considerations, and food-safety due diligence for wholesale buyers. Avoid forcing a safety claim into a consumer or product-name query; instead, provide useful sourcing context and link to relevant country-risk records where applicable.",
+      "intent": "Product and informational research",
+      "tier": 2,
+      "tier_rationale": "Volume: 2400, Comp: 35, Opp: 68.6",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "green mountain coffee roasters inc",
+      "search_volume": 2400,
+      "competition": "MEDIUM (35)",
+      "opportunity_score": 68.57142857142857,
+      "strategy": "Treat this as an entity-oriented research query and create a factually neutral page or profile only if the available data supports it, distinguishing the named company from broader green coffee supply-chain risk. Include transparent sourcing and avoid implying misconduct; where relevant, explain how buyers can independently review regulatory records connected to companies, products, or origins.",
+      "intent": "Navigational and entity research",
+      "tier": 2,
+      "tier_rationale": "Volume: 2400, Comp: 35, Opp: 68.6, Diff: 5",
+      "keyword_difficulty": 5.0
+    },
+    {
+      "keyword": "the green bean coffee",
+      "search_volume": 260,
+      "competition": "MEDIUM (4)",
+      "opportunity_score": 65.0,
+      "strategy": "Develop a concise entity or brand-disambiguation page that clarifies what the query refers to and provides useful green coffee sourcing and safety context. Use internal links to explain how independent import-refusal and notification data can complement marketing claims without asserting an unsupported relationship with the named entity.",
+      "intent": "Navigational and informational",
+      "tier": 2,
+      "tier_rationale": "Volume: 260, Comp: 4, Opp: 65.0, Diff: 13",
+      "keyword_difficulty": 13.0
+    },
+    {
+      "keyword": "the bean green coffee roastery",
+      "search_volume": 260,
+      "competition": "MEDIUM (4)",
+      "opportunity_score": 65.0,
+      "strategy": "Target this as a brand or roastery research page only where verified information is available, with clear entity identification and neutral language. Add a relevant due-diligence section showing how wholesale buyers can evaluate origin and regulatory signals independently, while avoiding speculative conclusions about the roastery.",
+      "intent": "Navigational and entity research",
+      "tier": 2,
+      "tier_rationale": "Volume: 260, Comp: 4, Opp: 65.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "rasff system",
+      "search_volume": 70,
+      "competition": "MEDIUM (1)",
+      "opportunity_score": 70.0,
+      "strategy": "Create an authoritative explainer of the EU RASFF system, including what notifications mean, how alerts differ from information notices, and how coffee buyers should interpret them. Link the explanation to searchable green coffee country-risk pages and cite official EU sources to build trust and topical authority.",
+      "intent": "Informational",
+      "tier": 2,
+      "tier_rationale": "Volume: 70, Comp: 1, Opp: 70.0",
+      "keyword_difficulty": null
+    },
+    {
+      "keyword": "alert food safety",
+      "search_volume": 320,
+      "competition": "MEDIUM (4)",
+      "opportunity_score": 80.0,
+      "strategy": "Target this with a plain-language guide to food-safety alerts and a workflow for turning an alert into a supplier-risk review. Show how FDA refusal records and RASFF notifications can be cross-referenced by product, origin, date, and issue, while clearly separating confirmed records from risk indicators.",
+      "intent": "Informational and research",
+      "tier": 2,
+      "tier_rationale": "Volume: 320, Comp: 4, Opp: 80.0, Diff: 23",
+      "keyword_difficulty": 23.0
+    },
+    {
+      "keyword": "caydence coffee",
+      "search_volume": 90,
+      "competition": "MEDIUM (0)",
+      "opportunity_score": null,
+      "strategy": "Handle this as a navigational/entity query with a factual, neutral profile or disambiguation page only when reliable public information is available. Provide transparent guidance on independent supplier and origin verification, but do not associate the entity with a safety event unless supported by an authoritative record.",
+      "intent": "Navigational and entity research",
+      "tier": 2,
+      "tier_rationale": "Volume: 90, Comp: 0, Diff: 7",
+      "keyword_difficulty": 7.0
+    }
+  ],
+  "tier_2_strategy": "Build Tier 2 growth around a connected topical cluster rather than isolated keyword pages. The primary authority path should move from broad food-safety education to FDA alerts, RASFF system guidance, safety-database methodology, raw-material inspection, and practical alert interpretation, then into country-level green coffee safety records and supplier-risk workflows. Each substantial page should cite authoritative FDA and EU sources, explain limitations and terminology, use consistent entity and origin data, and link toward OriginSafetyClearanceIndex’s core searchable experience. This structure supports the product’s differentiation: helping wholesale roasters evaluate supplier and origin risk independently of importer marketing claims.\n\nBrand and entity queries such as green bean kopi, Green Mountain Coffee Roasters Inc, The Green Bean Coffee, The Bean Green Coffee Roastery, and Caydence Coffee should be handled with carefully disambiguated, evidence-based pages rather than aggressive commercial targeting. Consolidate duplicate keywords onto one canonical resource per intent, avoid unsupported safety allegations, and use schema, transparent methodology, regular data updates, and expert-reviewed explanations to earn trust over the 3–6 month ranking horizon. Measure progress by cluster-level visibility, qualified wholesale engagement, clicks to country-risk pages, and assisted conversions—not only by rankings for broad terms.",
+  "tier_3_geographic_groups": null,
+  "tier_4_category_groups": [
+    {
+      "category_name": "Coffee-Specific Safety Hazards and Roastery Practices",
+      "total_volume": 910,
+      "keywords": [
+        {
+          "keyword_name": "coffee safety",
+          "search_volume": 880,
+          "competition": null,
+          "cpc": 1.34
+        },
+        {
+          "keyword_name": "green coffee beans safety",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "green coffee safety",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "food safety coffee roasting",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "food safety hazards in coffee manufacturing",
+          "search_volume": 0,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "coffee roaster safety",
+          "search_volume": 0,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Create a coffee-specific safety content cluster covering green-bean handling, roasting hazards, manufacturing controls, and practical roastery procedures. Each page should connect general safety guidance to supplier-risk evaluation, contamination prevention, documented controls, and links to relevant FDA or RASFF evidence where appropriate."
+    },
+    {
+      "category_name": "Coffee Traceability, Lot Records, and Supply Documentation",
+      "total_volume": 410,
+      "keywords": [
+        {
+          "keyword_name": "traceability records",
+          "search_volume": 110,
+          "competition": null,
+          "cpc": 5.91
+        },
+        {
+          "keyword_name": "lot traceability",
+          "search_volume": 170,
+          "competition": null,
+          "cpc": 22.59
+        },
+        {
+          "keyword_name": "cogs coffee",
+          "search_volume": 110,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "record coffee supply reviews",
+          "search_volume": 20,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Build operational pages explaining how roasters can connect lots, cost records, supplier documentation, and review histories into a defensible chain of custody. Use templates, field-level examples, and workflow diagrams that show how traceability records support recalls, supplier scoring, inventory decisions, and audit readiness."
+    },
+    {
+      "category_name": "Supplier Due Diligence Research and Reporting",
+      "total_volume": 340,
+      "keywords": [
+        {
+          "keyword_name": "supplier due diligence",
+          "search_volume": 320,
+          "competition": null,
+          "cpc": 7.76
+        },
+        {
+          "keyword_name": "know your supplier due diligence",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "supplier due diligence report",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "due diligence checks supplier",
+          "search_volume": 0,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "third party supplier due diligence",
+          "search_volume": 0,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Develop a scalable due-diligence hub focused on researching, documenting, and periodically reassessing coffee suppliers. Pages should provide checklists, report structures, third-party review guidance, and clear explanations of how independent refusal and alert data can strengthen procurement decisions beyond supplier-provided claims."
+    },
+    {
+      "category_name": "Supplier Verification Programs and Foreign Supplier Controls",
+      "total_volume": 140,
+      "keywords": [
+        {
+          "keyword_name": "supplier verification",
+          "search_volume": 110,
+          "competition": null,
+          "cpc": 9.81
+        },
+        {
+          "keyword_name": "fda foreign supplier verification",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "food supplier verification program",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "foreign supplier verification programs",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Create compliance-oriented pages explaining supplier verification programs, foreign-supplier controls, and the evidence needed to validate imported coffee sources. Structure the content around actionable program steps, verification frequency, documentation requirements, and how OriginSafetyClearanceIndex data can be used as an independent risk signal."
+    },
+    {
+      "category_name": "RASFF Rapid Alert System Research",
+      "total_volume": 480,
+      "keywords": [
+        {
+          "keyword_name": "rapid alert system for food and feed rasff",
+          "search_volume": 90,
+          "competition": null,
+          "cpc": 11.1
+        },
+        {
+          "keyword_name": "rasff rapid alert system for food and feed",
+          "search_volume": 70,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "rapid alert system for food and feed",
+          "search_volume": 320,
+          "competition": null,
+          "cpc": 7.03
+        }
+      ],
+      "strategy_recommendation": "Treat these closely related RASFF queries as a single information architecture cluster with an authoritative explainer, searchable alert-data page, and supporting interpretation guides. Explain what RASFF notifications mean, how to search and interpret them for coffee supply risk, and how European alerts complement FDA import-refusal research."
+    },
+    {
+      "category_name": "Food Defense and Food Alert Response",
+      "total_volume": 140,
+      "keywords": [
+        {
+          "keyword_name": "alert food defense",
+          "search_volume": 50,
+          "competition": null,
+          "cpc": 0.0
+        },
+        {
+          "keyword_name": "alert food",
+          "search_volume": 90,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Publish concise, intent-matched pages distinguishing food-defense alerts, food-safety alerts, and broader notification terminology. Focus on response workflows for roasters, including alert triage, affected-lot identification, supplier communication, documentation, and escalation into procurement or recall decisions."
+    },
+    {
+      "category_name": "FDA Safety Databases and Import Intelligence",
+      "total_volume": 10,
+      "keywords": [
+        {
+          "keyword_name": "fda safety database",
+          "search_volume": 10,
+          "competition": null,
+          "cpc": 0.0
+        }
+      ],
+      "strategy_recommendation": "Create a practical guide to FDA safety databases that emphasizes how wholesale roasters can locate, filter, and interpret records relevant to imported green coffee. Include database navigation instructions, limitations of the available data, and a clear path from FDA records to origin-level risk assessment and supplier review."
+    }
+  ],
+  "content_strategy": "1. **Content Prioritization**: Map Tier 1 keywords (rasff notifications, roast profiles, cupping protocols, supply planning, coffee subscriptions, coffee greens, coffee and records, coffee records menu) to high-intent commercial pages such as supplier verification guides and safety database comparisons, while Tier 2 keywords (food safety, fda alerts, safety database, raw material inspection, green bean kopi, rasff system, alert food safety, caydence coffee) become the foundation for broader informational pillars that attract discovery traffic.\n\n2. **Topic Cluster Architecture**: Create 5 core pillars around the highest-value operational pain points—RASFF notifications and EU safety alerts, FDA import intelligence and alerts, supplier due diligence and verification, coffee-specific safety hazards and roastery practices, and traceability/lot records and supply documentation—each anchored by a Tier 1 or Tier 2 primary keyword and supported by 8-12 related terms from the same tiers.\n\n3. **Content Calendar**: Weeks 1-4 focus on Tier 1 quick wins: publish RASFF notifications comparison guide (Week 1), supplier verification checklist (Week 2), supply planning integration tutorial (Week 3), and coffee records menu optimization (Week 4). Weeks 5-8 expand into Tier 2 pillars: food safety hub (Week 5), FDA alerts database guide (Week 6), raw material inspection protocols (Week 7), and RASFF system research deep-dive (Week 8).\n\n4. **Content Formats**: Match search intent with comparison tables for RASFF vs FDA alerts, step-by-step checklists for supplier due diligence, downloadable templates for lot traceability, and interactive database explorers for safety records—each format designed to capture both informational and commercial queries while supporting conversion to platform signup.\n\n5. **Conversion Integration**: Every content piece contains contextual CTAs that route users from safety research into supplier verification workflows, from alert triage into lot-level clearance checks, and from origin records into procurement dashboards, with lead magnets (checklists, templates, risk scoring guides) gated behind email capture to build the wholesale buyer nurture sequence.\n\n6. **Competitive Differentiation**: Position all content as the connective layer between regulatory data sources and roaster workflows, explicitly stating that OriginSafetyClearanceIndex organizes public records rather than replacing official systems, creating trust while driving qualified traffic to the platform's unique cross-referenced index.",
+  "topic_clusters": [
+    {
+      "cluster_name": "RASFF Notifications and EU Safety Alerts",
+      "primary_keyword": "rasff notifications",
+      "supporting_keywords": [
+        "rasff system",
+        "alert food safety",
+        "food alerts",
+        "safety database",
+        "food safety",
+        "caydence coffee",
+        "green coffee",
+        "quality control"
+      ],
+      "total_monthly_volume": 243650,
+      "content_recommendation": "Create a comprehensive RASFF notifications guide that explains how EU rapid alerts work for coffee imports, includes a searchable database of recent coffee-related notifications, and provides a step-by-step workflow for roasters to integrate RASFF monitoring into their supplier verification process.",
+      "estimated_traffic_potential": "24,365-73,095 visits/month",
+      "priority": 1
+    },
+    {
+      "cluster_name": "FDA Import Intelligence and Alerts",
+      "primary_keyword": "fda alerts",
+      "supporting_keywords": [
+        "safety database",
+        "food safety",
+        "origin records",
+        "contamination risk",
+        "green coffee",
+        "quality control",
+        "supply planning",
+        "coffee and records"
+      ],
+      "total_monthly_volume": 243200,
+      "content_recommendation": "Build an FDA alerts intelligence hub featuring import refusal trends for green coffee by origin country, a searchable refusal database, and procurement decision frameworks that connect FDA data to supplier qualification workflows for wholesale roasters.",
+      "estimated_traffic_potential": "24,320-72,960 visits/month",
+      "priority": 1
+    },
+    {
+      "cluster_name": "Supplier Due Diligence and Verification",
+      "primary_keyword": "supply planning",
+      "supporting_keywords": [
+        "supplier verification",
+        "foreign supplier controls",
+        "raw material inspection",
+        "coffee greens",
+        "coffee subscriptions",
+        "roast profiles",
+        "cupping protocols",
+        "coffee records menu"
+      ],
+      "total_monthly_volume": 24380,
+      "content_recommendation": "Develop a supplier due diligence framework that combines FDA refusal history, RASFF notifications, and origin safety records into actionable verification checklists and risk scoring templates that roasters can apply during procurement cycles.",
+      "estimated_traffic_potential": "2,438-7,314 visits/month",
+      "priority": 2
+    },
+    {
+      "cluster_name": "Coffee-Specific Safety Hazards and Roastery Practices",
+      "primary_keyword": "food safety",
+      "supporting_keywords": [
+        "contamination risk",
+        "quality control",
+        "green coffee",
+        "raw material inspection",
+        "green bean kopi",
+        "cupping protocols",
+        "roast profiles",
+        "coffee greens"
+      ],
+      "total_monthly_volume": 245560,
+      "content_recommendation": "Create roaster-focused safety content covering mycotoxin risks, pesticide residues, and storage conditions specific to green coffee, with practical inspection protocols and hazard analysis templates that connect safety data to daily roasting operations.",
+      "estimated_traffic_potential": "24,556-73,668 visits/month",
+      "priority": 2
+    },
+    {
+      "cluster_name": "Traceability Lot Records and Supply Documentation",
+      "primary_keyword": "coffee and records",
+      "supporting_keywords": [
+        "coffee records menu",
+        "origin records",
+        "lot traceability",
+        "supply planning",
+        "coffee subscriptions",
+        "safety database",
+        "food alerts",
+        "quality control"
+      ],
+      "total_monthly_volume": 99190,
+      "content_recommendation": "Build traceability documentation guides that show how to maintain lot-level records linking origin safety data, supplier verification status, and roast profiles, creating an end-to-end documentation system for compliance and quality assurance.",
+      "estimated_traffic_potential": "9,919-29,757 visits/month",
+      "priority": 3
+    }
+  ],
+  "technical_seo_recommendations": "## Technical SEO Implementation Guide\n\n### 1. Title Tag Strategy\n**Formula:** `[Primary Keyword] | [Page Type] | OriginSafetyClearanceIndex`\n\n**Homepage Example:** \"Green Coffee Safety Intelligence | Origin Records & Supplier Verification | OriginSafetyClearanceIndex\"\n**Location/Origin Page Example:** \"Colombia Green Coffee Safety Records | FDA Alerts & RASFF Notifications | OriginSafetyClearanceIndex\"\n**Service/Database Page Example:** \"FDA Import Alerts Database | Coffee Refusal Trends by Origin | OriginSafetyClearanceIndex\"\n**Guide/Blog Example:** \"RASFF Notifications Guide | How to Monitor EU Coffee Alerts | OriginSafetyClearanceIndex\"\n**Supplier Verification Example:** \"Supplier Due Diligence Checklist | Verify Coffee Origins & Safety Records | OriginSafetyClearanceIndex\"\n**Comparison Page Example:** \"FDA vs RASFF Coffee Alerts | Cross-Referenced Safety Database | OriginSafetyClearanceIndex\"\n\n### 2. URL Structure Patterns\n| Page Type | URL Pattern | Example | Target Keywords |\n|-----------|-------------|---------|-----------------|\n| Homepage | / | / | green coffee, food safety, quality control |\n| Origin/Country | /origins/:country | /origins/colombia | origin records, contamination risk |\n| Database/Alert | /database/:source | /database/fda-alerts | fda alerts, rasff notifications |\n| Supplier | /suppliers/:entity | /suppliers/acme-coffee | supply planning, supplier verification |\n| Guide | /guides/:topic | /guides/rasff-monitoring | rasff system, alert food safety |\n| Comparison | /compare/:items | /compare/fda-rasff | safety database, food alerts |\n\n### 3. Schema Markup Types\n**Priority 1 (Critical):** \n- Organization - Core brand identity for knowledge panel and entity understanding\n- WebSite - Sitelinks searchbox eligibility and site-level search functionality\n\n**Priority 2 (Important):**\n- Service - Rich results for supplier verification and safety database services\n- FAQPage - FAQ rich snippets for common questions about RASFF notifications, FDA alerts, and supplier verification\n- BreadcrumbList - Navigation breadcrumbs for origin pages, database records, and guide content\n- Dataset - Structured data for safety records and alert databases\n\n**Priority 3 (Nice-to-have):**\n- Article - For blog/guide content and how-to resources\n- HowTo - Step-by-step supplier verification and safety monitoring workflows\n- Product - For downloadable checklists and risk assessment templates\n\n### 4. H1/H2 Structure Recommendations\n**Homepage:**\n- **H1 Pattern:** \"Green Coffee Safety Intelligence | Cross-Referenced FDA & EU Records\"\n- **H2 Sections:** Origin Safety by Country, Recent FDA Import Alerts, RASFF Notifications Dashboard, Supplier Verification Workflow, Safety Database Search, How to Use Origin Records\n\n**Origin/Country Page:**\n- **H1 Pattern:** \"[Country] Green Coffee Safety Records | FDA Refusals & RASFF Alerts\"\n- **H2 Sections:** Import Refusal History, RASFF Notifications, Origin Risk Factors, Supplier Verification Status, Safety Database Records, Recommended Verification Steps\n\n**Database/Alert Page:**\n- **H1 Pattern:** \"[Source] Coffee Safety Database | Search [Alert Type] Records\"\n- **H2 Sections:** Database Overview, Search Instructions, Recent Alerts, Historical Trends, Data Sources & Methodology, Integration with Supplier Verification\n\n**Guide Page:**\n- **H1 Pattern:** \"[Topic] Guide | How to [Action] for Coffee Procurement\"\n- **H2 Sections:** Overview & Purpose, Step-by-Step Instructions, Data Sources, Risk Assessment Framework, Integration Workflows, Downloadable Templates\n\n### 5. Internal Linking Strategy\n**Hub-and-Spoke Architecture:** Create 5 primary hub pages (RASFF notifications, FDA alerts, supplier due diligence, coffee safety hazards, traceability documentation) that link to 15-25 spoke pages each, with bidirectional links between related clusters.\n\n**Cross-Cluster Linking:** Every origin record page links to relevant supplier verification content, every alert page links to traceability documentation, and every guide links to the safety database search functionality.\n\n**Footer/Navigation Structure:** Primary navigation includes Home, Safety Database, Origin Records, Supplier Verification, Resources. Footer provides links to all 5 topic clusters, methodology documentation, data sources, and API documentation. Breadcrumb navigation shows hierarchical path from broad category to specific record or guide.",
+  "competitive_positioning": "## Keyword Gaps to Exploit\nCompetitors with strong regulatory or trade-data visibility do not appear to own the full roaster workflow from initial safety research to supplier qualification, lot review, and procurement action. Build content around the connective layer between FDA import refusals, RASFF notifications, origin records, supplier due diligence, traceability, and raw-material inspection. This creates an opportunity to rank for both regulatory research terms and commercially valuable supplier-verification terms.\n\n## Unique Positioning Angles\nPosition OriginSafetyClearanceIndex as independent, evidence-led clearance intelligence for wholesale coffee buyers. The core message should be that the platform does not replace official FDA or EU systems; it organizes and contextualizes public records so roasters can evaluate origin and supplier risk more consistently. Emphasize searchable records, source citations, freshness dates, methodology, risk limitations, and practical procurement workflows.\n\n## Defensible Content Moats\nCreate a connected data-and-content architecture linking coffee-specific safety guidance to country records, supplier entities, alert histories, and due-diligence reports. Reusable templates for supplier verification, lot traceability, alert triage, and foreign-supplier controls can generate durable long-tail coverage while reinforcing the same proprietary workflow. Expert-reviewed interpretation and transparent separation of confirmed records from risk indicators will strengthen trust and reduce the risk of unsupported entity claims.\n\n## Competitive Execution Priorities\nUse broad hubs such as green coffee, food safety, and quality control to attract discovery traffic, then route users into high-intent pages for FDA alerts, RASFF research, safety databases, supplier due diligence, and origin assessment. Measure success through visibility across the complete topic cluster, engagement with country and supplier records, qualified wholesale actions, and assisted conversions—not only rankings for broad head terms.",
+  "implementation_roadmap": "- Phase 1 (Mo 1-3): Technical foundation + 4 Tier 1 pages (RASFF notifications guide, supplier verification checklist, supply planning tutorial, coffee records menu). Fix crawl/index issues, implement Organization/WebSite schema. Target: first rankings for rasff notifications, supply planning.\n- Phase 2 (Mo 4-6): 4 Tier 2 pillars (food safety hub, FDA alerts database, raw material inspection, RASFF system research). Build 5 topic clusters with internal linking. Target: rankings for fda alerts, safety database.\n- Phase 3 (Mo 7-12): Scale origin/country pages, supplier entities, alert records using programmatic templates. Deploy geographic expansion once regional keyword data validates.",
+  "budget_allocation": "Bootstrap ($300-600/mo): 60% content creation for 8 Tier 1-2 pages, 25% FDA/RASFF API data access, 15% technical SEO tools. Moderate ($1,200-1,800/mo): Add developer for database search functionality, expand to 15+ pages. Aggressive ($2,500+/mo): Full-time data engineer, automated supplier verification scoring, 30+ programmatic pages.",
+  "seo_kill_question": {
+    "indexable_page_ceiling": 56,
+    "head_count": 12,
+    "mid_count": 25,
+    "tail_count": 19,
+    "median_keyword_difficulty": 8.0,
+    "winnable_pages": 27,
+    "kd_sample_size": 34,
+    "forum_soft_serp_share": 0.0,
+    "institutional_serp_share": 0.2,
+    "serp_sampled": 5,
+    "penalty_risk_flag": false,
+    "on_idea_page_ceiling": 21,
+    "on_idea_winnable": 11,
+    "verdict": "SEO thesis holds — 56 indexable intents, 27 winnable on a new domain (median KD 8.0).",
+    "rationale": "Page ceiling 56 (head 12 / mid 25 / tail 19); KD on 34/56 intents; median KD 8.0; winnable<40 = 27."
+  }
+}

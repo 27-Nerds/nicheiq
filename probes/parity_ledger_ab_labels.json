@@ -1,0 +1,44 @@
+{
+  "_README": "Hand labels for ARM B flip precision. true = a competent analyst reading ONLY the cited ledger evidence line and the candidate's value proposition would agree the vendor already serves the candidate's core job outright or in substantial part. Labelled 2026-08-16 by reading both texts; the judge's own mechanism_match line was read last and never used to decide. Class correctness (partial vs shipped) is NOT part of this label — it is reported separately, and several `true` rows inherit an overstated `shipped`.",
+
+  "checkpoint_a_browser_extension_that_drafts_concise_customer_|WismoTriageLayer": true,
+  "checkpoint_ai_visibility_for_local_businesses_in_london_find|LocalFactFixer": true,
+  "checkpoint_a_browser_based_inventory_reconciliation_tool_for|VetAuditMatch": true,
+  "checkpoint_a_chrome_extension_that_drafts_reddit_replies_for|RedditReplyGuard": true,
+  "checkpoint_freelance_bookkeepers_managing_month_end_close_ac|RecMatch Detective": true,
+  "checkpoint_a_chrome_extension_that_drafts_reddit_replies_for|ActivityBridge Router": true,
+  "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_u|CottageLegal": true,
+  "checkpoint_independent_live_music_venues_coordinating_artist|SettlementLine Feed": true,
+  "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_u|FlourCostTruth": true,
+
+  "_false_1": "GovSpend is B2G procurement data; the candidate extracts segment-spend evidence from SEC filings and tests paid-pilot intent. 'Both are about spending' is topic co-occurrence, not the same job.",
+  "checkpoint_nicheiq_is_an_ai_market_researcher_for_people_who|Willingness-to-Pay Evidence Card": false,
+
+  "checkpoint_a_slack_bot_for_freelance_bookkeepers_that_automa|ClearPayout CAMT": true,
+  "checkpoint__probe-preserve_20260807_205856|Fediverse Response Desk": true,
+  "checkpoint_freelance_bookkeepers_managing_month_end_close_ac|CloseRecon Command Center": true,
+  "checkpoint__probe-preserve_20260807_205856|ActivityBridge Router": true,
+  "checkpoint_a_chrome_extension_that_drafts_reddit_replies_for|VoiceGate Fediverse": true,
+
+  "_false_2": "Dotabuff's evidence line is 'referenced for roster moves, player stats, inside scoop' — a community stats site people cite, not a product that finds scoops. The candidate diffs Wayback snapshots of Valve URLs to beat the press. Shared topic (Dota roster moves), different job.",
+  "checkpoint_competitive_dota_2_and_cs2_fans_55156281-a96b-422|PatchZero": false,
+
+  "_false_3": "Xero reconciles INSIDE Xero; the candidate preflights bank-feed CSVs before a QuickBooks import and emits adjusting entries for migrants. Adjacent job, which rule 2 was written to block.",
+  "checkpoint_freelance_bookkeepers_managing_month_end_close_ac|BankFeed Reconciliation Preflight (for QuickBooks Migrants)": false,
+
+  "checkpoint_freelance_bookkeepers_managing_month_end_close_ac|RecDiffHunter": true,
+  "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_u|VenueLicenseValidator": true,
+  "checkpoint_a_browser_extension_that_drafts_concise_customer_|S10WISMOInterceptor": true,
+  "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_u|BakeCheck": true,
+  "checkpoint_a_browser_extension_that_drafts_concise_customer_|SilentScan Gate": true,
+  "checkpoint_a_chrome_extension_that_drafts_reddit_replies_for|Fediverse Response Desk": true,
+  "checkpoint_freelance_video_editors_managing_client_revision_|SyncEdit Inbox": true,
+
+  "_false_4": "The candidate is a content-first SEO directory of escalation scripts and checklists. Entrata is a PMS whose AI agents route work orders. Different product entirely; only the end-state phrase 'closed work orders' is shared. This is the known failure mode where a content/SEO play gets blocked by a software incumbent.",
+  "checkpoint_a_web_app_for_small_landlords_that_reads_utility_|MaintenanceEscalationTemplates": false,
+
+  "checkpoint__probe-preserve_20260807_205856|VoiceGate Fediverse": true,
+
+  "_false_5": "Ledger-quality failure, not a judge failure. The row is stamped 'Xero' but its own evidence says 'consolidation software pulls Trial Balance data from multiple Xero orgs' — the consolidation is done by OTHER software, not by the named incumbent. The judge faithfully applied a defective row.",
+  "checkpoint_freelance_bookkeepers_managing_month_end_close_ac|GroupConsolidate & Intercompany Eliminator": false
+}

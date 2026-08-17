@@ -527,3 +527,50 @@ describe("compare page evidence note uses the shared buyer-facing authority", ()
     }
   });
 });
+
+/**
+ * The Evidence-note row falls through to `incumbent_parity` when no critic concern was stored,
+ * and it used to print that field RAW — so the one screen that puts three ideas side by side
+ * showed the internal stamp: the bare class token for a hit ("shipped by Karbon: …"), and for a
+ * miss the literal "none found", which reads as a proven empty market. The system knows only
+ * that ITS OWN QUERIES — built from that idea's own wording — returned nothing.
+ */
+describe("compare page evidence note: stored parity stamps", () => {
+  it("phrases a parity hit instead of printing its class token", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "Candidate A",
+            incumbent_parity: "shipped by Karbon: workflow automation",
+          }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    expect(view.queryByText(/^shipped by Karbon/)).toBeNull();
+    expect(view.getByText(/Already shipped by Karbon/)).toBeInTheDocument();
+  });
+
+  it("renders an empty parity search as a search result, not as a proven empty market", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({ idea_id: "idea-a", solution_name: "Candidate A", incumbent_parity: "none found" }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    // BEHAVIOURAL, not a copy pin: the cell must attribute the result to our own search and
+    // must not stand as a finding of absence. The wording may improve without touching this.
+    expect(view.queryByText(/^None found\.?$/i)).toBeNull();
+    const cell = view.getByText(/did not surface/i);
+    expect(cell.textContent).toMatch(/\bour\b/i);
+    expect(cell.textContent).toMatch(/\bsearch(es)?\b/i);
+    expect(cell.textContent).toMatch(/\bmiss(ed)?\b/i);
+    expect(cell.textContent).not.toMatch(/\bno (competing|competitor|incumbent|equivalent)\b/i);
+  });
+});

@@ -1,0 +1,273 @@
+{
+ "provisional": true,
+ "user_idea_text": "AI visibility for local businesses in London\nFind out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers.\nHow it works: A simple web app that monitors your visibility across AI platforms.",
+ "user_idea_brief": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+ "assumed_fields": [],
+ "derived_market": "The AI search optimization and visibility market focuses on managing how generative AI models, LLMs, and AI-powered search engines represent businesses to users. It encompasses the technical monitoring, auditing, and content strategy required to influence AI-generated recommendations, summaries, and business profiles.",
+ "derived_buyer": "Local service businesses",
+ "desk_limits": [
+  "We read what people said unprompted. We could not ask them the follow-up question.",
+  "Nothing here is commitment evidence. No one has paid, pre-ordered, or given up anything for this idea.",
+  "Severity and mention counts describe this run's captured discussions, not the whole market."
+ ],
+ "experiment_ladder": [
+  {
+   "rung": 1,
+   "action": "Run 5 problem interviews with the buyer you named",
+   "kill_number": "kill if no interview independently describes the problem",
+   "cost_note": "free"
+  },
+  {
+   "rung": 2,
+   "action": "Put up a landing page and drive ~50 clicks to it",
+   "kill_number": "kill below 1% click-to-email",
+   "cost_note": "under $100"
+  },
+  {
+   "rung": 3,
+   "action": "Offer 3 pre-sales at half price",
+   "kill_number": "kill below 3 paid commitments",
+   "cost_note": "reputation only"
+  },
+  {
+   "rung": 4,
+   "action": "Deliver the outcome by hand for one customer (concierge)",
+   "kill_number": "kill if they stop showing up",
+   "cost_note": "a weekend"
+  }
+ ],
+ "next_experiment_index": 0,
+ "pivot": {
+  "attempted": false,
+  "outcome": "not_attempted",
+  "trigger_finding": null,
+  "because": null,
+  "keeps": null,
+  "changes": null,
+  "reason_not_shown": null,
+  "ries_label": null,
+  "name": null
+ },
+ "outcome": "premise_unproven",
+ "idea_name": "AI visibility for local businesses in London Find out what AI assistants know ab",
+ "headline": "The problem behind AI visibility for local businesses in London Find out what AI assistants know ab shows up in real threads, but adversarial review found verified counterevidence against the evaluated premise. Demand is still unmeasured.",
+ "parts": [
+  {
+   "key": "problem_real",
+   "state": "supported",
+   "answer": "Supported",
+   "detail": "Linked to real discussion in this run."
+  },
+  {
+   "key": "space_occupied",
+   "state": "review_concerns",
+   "answer": "Concerns found",
+   "detail": "The direct-equivalent probe did not produce a result, but adversarial review found material concerns. See What would kill it."
+  },
+  {
+   "key": "demand",
+   "state": "not_measured",
+   "answer": "Not measured",
+   "detail": "Search-demand probes are outside this check's scope. They're the Deep Research step."
+  }
+ ],
+ "score_bands": {
+  "market_fit": "limited",
+  "technical_feasibility": "limited",
+  "novelty": "limited",
+  "seo_scalability": "weak"
+ },
+ "evidence_confidence": "High",
+ "evidence_confidence_reason": "Broad, repeated discussion from distinct accounts.",
+ "breadth": {
+  "posts": 20,
+  "distinct_authors": 20,
+  "distinct_communities": 12,
+  "months_spanned": 14,
+  "label": "20 posts \u00b7 20 accounts \u00b7 12 communities \u00b7 14 mo"
+ },
+ "anchored_pains": [
+  {
+   "pain_title": "Cannot establish a stable prompt-level visibility baseline",
+   "severity_band": "good",
+   "severity_label": "medium",
+   "mention_count": 57,
+   "quotes": [
+    "We've been using AIClicks to monitor how brands appear across ChatGPT, Claude, Gemini, and Perplexity, and that data helps validate whether those SEO efforts are translating into AI visibility rather than just assuming they are...",
+    "I've tested a few platforms, but I still spend a lot of time validating results manually across ChatGPT, Gemini, Perplexity, and AI Overviews."
+   ]
+  },
+  {
+   "pain_title": "Cannot keep business facts consistent across AI-retrieved sources",
+   "severity_band": "moderate",
+   "severity_label": "medium",
+   "mention_count": 36,
+   "quotes": [
+    "I'll run the same prompt across ChatGPT, Perplexity, and Gemini and get three completely different cited sources.",
+    "But when I started testing AI visibility (asking ChatGPT/Perplexity/Gemini about their category), the brand barely showed up, while a much smaller competitor with a *thinner* backlink profile kept getting cited."
+   ]
+  }
+ ],
+ "related_pains": [
+  {
+   "pain_title": "Cannot compare recommendation share of voice across AI systems",
+   "severity_label": "medium",
+   "mention_count": 57,
+   "note": "unmatched"
+  },
+  {
+   "pain_title": "Cannot keep local service and location data consistent across profiles",
+   "severity_label": "medium",
+   "mention_count": 28,
+   "note": "unmatched"
+  }
+ ],
+ "stronger_pain_count": 1,
+ "unanchored_hypothesis": false,
+ "incumbent_parity": null,
+ "existing_equivalent": null,
+ "competitors": [
+  {
+   "name": "Profound",
+   "what_they_ship": "AI visibility optimization in LLMs",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "pricing not disclosed",
+   "url": null
+  },
+  {
+   "name": "Falconrank",
+   "what_they_ship": "AI search rank tracking",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "pricing not disclosed",
+   "url": null
+  },
+  {
+   "name": "Google Search Console",
+   "what_they_ship": "Google AI feature optimization",
+   "price_note": "free",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited to Google ecosystem",
+   "url": null
+  },
+  {
+   "name": "GA4",
+   "what_they_ship": "Analytics for AI-driven traffic",
+   "price_note": "free",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no direct AI visibility tracking",
+   "url": null
+  },
+  {
+   "name": "Semrush",
+   "what_they_ship": "AI SEO content optimization",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "traditional SEO focus",
+   "url": null
+  },
+  {
+   "name": "Ahrefs",
+   "what_they_ship": "AI SEO content optimization",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "traditional SEO focus",
+   "url": null
+  },
+  {
+   "name": "OtterlyAI",
+   "what_they_ship": "AI visibility monitoring",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "pricing not disclosed",
+   "url": null
+  }
+ ],
+ "duplicate_of": null,
+ "red_team_verdict": "killed",
+ "red_team_findings": [
+  {
+   "claim": "Ayzeo is a direct category incumbent overlapping the proposed local-business AI visibility monitor: its search result explicitly offers getting local businesses recommended by AI chatbots, monitoring \u201cnear me\u201d prompts, validating LocalBusiness schema, and tracking AI visibility.",
+   "kind": "verified_incumbent_overlap"
+  },
+  {
+   "claim": "The buyer can access free alternatives in the same workflow: Ayzeo advertises a free analysis, Birdeye advertises a free AI visibility checker covering ChatGPT, Perplexity, and Gemini, and Real Connection Media advertises a free AI visibility check.",
+   "kind": "verified_free_or_bundled_alternative"
+  },
+  {
+   "claim": "The supplied evidence does not establish who pays, willingness to pay, or that scheduled compliant platform-interface checks solve the common case; the results show monitoring/checking and service offers but do not establish the proposed mechanism\u2019s coverage, access, or conversion to paying customers.",
+   "kind": "evidence_gap"
+  }
+ ],
+ "kill_risks": [
+  {
+   "claim": "Ayzeo is a direct category incumbent overlapping the proposed local-business AI visibility monitor: its search result explicitly offers getting local businesses recommended by AI chatbots, monitoring \u201cnear me\u201d prompts, validating LocalBusiness schema, and tracking AI visibility.",
+   "finding_kind": "verified_incumbent_overlap",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The buyer can access free alternatives in the same workflow: Ayzeo advertises a free analysis, Birdeye advertises a free AI visibility checker covering ChatGPT, Perplexity, and Gemini, and Real Connection Media advertises a free AI visibility check.",
+   "finding_kind": "verified_free_or_bundled_alternative",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The supplied evidence does not establish who pays, willingness to pay, or that scheduled compliant platform-interface checks solve the common case; the results show monitoring/checking and service offers but do not establish the proposed mechanism\u2019s coverage, access, or conversion to paying customers.",
+   "finding_kind": "evidence_gap",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  }
+ ],
+ "alternatives": {
+  "count": 12,
+  "named_buyer_count": 4,
+  "top": [
+   {
+    "idea_id": "idea_c5bd8bd563a6bfc9b92c66f8430765a5",
+    "name": "PromptBaseline",
+    "one_liner": "Measure whether an AI visibility change is real before acting, then trace unstable prompt claims to the public entity facts that may be causing the drift."
+   },
+   {
+    "idea_id": "idea_b9fd4b75841a64394c5cc94b90b51df3",
+    "name": "Answer Recovery Lab",
+    "one_liner": "Turn unstable AI visibility into a testable engineering problem: show the exact journey by which an answer disappears, identify the smallest structural repair, "
+   },
+   {
+    "idea_id": "idea_7e9629d5dbd9f4f06332030078ffeda4",
+    "name": "Citation Gap Triage",
+    "one_liner": "Give brand reputation teams a prompt-level verdict that explains whether an AI recommendation omission is caused by missing third-party evidence or model sampli"
+   },
+   {
+    "idea_id": "idea_1122c413caac91f994bd2acc99d90b27",
+    "name": "ContextCut Test",
+    "one_liner": "Show London service providers which page passages remain accurate, identifiable, and understandable when extracted alone\u2014and exactly how to rewrite the passages"
+   },
+   {
+    "idea_id": "idea_13e60f46f6b028f69caf28f7df1646fc",
+    "name": "GEO Change Ledger",
+    "one_liner": "Give marketers a permanent public URL proving exactly what GEO changed, when it changed, and what visibility movement followed."
+   }
+  ]
+ },
+ "seed_candidate_status": "active",
+ "seed_idea_id": "idea_db3924b2fbee3ed4d87806ddee387abd",
+ "seed_idea_revision": 1,
+ "seed_purchasable": true,
+ "seed_display_composite_score": 38,
+ "demotion_reason": null,
+ "evaluated_idea": {
+  "name": "AI visibility for local businesses in London Find out what AI assistants know ab",
+  "value_proposition": "AI visibility for local businesses in London Find out what AI assistants know about your business, how they describe your services, and whether they recommend you to potential customers. How it works: A simple web app that monitors your visibility across AI platforms.",
+  "mechanism_summary": "This narrows AI visibility monitoring to London local businesses and measures whether assistants recommend a business for concrete local-intent queries, rather than treating generic brand mentions as the main outcome."
+ },
+ "refinement": null,
+ "original_mechanism_parity": null
+}

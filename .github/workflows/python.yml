@@ -1,0 +1,79 @@
+name: Python
+
+# Neutral executor for the Python suite. Runs direct binaries on a clean checkout.
+#
+# No path filter, deliberately. The suite is not confined to src/ and tests/ — it
+# introspects the repo itself: tests/unit/test_cited_instruments_are_tracked.py reads
+# docs/*REMEDIATION*.md, test_pool_contract.py reads backend/src/routes/schemas/*.ts,
+# and other tests read frontend fixtures. A paths: filter would make a docs-only or
+# backend-only commit skip the very tests that assert on it, and the breakage would
+# then surface on an unrelated PR. Whole-repo triggering costs ~2 minutes.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Outside the workspace on purpose: the BPE blobs must never appear as untracked
+      # files in the checkout, where tree-inspecting tests could see them.
+      TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/tiktoken-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Create virtualenv
+        run: uv venv --python 3.12
+
+      - name: Install project
+        run: uv pip install -e ".[dev]"
+
+      # ── tiktoken determinism ────────────────────────────────────────────────────────
+      # tests/conftest.py installs an autouse _no_live_http guard that blocks the
+      # requests/httpx transport and FAILS IN TEARDOWN on any live call. Token-budget
+      # tests call tiktoken, which lazily downloads o200k_base.tiktoken on first use.
+      # A cold cache therefore yields 18 teardown errors and exit 1 — every pass still
+      # green, red for a purely environmental reason. CI is always cold.
+      #
+      # Fix: fetch the BPE blobs in an explicit step BEFORE pytest, where the guard does
+      # not apply and the network is legitimately available. The cache below makes that
+      # step a no-op on a hit; on a miss it downloads ~5MB in about a second. Either way
+      # the encodings are on disk before the suite starts, so the errors cannot occur.
+      # If the download itself ever fails, this step fails by name instead of surfacing
+      # as 18 confusing teardown errors inside unrelated tests.
+      - name: Restore tiktoken BPE cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tiktoken-cache
+          key: tiktoken-bpe-o200k-cl100k-v1
+
+      - name: Pre-warm tiktoken encodings
+        run: ./.venv/bin/python -c "import tiktoken; [tiktoken.get_encoding(n) for n in ('o200k_base', 'cl100k_base')]"
+
+      # Direct binary. No wrapper script, no pipe into tail/grep — a pipeline would
+      # replace pytest's exit code with the filter's and has already hidden real
+      # failures in this repo. Exit code propagates straight to the job.
+      #
+      # No -m override: pyproject.toml's addopts already carries -m "not integration",
+      # which is a SPEND guard (the integration tests hit paid live APIs). Passing any
+      # -m here would replace it. The 4 deselected tests are that guard working.
+      - name: Run unit suite
+        run: ./.venv/bin/pytest

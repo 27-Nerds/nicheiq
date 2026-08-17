@@ -28,6 +28,18 @@ ADDING CASES: honest pairs may only be added from real runs (or reconstructed fr
 Adversarial pairs are hand-built and must name the axis they attack. The two `must_pass`
 adversarial cases are the ones that keep this suite from rewarding a guard that is strict because
 it is broken — a gate can reach 100% blocking by refusing everything.
+
+THE THIRD SECTION, `route_gate` (2026-08-16). Hand-built like the adversarial pairs, and it names
+its axis the same way — but it is kept OUT of `adversarial` on purpose. The two headline numbers
+this corpus reports (substitutions blocked, elaboration kept) are counted over that list, so
+appending route-role probes to it would move the numbers a reader compares across rounds without
+any change in the gates. These rows carry a different obligation: each declares the EXACT
+`unpitched_core_dependencies` verdict it must produce, in both directions (an empty list is an
+assertion here, not a shrug), and `TestTheRouteGateVerdictIsPinned` below asserts it. What they
+are for is the route-role machinery that the honest/adversarial pairs happen not to reach —
+measured, not assumed: a mutation campaign over this module generated ZERO mutants for
+`_alias_route_role_contexts`, not because they survived but because no selected test executed the
+function, so ~64 live lines could be arbitrarily wrong and the campaign could not see it.
 """
 
 import json
@@ -233,6 +245,112 @@ class TestSubstitutionsAreBlocked:
         assert idea is not None, (
             f'{case["id"]} must pass — {case["must_block_because"]} '
             f'(refused: {_crew._seed_failure_reason})')
+
+
+class TestTheRouteGateVerdictIsPinned:
+    """`unpitched_core_dependencies` asserted exactly, on rows built to reach one branch each.
+
+    WHY EXACTLY, AND IN BOTH DIRECTIONS. The other suites in this file assert "refused" or
+    "accepted", which is one bit and only ever moves one way per case: a must-block row cannot
+    notice the gate getting stricter, and a must-pass row cannot notice it getting looser. Half
+    of these rows expect `[]` and half name the routes, so a change in either direction lands on
+    a named row. That matters more here than elsewhere because over-blocking is this
+    subsystem's documented failure mode and it is invisible in production.
+
+    THE ROWS ARE NOT PADDING. Each was kept only after it was measured killing at least one
+    mutant that the rest of the suite left alive; three candidate rows written alongside them
+    (an external-cue-beats-first-party wrapper, a one-sentence follow-up, and a bare
+    'not optional') killed nothing new and were dropped rather than banked.
+    """
+
+    @pytest.mark.parametrize("case", _CORPUS["route_gate"], ids=lambda c: c["id"])
+    def test_the_gate_returns_exactly_the_declared_routes(self, case):
+        got = unpitched_core_dependencies(case["pitch"], _candidate(case["candidate"]))
+        assert got == case["unpitched_routes"], (
+            f'{case["id"]} ({case["axis"]}): the route gate returned {got}, the row declares '
+            f'{case["unpitched_routes"]}. {case["must_hold_because"]}')
+
+
+def _route_language_replacements() -> dict[str, str]:
+    """The LIVE contraction table out of `_normalize_route_language`, read from the module source.
+
+    It is a function-local dict, so there is nothing to import. Read it rather than restate it:
+    a copy in this file would be a second source of truth that passes for exactly as long as
+    nobody adds a row, which is the shape of blind test this module keeps finding.
+
+    Under mutation the module file holds the original function plus one copy per mutant, and the
+    name `_normalize_route_language` is the dispatching trampoline (no dict in its body). Reading
+    the ORIGINAL definition is what makes the test meaningful: it enumerates the table as
+    AUTHORED and then asserts the LIVE function honours every row, so a mutant that blanks a row
+    is measured against the row it deleted instead of agreeing with itself.
+    """
+    import ast
+    from pathlib import Path
+
+    from nicheiq.utils import seed_fidelity as sf
+
+    tree = ast.parse(Path(sf.__file__).read_text())
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name in (
+            "_normalize_route_language", "x__normalize_route_language__mutmut_orig",
+        )):
+            continue
+        for stmt in ast.walk(node):
+            if (
+                isinstance(stmt, ast.Assign)
+                and isinstance(stmt.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "replacements"
+                        for t in stmt.targets)
+            ):
+                return ast.literal_eval(stmt.value)
+    raise AssertionError(
+        "the contraction table could not be located in seed_fidelity's source — this test "
+        "silently covers nothing until that is fixed, so it fails instead")
+
+
+class TestEveryContractionRowIsNormalized:
+    """The table itself, row by row, enumerated from the source rather than listed here.
+
+    WHAT THIS IS FOR. The twelve apostrophe-less rows (`\\bdont\\b`, `\\bisnt\\b`, …) were
+    proposed for deletion on the grounds that both of each row's blanking mutants survive. They
+    survive because nothing tested them, not because nothing depends on them: with `dont`
+    unexpanded, the negation strip inside `_requires_route` (which matches the literal
+    'not requir…') misses, the surviving 'require' cue fires, and a route the copy calls OPTIONAL
+    is classified REQUIRED. `optional_route_marked_with_an_apostrophe_less_contraction` in the
+    `route_gate` section is that consequence end to end; this test is the property underneath it,
+    for every row rather than the one row a probe happens to use.
+
+    THE ASSERTION IS OVER THE SET, NOT ITS MEMBERS. A row added to the table tomorrow is covered
+    by this test the day it lands, and a row whose shape this test cannot build an input for
+    fails loudly instead of being skipped.
+    """
+
+    @staticmethod
+    def _literal_for(pattern: str) -> str:
+        """The plain contraction a table pattern is written to match."""
+        import re
+
+        literal = pattern.replace(r"\b", "").replace("['’]", "'")
+        assert re.fullmatch(r"[a-z']+", literal), (
+            f"unrecognised table row {pattern!r}: this test can no longer build an input that "
+            "exercises it, so the row would be silently uncovered. Teach it the new shape.")
+        return literal
+
+    def test_every_row_expands_whatever_the_case(self):
+        from nicheiq.utils.seed_fidelity import _normalize_route_language
+
+        table = _route_language_replacements()
+        assert len(table) >= 20, f"the table shrank to {len(table)} rows — deliberate?"
+        for pattern, replacement in table.items():
+            literal = self._literal_for(pattern)
+            # Lower-cased is the easy case; CAPITALISED is the one real users type at the start
+            # of a sentence, and it only works because the replacement pass is IGNORECASE.
+            for probe in (literal, literal.capitalize(), literal.upper()):
+                got = _normalize_route_language(f"the feed {probe} required")
+                assert got == f"the feed {replacement.lower()} required", (
+                    f"table row {pattern!r} -> {replacement!r} did not fire on {probe!r}: "
+                    f"got {got!r}. An unexpanded contraction reaches `_requires_route` with its "
+                    "negation intact, where the 'require' cue then reads as a REQUIRED role.")
 
 
 # A buyer substitution whose lexical evidence is CLEAN on all three axes — measured:
@@ -743,7 +861,7 @@ class TestPostBirthIsADiffNotARetrial:
         route_read = self._fields_read_by(
             sf.unpitched_core_dependencies,
             *[(c, lambda cand, c=c: (c["pitch"], cand))
-              for c in _CORPUS["honest"] + _CORPUS["adversarial"]],
+              for c in _CORPUS["honest"] + _CORPUS["adversarial"] + _CORPUS["route_gate"]],
         )
         assert route_read - snapshot - evaluation == {"differentiation_locus"}, (
             "the post-birth snapshot no longer subsumes `unpitched_core_dependencies` in the "

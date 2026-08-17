@@ -74,6 +74,7 @@
   import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
   import UnifiedHero from "$lib/components/sections/UnifiedHero.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
+  import NicheReframeNote from "$lib/components/NicheReframeNote.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
   import { LOCKED_PREVIEW_SECTIONS } from "$lib/types/previewReport";
   import {
@@ -1639,6 +1640,13 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
               </div>
             {/snippet}
           </PageHeader>
+          <!-- Stage-1 reframe disclosure. Deliberately OUTSIDE the Overview accordion
+               that shows the derived market: `Section` renders a collapsed body under
+               `aria-hidden`, and Overview is collapsed by default during the selection
+               phase — a disclosure there would be as unreadable as the one in the inert
+               `.preview-capped` teaser below. Fed from `previewReport`, the artifact this
+               page loads, so the gate reads the run's own recorded classification. -->
+          <NicheReframeNote context={previewReport?.niche_context} />
           {#if isCompleted && reportAsset}
             <section class="completed-handoff" aria-labelledby="completed-handoff-title">
               <div>

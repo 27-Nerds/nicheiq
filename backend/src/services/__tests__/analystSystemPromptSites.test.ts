@@ -1185,10 +1185,10 @@ describe('every analyst LLM call receives the idea-check framing by construction
     expect(sites.map((s) => `${s.file}:${s.line} ${s.framed ? 'framed' : 'UNFRAMED'} ${s.detail}`))
       .toEqual([
         // generateSuggestions — the follow-up chips (surface 20)
-        'src/routes/chat.ts:1886 framed suggestionSystemPrompt',
+        'src/routes/chat.ts:1890 framed suggestionSystemPrompt',
         // the analyst tool loop: G1 / G2 / G3 / completed-report all reach it via `systemPrompt`
-        'src/routes/chat.ts:3580 framed systemPrompt',
-        'src/routes/chat.ts:3614 framed systemPrompt',
+        'src/routes/chat.ts:3584 framed systemPrompt',
+        'src/routes/chat.ts:3618 framed systemPrompt',
         // the mutation follow-up note (surface 21)
         'src/services/analystFollowupService.ts:161 framed systemPrompt(input.kind, ctx)',
       ]);

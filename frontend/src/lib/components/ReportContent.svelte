@@ -13,6 +13,7 @@
   import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
   import ContentInsights from "$lib/components/sections/ContentInsights.svelte";
   import SolutionHero from "$lib/components/sections/SolutionHero.svelte";
+  import NicheReframeNote from "$lib/components/NicheReframeNote.svelte";
   import GTMPlaybook from "$lib/components/sections/GTMPlaybook.svelte";
   import SEOKeywords from "$lib/components/sections/SEOKeywords.svelte";
   import TechnicalBlueprint from "$lib/components/sections/TechnicalBlueprint.svelte";
@@ -581,6 +582,12 @@
           <p class="working-name">{workingName}</p>
         {/if}
         <h1>{reportTitle}</h1>
+        <!-- Stage-1 reframe disclosure. The report labels itself with the SUBMITTED text
+             (`nicheName` reads `niche_context.niche_input`) while every finding under it
+             was researched against the wider derived market — the one place a reader is
+             most likely to assume the two are the same. Outside the `compactIdentity`
+             branch on purpose: it must survive on every report view, not just the brief. -->
+        <NicheReframeNote context={report.niche_context} />
         {#if !compactIdentity}
           <div class="report-deck">{deckText}</div>
           <div class="report-meta" aria-label="Report context">

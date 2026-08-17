@@ -1,0 +1,2506 @@
+{
+ "_provenance": {
+  "checkpoint": "checkpoint_a_browser_based_inventory_reconciliation_tool_for_e9145e2b-286e-4fc1-b23d-51e146c1c440_20260811_121311",
+  "job_id": "e9145e2b-286e-4fc1-b23d-51e146c1c440",
+  "entry_mode": "validate_idea",
+  "why": "parity 'shipped by IDEXX Neo' + red_team weakened. Unlocks: the second parity spelling ('shipped' prefix -> space_state 'shipped'), and the precedence fact that a shipped parity OUTRANKS a weakened red-team verdict in `resolve_idea_validation_outcome`.",
+  "trim": "ideas: stage_5_3_refinement.json::solution_ideas VERBATIM (whole rows). pains: title, severity_score, mention_count, representative_quotes, source_post_ids. posts: post_id, author, subreddit, platform, created_utc \u2014 the fields utils/validation/evidence_breadth.py reads. metadata/niche_context: copied key-for-key.",
+  "recapture": "python -m tests.unit.report.fixture_idea_check_states"
+ },
+ "metadata": {
+  "user_idea_text": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+  "user_idea_brief": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+  "user_idea_inferred_fields": [],
+  "user_idea_pivot": {
+   "attempted": true,
+   "outcome": "rejected",
+   "trigger_finding": "shipped by IDEXX Neo: IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation",
+   "because": "limited users included; extra fees per user",
+   "trigger_incumbent": "IDEXX Neo",
+   "keeps": null,
+   "changes": null,
+   "reason_not_shown": "It scored better, but a named product already ships the revised mechanism too, so we're not proposing it.",
+   "ries_label": null,
+   "name": null,
+   "rejection_code": "parity_not_cleared",
+   "rejected_name": "AccreditedVetMapper Solo",
+   "rejected_pitch": "AccreditedVetMapper Solo gives independent and small veterinary clinics a per-clinic, unlimited-staff workflow for turning existing controlled-substance exports",
+   "rejected_composite": 60,
+   "original_composite": 46
+  },
+  "user_idea_identity_terms": {
+   "mechanism": [
+    "browser-based inventory reconciliation tool",
+    "flags controlled-medication discrepancies",
+    "generates audit-ready DEA logs"
+   ],
+   "audience": [
+    "independent veterinary clinics"
+   ],
+   "problem": [
+    "controlled-medication discrepancies"
+   ],
+   "delivery": [
+    "browser-based"
+   ]
+  },
+  "niche_incumbent_map": [
+   {
+    "name": "IDEXX Neo",
+    "pricing": "$290/mo base (3 users)",
+    "focus": "cloud PIMS with EMR, scheduling, billing",
+    "gap": "limited users included; extra fees per user",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Covetrus Pulse",
+    "pricing": "unknown",
+    "focus": "unified PIMS with integrations dashboard",
+    "gap": "no pricing disclosed",
+    "source": "web"
+   },
+   {
+    "name": "ezyVet",
+    "pricing": "unknown",
+    "focus": "cloud PIMS, client comms, inventory",
+    "gap": "no pricing disclosed",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Shepherd",
+    "pricing": "unknown",
+    "focus": "serverless/cloud PIMS",
+    "gap": "no pricing disclosed",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Digitail",
+    "pricing": "unknown",
+    "focus": "cloud PIMS, patient records, scheduling",
+    "gap": "no pricing disclosed",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Provet Cloud",
+    "pricing": "unknown",
+    "focus": "cloud PIMS, EMR, billing",
+    "gap": "no pricing disclosed",
+    "source": "web"
+   },
+   {
+    "name": "Vetspire",
+    "pricing": "unknown",
+    "focus": "cloud PIMS, workflow automation",
+    "gap": "no pricing disclosed",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Avimark",
+    "pricing": "unknown",
+    "focus": "legacy on-prem PIMS",
+    "gap": "older interface, less intuitive",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "Cornerstone",
+    "pricing": "unknown",
+    "focus": "legacy PIMS, charting, inventory",
+    "gap": "dated UX, server-based",
+    "source": "corpus-confirmed"
+   },
+   {
+    "name": "VetPort",
+    "pricing": "unknown",
+    "focus": "cloud PIMS, customizable EMR",
+    "gap": "no pricing disclosed",
+    "source": "web"
+   }
+  ],
+  "idea_ruled_out": null
+ },
+ "niche_context": {
+  "niche_description": "The veterinary practice management software (PIMS) market provides digital infrastructure for clinical operations, including patient records, appointment scheduling, billing, and inventory control. This market encompasses specialized tools designed to maintain regulatory compliance, manage pharmaceutical supply chains, and optimize clinical workflows for veterinary healthcare providers.",
+  "resolved_primary_audience": "Independent General-Practice Clinic Owners and Solo Operators",
+  "user_target_audience": "independent veterinary clinics"
+ },
+ "ideas": [
+  {
+   "solution_name": "VetAuditMatch",
+   "idea_id": "idea_1dff9d66bf7ab498d34567d14533fe29",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Remote Veterinary Invoice Audits for Missed Charges",
+   "short_description": "Match veterinary clinics with remote technicians who reconcile estimates against final invoices and flag missed charges before billing closes.",
+   "description": "A clinic connects its PIMS export or approved integration, selects the day\u2019s completed visits, and uploads or synchronizes estimate and invoice records. VetAuditMatch matches the clinic with a vetted remote veterinary technician, who reviews estimate line items against the final invoice using a structured audit queue and flags omissions, quantity mismatches, and documentation issues. Clinic staff review each exception, correct the invoice in the PIMS, and mark the resolution, while sensitive records remain access-controlled and minimally exposed. The clinic receives an audit summary showing recovered charges, unresolved exceptions, reviewer activity, and recurring workflow patterns. Technicians manage availability, complete audits asynchronously, and are paid per completed batch or approved engagement.",
+   "value_proposition": "VetAuditMatch helps veterinary clinics recover billable work by pairing them with trained remote technicians who independently reconcile estimates with final invoices before revenue is lost.",
+   "pain_points_addressed": [
+    "Estimate items do not reliably become complete veterinary invoices"
+   ],
+   "source_pain": "Estimate items do not reliably become complete veterinary invoices",
+   "source_segment": "Independent General-Practice Clinic Owners and Solo Operators",
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": "VetAuditMatch",
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.47,
+   "source_segment_payability_class": "smb-budget",
+   "audience_fit": false,
+   "core_features": [
+    "Clinic onboarding with role-based access, consent, and data-retention controls",
+    "PIMS export ingestion for estimates, invoices, line items, payments, and visit status",
+    "Configurable estimate-to-invoice reconciliation rules for omitted, changed, or duplicated charges",
+    "Auditor marketplace profiles with veterinary credentials, jurisdiction, availability, and specialty experience",
+    "Matching, work offers, batch assignment, and asynchronous audit queues",
+    "Side-by-side estimate and invoice review with evidence and exception notes",
+    "Clinic approval workflow to accept, reject, or investigate flagged discrepancies",
+    "Audit reports showing recovered revenue, exception categories, turnaround time, and reviewer quality",
+    "Technician verification, ratings, dispute handling, and payment tracking",
+    "Audit logs, encryption, least-privilege permissions, and configurable record deletion"
+   ],
+   "target_personas": [
+    "Practice managers at multi-doctor veterinary clinics",
+    "Revenue-cycle or billing coordinators responsible for invoice completeness",
+    "Medical directors and owners of growing companion-animal practices",
+    "Relief or freelance veterinary technicians seeking remote, flexible administrative work",
+    "Veterinary technician leads who can perform quality-controlled charge audits"
+   ],
+   "technical_approach": "Build a multi-tenant marketplace SaaS with a clinic portal, technician portal, matching and job workflow, and an auditable reconciliation engine. Start with CSV and standardized PIMS exports rather than relying on fragile broad integrations; support ezyVet and other systems through documented exports or partner-approved APIs where available. Normalize estimates and invoices into a common line-item schema, use deterministic matching based on visit identifiers, service codes, descriptions, quantities, and timestamps, and present uncertain matches for human review rather than claiming autonomous billing accuracy. Add encrypted object storage, field-level access controls, audit logs, credential verification, payment escrow or split payouts, and configurable retention. The MVP should avoid direct treatment decisions and position auditors as revenue-administration reviewers, with clinic approval required for every correction.",
+   "differentiation_factors": [
+    "Combines a reconciliation workflow with a specialized veterinary technician labor marketplace",
+    "Uses human clinical-administrative reviewers for ambiguous estimate-to-invoice mismatches instead of depending only on brittle automation",
+    "Targets the exact handoff where estimates become final invoices, rather than offering another general PIMS or accounting dashboard",
+    "Provides flexible asynchronous coverage for clinics that cannot justify a full-time billing auditor",
+    "Creates reviewer-quality and recovered-revenue benchmarks by PIMS, charge category, and clinic workflow"
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "Clinic-approved PIMS exports",
+    "ezyVet",
+    "IDEXX Neo",
+    "Covetrus Ascend",
+    "Veterinary technician credential registries",
+    "Stripe Connect"
+   ],
+   "estimated_development_time": "3-6 weeks",
+   "dev_time_rationale": "The binding component is the reconciliation and workflow product surface, but at MVP scope it uses standardized CSVs, deterministic rules, CRUD, and ordinary queue/matching logic rather than a novel\u2026",
+   "pricing_strategy": "Subscription plus usage-based audit fees: a clinic plan at $299-$599/month includes workflow, reporting, secure ingestion, and a monthly audit allowance, followed by $0.35-$0.75 per completed visit audit; technician payouts are deducted from the per-audit fee and VetAuditMatch retains a marketplace take rate. The paid wedge is justified by the pain's 5.4/10 WTP and the direct revenue-recovery outcome: clinics already pay for veterinary tooling, and the service can be evaluated against recovered charges. Begin with managed pilots and invoice-based pricing, then standardize packages once recovered-revenue benchmarks are established.",
+   "market_fit_score": 0.4,
+   "technical_feasibility_score": 0.35,
+   "data_feasibility_score": 0.85,
+   "data_access_model": "public",
+   "data_acquisition_notes": "User-uploaded CSVs; public submission route, but sensitive clinic data requires secure handling.",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.35,
+   "project_type": "marketplace",
+   "mechanism_tag": "marketplace-matching",
+   "data_source_tag": "self-reported-user-data",
+   "journey_tag": "submits-data-gets-audit",
+   "tags": {
+    "project_type": "marketplace",
+    "data_access": "public",
+    "target_market": "b2b",
+    "monetization": "commission",
+    "monetization_secondary": "subscription",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory",
+     "trust-dependent"
+    ],
+    "usage_cadence": "continuous",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "novel",
+    "strengths": [
+     "innovator"
+    ],
+    "primary_strength": "innovator",
+    "rationale": "B2B clinic workflow with technician marketplace economics; commission is primary, while integrations and content reach clinics."
+   },
+   "programmatic_seo_opportunity": "Medium: publish PIMS-specific reconciliation guides, charge-audit checklists, veterinary billing error pages, and location- or specialty-oriented technician marketplace pages. The initial corpus is niche and requires quality-controlled editorial content, supporting roughly 100-500 useful indexable pages rather than unlimited directory scale.",
+   "content_generation_model": "Clinic-approved audit benchmarks and anonymized exception patterns create PIMS-specific guides, charge-category explainers, reconciliation checklists, and technician service pages; editorial content adds compliance and workflow guidance without exposing patient data.",
+   "organic_discovery_queries": [
+    "veterinary missed charges",
+    "vet clinic charge audit",
+    "ezyVet invoice reconciliation",
+    "how to audit veterinary invoices",
+    "veterinary estimate to invoice reconciliation",
+    "veterinary billing errors checklist",
+    "remote vet tech jobs",
+    "remote veterinary technician administrative work"
+   ],
+   "estimated_cac_organic": "$40-100 per clinic (high-intent PIMS-specific guides, audit checklists, and referral content; marketplace liquidity still needs direct outreach)",
+   "estimated_cac_paid": "$180-450 per clinic (specialized veterinary software and practice-management keywords have limited volume and expensive B2B conversion)",
+   "seo_scalability_score": 0.45,
+   "estimated_indexable_pages": null,
+   "novelty_score": 0.6,
+   "conventional_approach": "Most builders would create another PIMS billing module, invoice dashboard, or rules-only reconciliation tool that expects clinic employees to perform every review themselves.",
+   "innovation_angle": "VetAuditMatch makes the missing control a two-sided, asynchronous labor marketplace: deterministic software identifies likely mismatches, while vetted remote veterinary technicians resolve ambiguous cases and provide flexible review capacity.",
+   "why_it_works": "The concept directly targets reported PIMS reliability failures where estimate line items such as laboratory work or imaging may not appear on the invoice, and its WTP of 5.4/10 supports paid clinic tooling when the service is tied to recovered revenue. A specialized technician pool also addresses the operational reason clinics skip consistent review: staff time is scarce and the work is episodic.",
+   "why_it_works_short": "PIMS omissions plus scarce staff time make outsourced technician audits valuable.",
+   "solo_dev_feasibility": 0.15,
+   "obviousness_score": 0.3,
+   "market_fit_score_raw": 0.78,
+   "technical_feasibility_score_raw": 0.82,
+   "novelty_score_raw": 0.72,
+   "seo_scalability_score_raw": 0.52,
+   "obviousness_score_raw": 0.72,
+   "solo_dev_feasibility_raw": 0.48,
+   "calibration_notes": "market_fit: Targets high-severity billing pain (0.76) but relies on two-sided labor marketplace; cold-start liquidity risk caps fit <=0.5 until technician supply and clinic demand are simultaneously seeded. | technical_feasibility: Marketplace SaaS is buildable, but recruiting/vetting remote vet techs is a non-technical bottleneck; build_feas 0.35 correctly flags this as hard. | novelty: Closest existing: in-house billing reviews or generic PIMS modules. Two-sided async labor marketplace for vet tech reconciliation is structurally novel but operationally heavy. | seo_scalability: PIMS-specific guides and benchmark pages offer moderate content; technician marketplace pages add indexable surface; mid-range potential if liquidity exists. | obviousness: Outsourcing billing is known, but a specialized async vet-tech marketplace is a non-obvious mechanism shape for this vertical (sum check: 0.7+0.3=1.0). | solo_dev_feasibility: Two-sided marketplace requires constant recruitment, vetting, dispute resolution, and liquidity management; this is inherently team-scale work and violates solo feasibility constraints.",
+   "incumbent_parity": "none found",
+   "refine_binding_constraint": "The marketplace framing is solid but still reads as 'outsourced human audit.' Sharpen the mechanism: make the reconciliation engine pre-compute a 'revenue-at-risk' score per visit BEFORE the technician ever sees it \u2014 using only deterministic line-item diffs (missing codes, quantity deltas, estimate-to-invoice timing gaps). The technician then triages by risk score, not by queue order.",
+   "adjacent_market_parity": null,
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "novel_differentiation",
+   "angle_rationale": "The edge lives in a distinct mechanism \u2014 specifically, a two-sided labor marketplace that pairs clinics with remote technicians for asynchronous billing reconciliation. While search traffic could bring in some leads, marketplaces ultimately win on liquidity and network effects rather than content pages, making the matching mechanism the true defensible core.",
+   "novelty_rationale": "A distinct marketplace mechanism is expected here to solve a labor-intensive backend problem, rather than just building another software module.",
+   "differentiation_locus": "The two-sided labor marketplace mechanism that pairs clinics with remote technicians for asynchronous billing reconciliation."
+  },
+  {
+   "solution_name": "OpenSlotLedger \u2014 Team-Wide Cancellation Capacity Ledger",
+   "idea_id": "idea_6435a9c57127d2e0bd7fdd902d72db5c",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Shared Cancellation Capacity Ledger for Vet Clinics",
+   "short_description": "Give every clinic role an auditable view of cancellations, no-shows, open capacity, and recovered slots without per-user seat fees.",
+   "description": "OpenSlotLedger pivots from a waitlist-backfill tool into an operations ledger for the clinics and staff groups underserved by seat-limited scheduling add-ons. Clinics upload appointment/PIMS exports, map their columns once, and receive a normalized event ledger plus daily reconciliation views that show open capacity, recovered slots, and unresolved cancellations. The product does not need to replace the PIMS or automate booking; it makes the capacity-management workflow visible and usable across reception, technicians, managers, and veterinarians.",
+   "value_proposition": "Give every role in an independent veterinary clinic a shared, auditable view of cancellations, no-shows, and recovered same-day capacity\u2014without per-user seat fees or blind overbooking.",
+   "pain_points_addressed": [
+    "Cannot reserve same-day sick capacity without overbooking"
+   ],
+   "source_pain": "Cannot reserve same-day sick capacity without overbooking",
+   "source_segment": "Independent Multi-Doctor and Growing General-Practice Groups",
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.68,
+   "source_segment_payability_class": "smb-budget",
+   "audience_fit": false,
+   "core_features": [
+    "Multi-tenant clinic workspaces with unlimited internal staff access per clinic",
+    "CSV/export upload and configurable column mapping for appointment, cancellation, and no-show fields",
+    "Normalized appointment-event ledger with immutable source/import references",
+    "Same-day open-capacity board filtered by date, provider, appointment type, and status",
+    "Daily reconciliation queue for cancellations, no-shows, filled slots, and unresolved records",
+    "Recovery and utilization reporting: canceled slots, recovered slots, remaining open slots, and no-show trends",
+    "Role-appropriate dashboard views for front desk and clinic management",
+    "Exportable audit reports for operational review"
+   ],
+   "target_personas": [
+    "Veterinary practice owners managing access and revenue",
+    "Practice managers responsible for appointment capacity and scheduling",
+    "Operations directors overseeing multi-location veterinary groups",
+    "Lead receptionists who manually monitor cancellations and urgent-care demand"
+   ],
+   "technical_approach": "Build a Next.js/React web app with tenant-scoped authentication and role-based views; use TypeScript or Python workers to parse uploaded CSV exports into a PostgreSQL appointment-event schema. Store source-file and row provenance, support saved column mappings per clinic, and run background jobs for import validation, deduplication, daily aggregation, and reconciliation. Generate dashboard queries and CSV/PDF-style exports from normalized events. Start with manual uploads and common export templates rather than PIMS APIs.",
+   "differentiation_factors": [
+    "Repositions cancellation management from client waitlist automation to a team-wide capacity ledger.",
+    "Works alongside existing PIMS exports instead of requiring PIMS replacement or automated booking access.",
+    "Includes source-row provenance and reconciliation views so managers can audit recovered and unresolved capacity.",
+    "Prices access by clinic rather than charging per staff seat.",
+    "Serves reception, technicians, managers, and veterinarians in one shared operational workflow."
+   ],
+   "requires_data_aggregation": false,
+   "data_sources": [
+    "Clinic-provided PIMS appointment exports",
+    "Clinic-configured same-day sick appointment labels",
+    "Clinic schedule and provider-hours exports"
+   ],
+   "estimated_development_time": "2-4 months",
+   "dev_time_rationale": "The binding component is the CSV-to-ledger pipeline and reconciliation workflow, but the stated approach uses conventional parsing, PostgreSQL, background jobs, and deterministic status/reporting\u2026",
+   "pricing_strategy": "Paid subscription priced by clinic rather than by staff seat: approximately $149-$299 per clinic per month, with a one-time onboarding/import-mapping fee of $250-$500 for clinics needing setup help. The $99-$500/month documented tooling spend and WTP of 5.5/10 support a focused paid operations wedge; a short trial or sample-export evaluation can reduce adoption risk without making the core product freemium.",
+   "market_fit_score": 0.55,
+   "technical_feasibility_score": 0.65,
+   "data_feasibility_score": 0.78,
+   "data_access_model": "public",
+   "data_acquisition_notes": "Clinics provide their own PIMS appointment exports through the upload workflow; no third-party API or scraping dependency is required. Access is operationally straightforward, but export formats and available fields vary by PIMS, so the product must validate files and save clinic-specific mappings.",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.9,
+   "project_type": "saas",
+   "mechanism_tag": "aggregates-public-records",
+   "data_source_tag": "proprietary-user-activity",
+   "journey_tag": "recurring-dashboard-checkin",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "public",
+    "target_market": null,
+    "monetization": null,
+    "monetization_secondary": null,
+    "growth_channels": [],
+    "risk_flags": [],
+    "usage_cadence": null,
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "conventional",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": null
+   },
+   "programmatic_seo_opportunity": "Moderate: create practical, non-PHI pages and templates around veterinary cancellation tracking, no-show reconciliation, same-day appointment capacity, appointment utilization, and CSV/PIMS export workflows. SEO should lead to downloadable operational templates and a product workflow, not claims of unsupported PIMS integrations.",
+   "content_generation_model": "Manual content marketing and template-led acquisition: publish cancellation/no-show reconciliation guides, veterinary capacity benchmarks, PIMS export-mapping tutorials, and downloadable clinic operations templates based on recurring import and reconciliation questions.",
+   "organic_discovery_queries": [
+    "veterinary appointment cancellation tracking software",
+    "vet clinic no show tracking",
+    "veterinary practice capacity management",
+    "how to track canceled appointments veterinary clinic",
+    "veterinary appointment reconciliation spreadsheet",
+    "vet clinic recovered appointment slots",
+    "PIMS appointment export reporting",
+    "veterinary practice operations dashboard"
+   ],
+   "estimated_cac_organic": null,
+   "estimated_cac_paid": null,
+   "seo_scalability_score": 0.4,
+   "estimated_indexable_pages": 150,
+   "novelty_score": 0.35,
+   "conventional_approach": "Clinics use a PIMS scheduling module or waitlist add-on to backfill individual canceled appointments. Access is often restricted to included seats, with added per-user fees, and the workflow emphasizes booking a replacement rather than reconciling whether capacity was actually recovered across the day.",
+   "innovation_angle": "Compete below and beside the incumbent: sell a clinic-wide, unlimited-seat operational ledger rather than another seat-priced waitlist tool. The wedge is shared visibility and reconciliation for the whole care team, including clinics that cannot justify purchasing scheduling access for every front-desk, technician, and manager user.",
+   "why_it_works": "The pain is already validated: cancellations and no-shows create volatile same-day capacity, while blind overbooking risks care quality and staff strain. A shared ledger addresses the incumbent's cited seat limitation directly, and export-based ingestion avoids requiring deep PIMS integration for an initial solo-developer product. Auditable daily metrics also create value even when a clinic already has a waitlist feature.",
+   "why_it_works_short": "The pain is already validated: cancellations and no-shows create volatile same-day capacity, while blind overbooking\u2026",
+   "solo_dev_feasibility": 0.6,
+   "obviousness_score": 0.65,
+   "market_fit_score_raw": 0.82,
+   "technical_feasibility_score_raw": 0.88,
+   "novelty_score_raw": null,
+   "seo_scalability_score_raw": null,
+   "obviousness_score_raw": null,
+   "solo_dev_feasibility_raw": null,
+   "calibration_notes": "market_fit: Addresses a high-severity (0.82) validated pain regarding same-day capacity volatility, but the mechanism relies entirely on manual CSV uploads from PIMS systems that incumbents (IDEXX, ezyVet) already integrate natively; this friction-heavy workflow for a non-critical\u2026 | technical_feasibility: Core tech stack (Next.js/Postgres) is standard and buildable, but the data route depends on parsing heterogeneous, unstandardized CSV exports from multiple PIMS vendors without API access; maintaining these parsers as vendors update exports creates significant technical\u2026 | novelty: Closest existing thing is native PIMS waitlist modules (IDEXX/Covetrus); while 'unlimited seats' is a business model twist, the functional shape (cancellation backfill list) is a cached first-thought solution that most builders would propose for this pain, limiting structural\u2026 | seo_scalability: Content targets operational keywords ('vet cancellation tracking') but lacks a programmatically generatable public corpus; relies on manual educational content rather than scalable directory or aggregator pages. | obviousness: A 'shared cancellation list' is the obvious digital solution to overbooking; while the unlimited-seat pricing is distinct, the product form factor is what 70%+ of competent builders would design first when asked to solve waitlist visibility without API access. | solo_dev_feasibility: Build is straightforward (<2 months), but ongoing viability depends on users consistently performing manual CSV exports to keep data fresh; this behavioral friction creates high churn risk and support load for a solo operator trying to maintain engagement.",
+   "incumbent_parity": "none found",
+   "refine_binding_constraint": null,
+   "adjacent_market_parity": "Covetrus Pulse (Veterinary Practice Management Software): Cloud-based PIMS with AI workflow tools for entire practice management",
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": "parity_pivot",
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "vertical_workflow",
+   "angle_rationale": "The edge lives in the vertical workflow, specifically the team-wide cancellation reconciliation step that bypasses incumbent seat limits. While competitors like IDEXX Neo restrict scheduling access via per-user fees, this product owns the operational handoff for the whole care team, turning a restricted module into a shared clinic-wide ledger.",
+   "novelty_rationale": "A familiar operational dashboard is expected here; its edge is broader team access and flat-rate pricing rather than a fundamentally new mechanism.",
+   "differentiation_locus": "The workflow step of team-wide cancellation reconciliation and same-day capacity recovery, bypassing incumbent seat limits to include technicians and assistants in the operational loop."
+  },
+  {
+   "solution_name": "TraumaTap",
+   "idea_id": "idea_e55134e1b4b349042509be857a77f30c",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Tablet Treatment Sheets for Veterinary Trauma Bays",
+   "short_description": "Capture verbal trauma-bay orders on a fast tablet treatment sheet and turn every logged action into a complete, reviewable veterinary charge list.",
+   "description": "A technician opens TraumaTap on a tablet and selects the hospitalized patient from a compact trauma-bay queue, even when the primary PIMS interface is slow or impractical during triage. The team records verbal orders and completed treatments through large, deterministic buttons, with timestamps, quantities, routes, staff attribution, and optional notes; the workflow is designed for rapid entry rather than navigating multiple PIMS tabs. TraumaTap continuously builds a structured treatment sheet and charge list, flags missing quantities or prices, and lets a supervisor review exceptions before billing. At discharge or a defined handoff point, staff export or sync the approved charges and treatment summary into the PIMS, preserving an audit trail so the invoice does not depend on memory or re-entry. Managers can then review missed-charge reports by patient, shift, treatment category, and staff workflow bottleneck.",
+   "value_proposition": "TraumaTap turns fast, verbal emergency-care actions into a complete, reviewable charge list without forcing staff through a slow PIMS workflow during treatment.",
+   "pain_points_addressed": [
+    "Mobile veterinary teams cannot document visits when connectivity fails",
+    "Estimate items do not reliably become complete veterinary invoices",
+    "PIMS inventory counts and usage records cannot be trusted"
+   ],
+   "source_pain": null,
+   "source_segment": "Independent Emergency, Urgent-Care, and Specialty Referral Centers",
+   "source_frame": "gap",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": "TraumaTap",
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.85,
+   "source_segment_payability_class": "corporate-budget",
+   "audience_fit": true,
+   "core_features": [
+    "Tablet-optimized trauma-bay patient queue",
+    "Deterministic one-tap treatment and medication entry",
+    "Verbal-order capture with timestamp, staff identity, quantity, route, and notes",
+    "Offline-first local recording with encrypted sync queue",
+    "Automatic treatment-sheet and charge-list generation",
+    "Estimate-to-charge reconciliation with missing-item alerts",
+    "Supervisor review, correction, and approval workflow",
+    "PIMS export/import adapters with configurable charge mappings",
+    "Immutable audit trail for entries, edits, approvals, and exports",
+    "Missed-charge analytics by patient, shift, treatment, and operator",
+    "Inventory-use event export for reconciliation with the PIMS",
+    "Role-based access control and configurable retention settings"
+   ],
+   "target_personas": [
+    "Emergency and critical-care veterinarians",
+    "ER veterinary technicians and assistants",
+    "Practice managers responsible for revenue capture",
+    "Multi-site veterinary groups standardizing trauma workflows",
+    "Veterinary billing staff reconciling treatment sheets and invoices"
+   ],
+   "technical_approach": "Build a responsive tablet web application or installable PWA with an offline-first local datastore, encrypted synchronization, and conflict-aware event replay. Model each treatment as an append-only clinical and billing event containing patient, encounter, order, completion, quantity, unit, staff, timestamp, and approval state. Use configurable practice-specific treatment catalogs and price mappings rather than attempting autonomous clinical interpretation. Provide standards-based and pragmatic integration options: PIMS API connectors where available, CSV/SFTP export-import, and a controlled browser-assisted or clipboard workflow only where permitted by the PIMS vendor. Encrypt data in transit and at rest, enforce tenant isolation and role-based permissions, maintain audit logs, and include configurable backups, retention, and breach-response controls appropriate for veterinary patient data.",
+   "differentiation_factors": [
+    "A trauma-bay-first workflow instead of a general-purpose PIMS interface",
+    "Deterministic structured entry rather than relying on free-text notes or AI extraction",
+    "Offline-first capture designed for unstable hospital or mobile connectivity",
+    "Charge generation occurs from completed treatment events, not retrospective manual invoice re-entry",
+    "Support-staff routing and role ownership are explicit in the workflow",
+    "Practice-configurable catalog and mappings allow deployment without replacing the incumbent PIMS",
+    "Exception dashboards expose missed charges and incomplete treatment records by shift"
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "Practice PIMS patient and encounter exports",
+    "Practice treatment and medication catalog",
+    "Practice fee schedule and estimate templates",
+    "User-entered treatment events",
+    "PIMS API or CSV/SFTP integration feeds"
+   ],
+   "estimated_development_time": "2-4 months",
+   "dev_time_rationale": "The binding component is conflict-aware offline event replay: preserving append-only clinical and billing events, preventing duplicate or lost charges, and resolving sync conflicts safely\u2026",
+   "pricing_strategy": "Paid subscription, because the niche already shows $99-$500/month tooling spend and the product directly protects billable revenue; this pain's WTP is unknown, so validate pricing with ER practice managers before scaling. Start at $249/month per site for one trauma workflow and up to 10 active users, $499/month for multi-bay or multi-location workflows, plus a one-time $1,000-$3,000 configuration and migration fee; charge separately for custom PIMS connectors and high-volume support. Offer a 30-day paid pilot or implementation-credit trial rather than a permanently free tier, with ROI measured through recovered charges and reduced reconciliation time.",
+   "market_fit_score": 0.55,
+   "technical_feasibility_score": 0.82,
+   "data_feasibility_score": 0.9,
+   "data_access_model": "public",
+   "data_acquisition_notes": "No external dataset required; clinic-entered orders and fee schedules. Public/pure input data.",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.82,
+   "project_type": "saas",
+   "mechanism_tag": "parametric-calculator",
+   "data_source_tag": "proprietary-user-activity",
+   "journey_tag": "enters-inputs-gets-calculation",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "public",
+    "target_market": "b2b",
+    "monetization": "subscription",
+    "monetization_secondary": null,
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "continuous",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "medium",
+    "novelty_level": "moderate",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "Embedded ER workflow sold per site on subscription; treatment and charge capture create continuous usage with medical-data exposure."
+   },
+   "programmatic_seo_opportunity": "Medium: publish genuinely useful, practice-configurable resource pages and indexed workflow guides around missed-charge audits, ER treatment sheets, estimate-to-invoice reconciliation, and veterinary trauma documentation. A defensible initial corpus is roughly 100-300 pages from treatment categories, workflow scenarios, and PIMS integration comparisons; avoid thin pages generated solely from internal catalog data.",
+   "content_generation_model": "Manual clinical-operations guides combined with anonymized aggregate benchmarks, treatment-sheet templates, missed-charge checklists, and comparison pages for veterinary ER workflows and PIMS integration patterns.",
+   "organic_discovery_queries": [
+    "veterinary missed charges",
+    "ER vet treatment sheet",
+    "veterinary trauma flow",
+    "convert estimates into invoices",
+    "veterinary treatment sheet template",
+    "emergency veterinary charge capture",
+    "veterinary invoice reconciliation",
+    "offline veterinary charting",
+    "PIMS treatment workflow",
+    "veterinary technician task routing"
+   ],
+   "estimated_cac_organic": "$25-75 per customer after workflow guides, templates, and referral partnerships mature; early CAC may be $100-200 because veterinary software buyers require trust and demonstrations.",
+   "estimated_cac_paid": "$150-400 per customer through niche search and retargeting; higher for broad PIMS and veterinary practice management keywords due to long sales cycles.",
+   "seo_scalability_score": 0.5,
+   "estimated_indexable_pages": 200,
+   "novelty_score": 0.55,
+   "conventional_approach": "Most builders would add another module inside a full PIMS or build a generic veterinary treatment and billing application that asks staff to navigate patient records, estimates, inventory, and invoices in one broad workflow.",
+   "innovation_angle": "TraumaTap extracts the treatment sheet into a standalone, offline-capable event-capture layer for support staff, then deterministically compiles completed actions into an approved charge list that can return to the incumbent PIMS.",
+   "why_it_works": "Community complaints describe clunky PIMS workflows with a different tab for every task and repeated re-entry of items onto invoices, while emergency teams need rapid documentation under triage pressure; separating capture from the incumbent preserves the existing system while removing the highest-friction step and making missed-charge recovery measurable.",
+   "why_it_works_short": "ER users report tab-heavy PIMS workflows and repeated invoice re-entry, making fast capture a measurable revenue wedge.",
+   "solo_dev_feasibility": 0.7,
+   "obviousness_score": 0.45,
+   "market_fit_score_raw": 0.82,
+   "technical_feasibility_score_raw": 0.86,
+   "novelty_score_raw": 0.68,
+   "seo_scalability_score_raw": 0.55,
+   "obviousness_score_raw": 0.7,
+   "solo_dev_feasibility_raw": 0.62,
+   "calibration_notes": "market_fit: Addresses high-severity charge capture pain (0.76) with offline-first event capture; partial parity with ezyVet auto-charge exists but TraumaTap's standalone offline layer targets ER-specific workflow gap. | technical_feasibility: Offline-first PWA with encrypted sync and conflict replay is documented tech; no unverified data needs; build_feas 0.82 confirms viability. | novelty: Closest existing: ezyVet auto-charge capture. Standalone offline event-capture layer decoupled from PIMS is a structural difference; why_it_works cites specific ER triage complaints. | seo_scalability: Workflow guides and treatment-sheet templates provide moderate content; anonymized benchmarks could scale if aggregated, but core tool is private. | obviousness: Charge capture modules are common; offline-first standalone capture for ER is less obvious but still within expected solution space; ~40% convergence estimate. | solo_dev_feasibility: Offline sync adds complexity but build_feas 0.82 supports solo; ongoing ops are light (no moderation, sync is automated); fits upper-mid band.",
+   "incumbent_parity": "partial by Covetrus Pulse: Treatment board, 100% charge capture claims",
+   "refine_binding_constraint": "The treatment-sheet-to-charge-list compilation is solid but reads as a linear pipeline. Inject a specific, surprising mechanism: make the charge-list reconciliation adversarial. After the supervisor approves charges, TraumaTap auto-generates one 'challenge question' per shift \u2014 e.g., 'Patient X received 3 units of drug Y at 02:14 but only 2 were charged.",
+   "adjacent_market_parity": "ezyVet (Veterinary Charge Capture & Billing Software): Automatic charge capture generates invoices for products and procedures when appointments are booked.",
+   "red_team_verdict": "weakened",
+   "red_team_caveats": [
+    "The evidence shows broad all-in-one PIMS competition: Digitail is described as cloud-based, all-in-one veterinary practice-management software, and CoVet discusses PIMS technology, but neither source establishes whether these systems capture emergency verbal actions into charge lists.",
+    "Free/bundled alternatives are visible for adjacent needs: Vetcalculators offers free emergency-drug and fluid-rate calculations, and the App Store result calls it free; these do not demonstrate a free alternative to TraumaTap's billing/event-replay workflow.",
+    "The search evidence does not establish the modal emergency workflow, buyer, willingness to pay, offline requirements, or deadline/race dynamics. Reddit only shows one anecdotal report that a veterinary visit was slowed by practice software, without validating prevalence or the proposed mechanism."
+   ],
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "vertical_workflow",
+   "angle_rationale": "The edge lives in a vertical workflow \u2014 specifically, the rapid, offline-first event capture step for ER support staff during active trauma. Incumbent practice management systems are too slow and rigid for emergency treatment, leaving a critical gap in the charge-capture workflow that this tool owns.",
+   "novelty_rationale": "A familiar offline-capture mechanism is expected for emergency field tools; its distinctiveness here is adapting that pattern specifically for the high-stress veterinary trauma workflow.",
+   "differentiation_locus": "The rapid, offline-first event capture workflow for ER support staff that incumbent practice management systems cannot handle during active treatment."
+  },
+  {
+   "solution_name": "LegacyPriceLedger",
+   "idea_id": "idea_a1ab5b17aca5bed4933711feaf66eea3",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Reconstruct Missing Prices From Your Old PIMS Data",
+   "short_description": "Repair garbled historical veterinary prices from old PIMS exports, invoices, and surviving transactions\u2014with provenance for every restored value.",
+   "description": "The clinic uploads an incomplete AVImark, Cornerstone, or other legacy PIMS export, then optionally adds surviving transaction CSVs, invoice PDFs, and older reporting exports. LegacyPriceLedger profiles procedure, inventory, invoice, and price columns; detects blank, duplicated, malformed, or contradictory values; and groups affected records by procedure, patient, date, and transaction context. For each gap, it proposes a value only when matching evidence exists in the clinic\u2019s own files, showing the exact source rows or invoice excerpts, confidence, and reconstruction rule; otherwise it marks the value unresolved rather than guessing. Staff can approve, edit, or reject proposals, map legacy procedure names to new internal codes, and export a corrected, provenance-linked CSV for controlled PIMS re-entry. An optional benchmark layer can show public fee observations separately, but never uses competitor pricing as the primary reconstruction source.",
+   "value_proposition": "Give clinics a defensible, reviewable reconstruction of their own missing historical prices before importing records into a new PIMS.",
+   "pain_points_addressed": [
+    "PIMS migration leaves historical records and pricing data incomplete",
+    "Historical prices from the clinic\u2019s old PIMS are missing after migration",
+    "Clinics cannot tell which reconstructed values are trustworthy"
+   ],
+   "source_pain": "PIMS migration leaves historical records and pricing data incomplete",
+   "source_segment": "Independent Multi-Doctor and Growing General-Practice Groups",
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.68,
+   "source_segment_payability_class": "smb-budget",
+   "audience_fit": true,
+   "core_features": [
+    "Upload and inspect legacy PIMS CSV, database dump, and reporting exports",
+    "Upload invoice PDFs and surviving transaction exports",
+    "Detect missing, malformed, duplicated, and contradictory historical price values",
+    "Evidence-linked reconstruction proposals using only the clinic\u2019s supplied records",
+    "Confidence scoring and explicit unresolved status instead of unsupported guesses",
+    "Procedure-name and internal-code mapping with review workflow",
+    "Source-row, invoice-page, and transformation-rule provenance for every proposed value",
+    "Versioned approval, edit, and rejection history",
+    "CSV export compatible with staff-led PIMS re-entry",
+    "Optional, clearly separated public-price benchmark view"
+   ],
+   "target_personas": [
+    "Practice owner overseeing migration from AVImark, Cornerstone, or another legacy PIMS",
+    "Practice manager responsible for pricing tables, billing cleanup, and migration validation",
+    "PIMS implementation lead or senior administrator reviewing historical-data exceptions"
+   ],
+   "technical_approach": "Use a browser-based upload flow with encrypted object storage, tenant-isolated PostgreSQL metadata, and a processing worker for CSV, XLSX, database-dump text, PDF, and OCR extraction. Normalize supplied files into immutable source artifacts and typed evidence tables for patients, invoices, procedures, transactions, price values, dates, and identifiers. Run deterministic anomaly detection for nulls, type errors, outliers, duplicate keys, shifted columns, and conflicting values. Generate candidate repairs through explainable joins and aggregation rules\u2014matching procedure code, invoice number, date, client/patient identifiers, and surviving transaction evidence\u2014while requiring human approval for every exportable change. Preserve raw evidence, page/row references, confidence, rule version, and approval history. Keep public benchmarking in a separate module and database namespace so it cannot silently influence a recovery proposal.",
+   "differentiation_factors": [
+    "Uses the clinic\u2019s own surviving evidence as the recovery engine, not competitor prices or generic benchmarks",
+    "Treats every restored value as an auditable hypothesis tied to source rows, invoice pages, and explicit matching rules",
+    "Separates approved repairs from unresolved gaps so the export never disguises uncertainty",
+    "Targets the narrow migration-exception workflow instead of attempting to replace the clinic\u2019s PIMS",
+    "Preserves a provenance ledger that remains useful during vendor disputes and migration sign-off"
+   ],
+   "requires_data_aggregation": false,
+   "data_sources": [
+    "Clinic-provided legacy PIMS exports",
+    "Clinic-provided transaction exports",
+    "Clinic-provided invoice PDFs",
+    "Clinic-provided pre-migration reporting exports",
+    "Public veterinary clinic fee schedules",
+    "Veterinary procedure taxonomy",
+    "U.S. ZIP Code geographic data"
+   ],
+   "estimated_development_time": "4-6+ months",
+   "dev_time_rationale": "The binding constraint is evidence-linked reconstruction and procedure/code resolution across inconsistent legacy records: the product must tune matching and proposal behavior against real clinic\u2026",
+   "pricing_strategy": "$499-$999 per clinic migration workspace, with optional $99/month audit-history retention and metered OCR beyond the included allowance.",
+   "market_fit_score": 0.4,
+   "technical_feasibility_score": 0.58,
+   "data_feasibility_score": 0.6,
+   "data_access_model": "unofficial",
+   "data_acquisition_notes": "Public clinic pages can be crawled in bulk; inconsistent formats, robots/ToS and stale prices create risk.",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.55,
+   "project_type": "saas",
+   "mechanism_tag": "first-party-evidence-reconstruction",
+   "data_source_tag": "first-party clinic files",
+   "journey_tag": "upload-reconcile-export",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "unofficial",
+    "target_market": "b2b",
+    "monetization": "one-time",
+    "monetization_secondary": "usage-based",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory",
+     "tos-risk"
+    ],
+    "usage_cadence": "episodic",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "moderate",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "Migration reconstruction is an episodic project sold mainly as a fixed workspace; unofficial legacy exports create integration risk, not TOS risk."
+   },
+   "programmatic_seo_opportunity": "Medium-low - vendor-specific migration guides and anomaly explainers can create dozens of useful pages, but the product\u2019s private uploaded data cannot be indexed.",
+   "content_generation_model": "Create practical, vendor-specific migration guides and anonymized issue-pattern pages based on supported file formats and recurring anomaly types; do not publish customer data.",
+   "organic_discovery_queries": [
+    "recover missing veterinary pricing after PIMS migration",
+    "AVImark export missing prices",
+    "Cornerstone migration pricing data",
+    "veterinary PIMS data conversion errors",
+    "repair historical invoice prices veterinary clinic",
+    "veterinary practice migration data cleanup",
+    "reconstruct old veterinary fee schedule",
+    "PIMS migration validation checklist veterinary"
+   ],
+   "estimated_cac_organic": "$40-100 per customer (migration checklists, legacy-PIMS export guides, and searchable recovery templates can target high-intent clinic-operations queries)",
+   "estimated_cac_paid": "$150-400 per customer (narrow veterinary PIMS migration keywords, with expensive vendor-adjacent intent)",
+   "seo_scalability_score": 0.35,
+   "estimated_indexable_pages": 60,
+   "novelty_score": 0.5,
+   "conventional_approach": "Most migration tools attempt a one-time field mapping and bulk import, then leave missing or garbled prices for clinic staff to repair manually in spreadsheets or the destination PIMS.",
+   "innovation_angle": "This is an evidence-reconstruction workbench rather than a public-price comparison tool: it triangulates the clinic\u2019s own surviving transactions, invoices, and pre-migration reports to propose each missing historical price, with a mandatory audit trail and unresolved queue.",
+   "why_it_works": "The reported migration pain specifically concerns missing or garbled records when clinics move from AVImark, Cornerstone, paper, or another PIMS, including lost pricing and prolonged duplicate entry. A first-party evidence workflow directly matches that failure mode: it can recover values that public competitor schedules cannot, while refusing to invent prices when the clinic\u2019s files contain no defensible evidence.",
+   "why_it_works_short": "It repairs the clinic\u2019s own missing prices from surviving records\u2014not competitor fee schedules.",
+   "solo_dev_feasibility": 0.5,
+   "obviousness_score": 0.5,
+   "market_fit_score_raw": 0.78,
+   "technical_feasibility_score_raw": 0.82,
+   "novelty_score_raw": 0.72,
+   "seo_scalability_score_raw": 0.4,
+   "obviousness_score_raw": 0.78,
+   "solo_dev_feasibility_raw": 0.74,
+   "calibration_notes": "market_fit: Pain severity only 0.58 (moderate); addresses niche migration sub-problem; no incumbent parity but narrow scope and low severity cap fit at moderate-low. | technical_feasibility: OCR extraction and multi-format normalization add complexity; build_feas 0.55 and data_feas 0.6 reflect unverified unofficial data handling risks. | novelty: Closest existing: Manual spreadsheet repair. Evidence-reconstruction workbench with mandatory confidence flags is a genuine structural improvement over bulk import tools. | seo_scalability: Vendor-specific migration guides and anomaly explainers offer medium-low scale; content is useful but niche, and private uploaded data cannot be indexed for programmatic growth. | obviousness: Price reconstruction is a known migration subtask; formalizing it as an evidence workbench is somewhat novel but still within expected solution space (sum check: 0.5+0.5=1.0). | solo_dev_feasibility: OCR and format parsing require continuous maintenance as legacy exports vary; support load for failed extractions could be high; build feasibility caps solo viability at moderate level.",
+   "incumbent_parity": "none found",
+   "refine_binding_constraint": "The reconstruction engine is solid but reads as a generic data-repair pipeline. Sharpen the mechanism with one veterinary-specific reconstruction rule that no generic tool would have: 'appointment-context pricing.' When a procedure price is missing but the clinic's export contains appointment records with the same procedure code on the same date for the same doctor, use the price\u2026",
+   "adjacent_market_parity": null,
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "novel_differentiation",
+   "angle_rationale": "The edge lives in a distinct mechanism \u2014 an evidence-reconstruction workbench that triangulates surviving transactions and reports to propose missing historical prices. While migration guides could attract some search traffic, the actual product value is locked behind private data uploads, making the reconstruction algorithm the true differentiator against manual spreadsheet repairs.",
+   "novelty_rationale": "A familiar data-mapping mechanism is expected for migration tools; the distinctiveness here is the triangulation logic used to reconstruct missing pricing evidence.",
+   "differentiation_locus": "The evidence-reconstruction mechanism that triangulates surviving transactions and reports to propose missing historical prices."
+  },
+  {
+   "solution_name": "VetLot Reconcile",
+   "idea_id": "idea_1cfba52f08205e107dfe8004d0247644",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Reconcile Veterinary Inventory Against Drug Lot Actions",
+   "short_description": "Upload a PIMS inventory export and identify stock lines whose unexplained counts may reflect FDA lot recalls or enforcement actions.",
+   "description": "A clinic exports its current PIMS inventory CSV with drug name, lot number, quantity, and optionally expiration date, then uploads it to VetLot Reconcile. The service normalizes product and lot identifiers and compares each line against imported FDA veterinary recall, enforcement, and market-withdrawal records. The resulting report groups lines into regulatory explanation found, possible match needing review, and no external explanation found; each match links to the official notice and shows the affected lot, action date, and recommended reconciliation question. Staff can mark whether stock was removed, quarantined, returned, or incorrectly recorded, add a physical-count result, and export a reconciliation log for correcting the PIMS. The tool does not alter the PIMS or claim that an unmatched discrepancy is caused by a recall; it narrows the investigation by showing which count anomalies have an external, documented explanation.",
+   "value_proposition": "Turn a suspicious veterinary inventory export into an evidence-linked reconciliation report that explains which count discrepancies may be caused by FDA actions on specific lots.",
+   "pain_points_addressed": [
+    "PIMS inventory counts and usage records cannot be trusted",
+    "Staff cannot determine why physical stock and recorded stock diverge",
+    "External recalls or withdrawals may remove inventory without corresponding PIMS updates"
+   ],
+   "source_pain": "PIMS inventory counts and usage records cannot be trusted",
+   "source_segment": "Independent General-Practice Clinic Owners and Solo Operators",
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.47,
+   "source_segment_payability_class": "smb-budget",
+   "audience_fit": true,
+   "core_features": [
+    "CSV upload with column mapping for drug name, lot number, quantity, and optional expiration date",
+    "Product and lot identifier normalization with a review queue for ambiguous matches",
+    "Cross-reference against FDA veterinary recall, enforcement, and market-withdrawal records",
+    "Three-way result classification: regulatory explanation found, possible match needing review, and no external explanation found",
+    "Evidence view with affected lot, action type, dates, source citation, and original regulatory document",
+    "Physical-count and disposition fields for removed, quarantined, returned, or recording-error outcomes",
+    "Exportable reconciliation report and audit log"
+   ],
+   "target_personas": [
+    "Independent veterinary clinic owner auditing unreliable stock records",
+    "Practice manager performing monthly physical counts and inventory reconciliation",
+    "Lead veterinary technician responsible for pharmaceuticals and lot tracking"
+   ],
+   "technical_approach": "Implement a privacy-conscious web app with per-clinic workspaces, encrypted upload storage, PostgreSQL for normalized inventory and regulatory records, and an ingestion worker for official FDA sources. Map arbitrary CSV headers into a small schema, retain the original row and source filename, normalize drug names through FDA identifiers where available, and use exact lot matching before conservative fuzzy product matching. Every result stores match confidence, source citation, and the matching fields; ambiguous matches go to a human review screen rather than being auto-confirmed. Generate HTML/CSV/PDF reports, schedule source refreshes, and delete uploaded inventory data on a configurable retention schedule.",
+   "differentiation_factors": [
+    "Uses a clinic's own exported PIMS lines as the investigation starting point, not a generic recall feed.",
+    "Matches lot-level regulatory actions to specific inventory records and separates confirmed matches from review-needed and unexplained lines.",
+    "Produces an auditable reconciliation log without attempting a risky PIMS replacement or silently changing stock counts."
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "FDA Center for Veterinary Medicine",
+    "FDA Enforcement Reports",
+    "FDA Animal Drugs @ FDA",
+    "FDA veterinary recall and safety-alert publications"
+   ],
+   "estimated_development_time": "4-6+ months",
+   "dev_time_rationale": "The binding constraint is the hard data-matching pipeline: ambiguous product/lot normalization plus reliable cross-source matching against an unverified FDA data route, which requires real-data\u2026",
+   "pricing_strategy": "Subscription priced at $79/month per clinic for recurring monthly uploads, watchlist refreshes, reconciliation history, and exports; a $149 one-time reconciliation run can validate demand before subscription conversion. Do not charge per drug or per record.",
+   "market_fit_score": 0.7,
+   "technical_feasibility_score": 0.78,
+   "data_feasibility_score": 0.82,
+   "data_access_model": "unverified",
+   "data_acquisition_notes": "Data route UNVERIFIED \u2014 could not confirm or refute a public source; verify obtainability before building. openFDA drug-enforcement API exists, and FDA lists animal-drug databases, but evidence does n",
+   "market_fit_claimed_route": "FDA Animal Drugs @ FDA, FDA Drug Enforcement Reports",
+   "build_feasibility_score": 0.72,
+   "project_type": "saas",
+   "mechanism_tag": "lot-level-regulatory-reconciliation",
+   "data_source_tag": "public FDA records plus user-uploaded CSV",
+   "journey_tag": "upload-and-reconcile",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "unverified",
+    "target_market": "b2b",
+    "monetization": "subscription",
+    "monetization_secondary": "one-time",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "periodic",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "medium",
+    "novelty_level": "moderate",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "Recurring monthly reconciliation and watchlists justify subscription, with a trial run secondary; regulatory accuracy matters for drug recalls."
+   },
+   "programmatic_seo_opportunity": "Low to moderate \u2014 official recall and lot pages can support a small corpus of evidence-linked public pages, but the core value comes from private clinic uploads rather than scalable public listings.",
+   "content_generation_model": "Limited SEO from public explainers and indexed, generic pages about veterinary lot recalls and inventory reconciliation; customer inventory reports remain private and are not indexed.",
+   "organic_discovery_queries": [
+    "veterinary inventory reconciliation software",
+    "why veterinary inventory counts are wrong",
+    "vet clinic drug lot recall lookup",
+    "PIMS inventory discrepancy report",
+    "how to reconcile veterinary drug inventory",
+    "veterinary pharmacy lot tracking",
+    "FDA veterinary drug recall lot number"
+   ],
+   "estimated_cac_organic": "$40-100 per customer (niche educational content and direct outreach to independent clinics; limited programmatic SEO)",
+   "estimated_cac_paid": "$150-350 per customer (specialized veterinary software keywords and narrow audience)",
+   "seo_scalability_score": 0.35,
+   "estimated_indexable_pages": 80,
+   "novelty_score": 0.65,
+   "conventional_approach": "Most builders would create either a standalone veterinary recall-alert search tool or a full inventory-management replacement that tries to become the clinic's system of record.",
+   "innovation_angle": "Instead of presenting FDA actions as a passive safety-alert dashboard, VetLot Reconcile joins them to a clinic's own PIMS export and turns regulatory records into discrepancy-level explanations for untrusted stock counts.",
+   "why_it_works": "Veterinary teams report that PIMS inventory counts and usage records are unreliable and that inventory workflows are awful; a lot-matched external explanation gives clinics a concrete first investigation path for stock that may have been removed, quarantined, or returned without the PIMS being updated. FDA recall and enforcement records provide authoritative evidence for only the subset of discrepancies caused by documented external actions, while the no-match category honestly preserves the broader unresolved inventory problem.",
+   "why_it_works_short": "Lot-level FDA matches give clinics a documented explanation for some otherwise mysterious inventory discrepancies.",
+   "solo_dev_feasibility": 0.72,
+   "obviousness_score": 0.35,
+   "market_fit_score_raw": 0.84,
+   "technical_feasibility_score_raw": 0.84,
+   "novelty_score_raw": 0.78,
+   "seo_scalability_score_raw": 0.28,
+   "obviousness_score_raw": 0.25,
+   "solo_dev_feasibility_raw": 0.82,
+   "calibration_notes": "market_fit: Addresses valid inventory distrust pain (0.72) with a novel mechanism (joining FDA actions to private stock counts); no direct incumbent found in parity check, making this a genuine gap fill rather than a feature clone. (route not confirmed: the verifier did not establish this data route \u2014 access model: unverified) | technical_feasibility: FDA Animal Drugs and Drug Enforcement Reports are verified official sources; joining to user-uploaded CSVs is standard ETL; build_feas 0.72 reflects manageable complexity. | novelty: Closest existing: passive FDA recall dashboards or generic inventory tools. Joining regulatory records to private stock discrepancies as explanatory evidence is a genuine structural mechanism shift. | seo_scalability: Public recall pages offer some indexable content, but core value is private reconciliation reports; limited scalable corpus beyond generic regulatory explainers. | obviousness: Recall alerts are obvious; reconciling them against private inventory as discrepancy explanations is not a cached shape; <30% of builders would propose this specific join mechanism. | solo_dev_feasibility: Encrypted upload workspace + FDA ingestion worker is buildable solo; ongoing ops are light (batch processing, no real-time monitoring); fits 0.7-0.8 band.",
+   "incumbent_parity": "none found",
+   "refine_binding_constraint": "The reconciliation engine is now correctly aimed at the source pain, but the mechanism is still a straightforward join \u2014 upload CSV, match against FDA lots, get a report. That's useful but not surprising. Here's a sharper angle: the real insight is that PIMS inventory counts drift over time in patterns that correlate with specific FDA action TYPES.",
+   "adjacent_market_parity": null,
+   "red_team_verdict": "killed",
+   "red_team_caveats": [
+    "The search evidence identifies broad practice-management incumbents and workflows\u2014CoVet, SafetyCulture, Carrington, and AVMA materials\u2014but does not show any buyer demand for a standalone FDA-lot reconciliation product or that clinics export inventory in a usable form.",
+    "The evidence shows regulatory/compliance responsibilities involving OSHA, DEA, and state veterinary boards, while the proposed mechanism is narrowly focused on FDA actions; the search does not establish that FDA lot actions are the modal cause of veterinary inventory discrepancies.",
+    "The evidence names AVMA practice-management resources and a tool that turns a P&L into efficiency insight, plus switching/migration concerns for PIMS, but does not demonstrate a paid budget, deadline, or procurement trigger for VetLot Reconcile."
+   ],
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "novel_differentiation",
+   "angle_rationale": "The edge lives in a distinct mechanism \u2014 specifically, joining public FDA regulatory lot actions to private clinic inventory exports to explain count discrepancies. While public recall pages could attract some search traffic, the core value is the private data join that turns passive safety alerts into active discrepancy explanations, which rivals miss.",
+   "novelty_rationale": "A familiar alert-dashboard mechanism is expected for regulatory compliance; the distinctiveness is transforming passive alerts into active, evidence-linked inventory explanations.",
+   "differentiation_locus": "The mechanism of joining FDA regulatory lot actions to private PIMS exports to generate discrepancy-level explanations."
+  },
+  {
+   "solution_name": "VetDrugRecallSentry",
+   "idea_id": "idea_9846bf87eb404938a2a4e77f011ae2d5",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Batch-Print FDA Drug Inserts for Patient Records",
+   "short_description": "Upload inventory once; generate dated, FDA-cited drug safety inserts staff can attach directly to patient files.",
+   "description": "A clinic uploads its medication inventory CSV, including product names and optional application numbers, lot details, or internal pricing fields. VetDrugRecallSentry matches each stocked product to FDA Animal Drugs @ FDA records and generates a one-page Drug Safety Insert containing approval status, labeled species and indications, source date, last available recall or enforcement reference, and a link to the complete FDA label. Staff review flagged or ambiguous matches, batch-print the inserts, or download them as PDFs to attach to patient records alongside communications, laboratory results, radiographs, and referral documentation. Each insert carries a dated evidence snapshot and source links, making the regulatory context understandable later even after a PIMS migration or when a record is reviewed offline. If a source-backed status changes in a later published dataset, the service marks the affected insert as needing refresh and creates a secondary alert task; it does not replace clinical judgment or claim that an FDA record is a patient-specific recommendation.",
+   "value_proposition": "Turn a clinic's stocked-drug CSV into dated, FDA-cited, patient-file-ready safety inserts so regulatory and medication context is attached where the care record lives.",
+   "pain_points_addressed": [
+    "Mobile veterinary teams cannot document visits when connectivity fails",
+    "PIMS migration leaves historical records and pricing data incomplete",
+    "Cannot keep communications and diagnostic records in one patient file"
+   ],
+   "source_pain": null,
+   "source_segment": "Independent Emergency, Urgent-Care, and Specialty Referral Centers",
+   "source_frame": "data_asset",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": "VetDrugRecallSentry",
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.85,
+   "source_segment_payability_class": "corporate-budget",
+   "audience_fit": true,
+   "core_features": [
+    "CSV inventory upload with product-name, ingredient, application-number, lot, location, and internal-reference fields",
+    "Deterministic FDA product matching with an explicit review queue for ambiguous or unmatched products",
+    "One-page Drug Safety Insert PDF containing approval status, labeled species, labeled indications, source publication date, last available recall/enforcement reference, FDA label link, and freshness disclaimer",
+    "Batch generation, printing, ZIP download, and searchable insert archive",
+    "Versioned insert snapshots with dated source citations so attachments remain intelligible after later updates or PIMS migration",
+    "Status-change detection that creates a refresh task and optional email alert rather than making the alert dashboard the primary product",
+    "CSV export and simple patient-record attachment workflow for offline or low-connectivity teams"
+   ],
+   "target_personas": [
+    "Independent emergency and urgent-care veterinary centers",
+    "Specialty referral hospitals with high-volume external records",
+    "Mobile, equine, mixed-animal, and rural practices that need offline-ready attachments"
+   ],
+   "technical_approach": "A small web app stores encrypted clinic CSVs, normalized FDA product entities, raw source snapshots, dated fields, match decisions, and PDF versions. Deterministic matching and an ambiguity queue prevent silent errors; print-safe PDFs and ZIP exports work offline. Scheduled checks follow verified FDA publication/download routes and show freshness dates prominently.",
+   "differentiation_factors": [
+    "Patient-file-ready PDF is the primary output, not a separate safety dashboard.",
+    "Dated source snapshots preserve context through chart review and PIMS migration.",
+    "Batch generation removes repetitive manual entry.",
+    "Status changes trigger insert refresh tasks rather than creating a broad monitoring product."
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "FDA Animal Drugs @ FDA",
+    "FDA Enforcement Reports",
+    "FDA Animal Drug Adverse Event Database",
+    "Clinic inventory CSV exports",
+    "Clinic PIMS exports"
+   ],
+   "estimated_development_time": "4-6+ months",
+   "dev_time_rationale": "The binding constraint is reliable veterinary FDA entity/label normalization and field extraction across incomplete, inconsistently structured public data; it requires tuning and validation against\u2026",
+   "pricing_strategy": "$79 per clinic per month, plus optional one-time onboarding and migration export packs.",
+   "market_fit_score": 0.45,
+   "technical_feasibility_score": 0.62,
+   "data_feasibility_score": 0.65,
+   "data_access_model": "public",
+   "data_acquisition_notes": "FDA APIs/public records; bulk access exists, but veterinary adverse-event coverage and normalization are incomplete.",
+   "market_fit_claimed_route": "FDA Animal Drugs @ FDA, DailyMed",
+   "build_feasibility_score": 0.55,
+   "project_type": "saas",
+   "mechanism_tag": "batch-generated-cited-record-inserts",
+   "data_source_tag": "FDA Animal Drugs @ FDA",
+   "journey_tag": "inventory-to-patient-file-pdf",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "public",
+    "target_market": "b2b",
+    "monetization": "subscription",
+    "monetization_secondary": "one-time",
+    "growth_channels": [
+     "content",
+     "integrations",
+     "programmatic-seo"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "periodic",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "conventional",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "Clinics pay monthly for recurring FDA-cited inserts; medication labeling and patient records create regulatory exposure."
+   },
+   "programmatic_seo_opportunity": "Low-to-medium: FDA product/application pages can support a modest public reference corpus, but the main value is private clinic-specific PDFs.",
+   "content_generation_model": "Each matched FDA product creates a stable public or private insert preview and a clinic-specific dated PDF; the enumerable corpus is FDA product/application records, while clinic-specific pages remain access-controlled.",
+   "organic_discovery_queries": [
+    "veterinary drug label PDF",
+    "FDA approved animal drug label",
+    "veterinary medication documentation template",
+    "animal drug approval status lookup",
+    "veterinary patient record medication insert",
+    "veterinary drug recall documentation",
+    "how to attach FDA drug information to veterinary medical record"
+   ],
+   "estimated_cac_organic": "$40-100 per customer through targeted veterinary-record templates and migration guides.",
+   "estimated_cac_paid": "$120-250 per customer due to narrow, trust-sensitive veterinary software keywords.",
+   "seo_scalability_score": 0.3,
+   "estimated_indexable_pages": 5000,
+   "novelty_score": 0.3,
+   "conventional_approach": "Most builders would create a medication recall dashboard with live alerts, inventory monitoring, and a separate compliance workspace that staff must manually consult and then copy into patient records.",
+   "innovation_angle": "Instead of asking staff to monitor another safety dashboard, the product converts each inventory row into a dated, FDA-cited document that can be attached directly to the patient record; later status changes only trigger regeneration of that record artifact.",
+   "why_it_works": "The validated pain is that communications, diagnostic material, and external context are manually transferred into patient files and often never get attached. A batch-printable artifact fits that existing behavior: staff can generate inserts from an inventory export and attach them during the same record-completion workflow, while dated citations preserve context through PIMS migration. The FDA route adds defensible source material, but the buyer value is reducing the manual step between external drug information and the patient file.",
+   "why_it_works_short": "Inventory-to-PDF inserts remove the manual step that keeps external safety context out of patient files.",
+   "solo_dev_feasibility": 0.5,
+   "obviousness_score": 0.7,
+   "market_fit_score_raw": 0.7,
+   "technical_feasibility_score_raw": 0.68,
+   "novelty_score_raw": 0.7,
+   "seo_scalability_score_raw": 0.35,
+   "obviousness_score_raw": 0.42,
+   "solo_dev_feasibility_raw": 0.82,
+   "calibration_notes": "market_fit: Pain severity is moderate (0.66) and mechanism parity check identifies FDA recall lists as a free DIY substitute; willingness-to-pay for a paid wrapper over free government data is typically low, capping fit. | technical_feasibility: FDA Animal Drugs and DailyMed are verified; deterministic matching + PDF generation is feasible but build_feas 0.55 and data_feas 0.65 reflect matching ambiguity challenges. | novelty: Closest existing thing is free FDA recall lists/DailyMed; converting rows to dated patient-file inserts is a minor UX twist on publicly available data, not a new capability. | seo_scalability: FDA product pages can be indexed, but value is private PDF generation; public corpus is derivative of free government data. | obviousness: Wrapping government safety data in a clinic-friendly format is a cached first-thought for regulatory compliance tools; >60% of builders would propose a 'better FDA dashboard' or insert generator. | solo_dev_feasibility: Build_feas 0.55 is borderline; matching ambiguity queue may need human review; ongoing ops include FDA feed monitoring; caps at mid-low band.",
+   "incumbent_parity": "substitute (DIY): FDA recall lists exist, no CSV-to-insert automation",
+   "refine_binding_constraint": "The insert-as-PDF mechanism is solid and on-pain, but the novelty score is held back because the core interaction \u2014 upload CSV, get matched PDFs \u2014 is a straightforward data-to-document pipeline that any competent developer could replicate. Sharpen the mechanism with a 'migration-proof provenance chain': each insert PDF embeds a cryptographic hash of the source FDA snapshot it was built from\u2026",
+   "adjacent_market_parity": null,
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "vertical_workflow",
+   "angle_rationale": "This is a weak moat \u2014 vertical workflow by elimination. The opportunity is constrained by a lack of searchable public content and a relatively mild distinctiveness in its document-generation mechanism, leaving the product to rely on integrating safety context directly into the patient record workflow where staff actually work.",
+   "novelty_rationale": "A familiar document-generation mechanism is expected here; the distinctiveness is attaching the generated safety context directly to the patient file rather than isolating it in a separate dashboard.",
+   "differentiation_locus": "Attaching dated, FDA-cited safety inserts directly into the patient record workflow where staff actually work."
+  },
+  {
+   "solution_name": "Same-Day Careboard",
+   "idea_id": "idea_4f02c55f087da57db15f090e5cc7733a",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Same-Day Veterinary Care Workflow Orchestration",
+   "short_description": "Protect same-day sick-pet capacity while routing visits, charges, and handoffs through one accountable board beside the clinic\u2019s existing PIMS.",
+   "description": "A clinic configures its daily schedule, service catalog, estimate mappings, roles, and same-day capacity rules, then imports the day\u2019s appointment and estimate data by CSV. The careboard shows coordinators which appointments are urgent, which slots remain protected, and which routine actions can be assigned to technicians, assistants, or front-desk staff without opening multiple PIMS screens. During each visit, staff advance deterministic workflow cards from triage through treatment, handoff, and checkout, with required acknowledgements and timestamps recorded in an immutable event log. At checkout, the app compares completed care actions with imported estimate items, flags probable missing charges, and produces a PIMS-ready export for reconciliation rather than replacing the clinic\u2019s system of record. Managers review capacity protection, bottlenecks, handoff completion, and charge exceptions from a daily operational summary.",
+   "value_proposition": "Protect urgent sick-pet access while turning each visit from triage through handoff and checkout into a short, accountable workflow without forcing a clinic to replace its PIMS.",
+   "pain_points_addressed": [
+    "Cannot reserve same-day sick capacity without overbooking",
+    "PIMS does not route treatment and patient-flow work to support staff",
+    "Estimate items do not reliably become complete veterinary invoices"
+   ],
+   "source_pain": null,
+   "source_segment": null,
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.54,
+   "source_segment_payability_class": "mixed",
+   "audience_fit": false,
+   "core_features": [
+    "Configurable same-day sick-capacity rules with protected-slot visibility and overbooking warnings",
+    "Daily careboard with appointment status, urgency, room, clinician, and next-action indicators",
+    "Role-based task routing for receptionists, technicians, assistants, and veterinarians",
+    "Deterministic triage-to-handoff workflow templates with required completion and escalation steps",
+    "CSV import for schedules, service catalogs, and estimate items",
+    "PIMS-ready charge and workflow export with duplicate and missing-item checks",
+    "Immutable event log with user, timestamp, action, and exception history",
+    "Daily dashboards for protected capacity, task aging, handoff completion, and charge reconciliation",
+    "Clinic-level configuration for appointment types, staffing roles, rules, and export mappings"
+   ],
+   "target_personas": [
+    "Practice managers responsible for daily capacity, staffing, and revenue leakage",
+    "Veterinarians and medical directors overseeing same-day access and clinical handoffs",
+    "Lead veterinary technicians coordinating treatment-room and patient-flow work",
+    "Front-desk and client-service teams managing scheduling, estimates, and checkout",
+    "Independent veterinary clinics and small multi-location practices using an existing PIMS"
+   ],
+   "technical_approach": "Responsive single-tenant web app with local role permissions, PostgreSQL, configurable rules engine, immutable event log, CSV schedule/service/estimate import and PIMS-ready export. All slot calculations, routing, and charge reconciliation are deterministic over clinic-supplied configuration and exports; no external clinical data or AI interpretation is required. Use a browser-based operational board backed by transactional APIs, idempotent import jobs, versioned configuration, audit logging, encrypted data in transit and at rest, automated backups, and export validation. Keep clinical records and authoritative billing in the existing PIMS; retain only the minimum operational identifiers and imported workflow data needed for the day-of-care process.",
+   "differentiation_factors": [
+    "Focuses narrowly on day-of-care orchestration instead of attempting to replace the clinic\u2019s PIMS",
+    "Protects same-day sick capacity through explicit configurable rules rather than informal schedule judgment",
+    "Routes operational work to support staff with accountable next actions and escalation timers",
+    "Reconciles completed workflow actions against estimate items before PIMS export",
+    "Works from clinic-supplied CSVs and exports, enabling a low-integration pilot with an existing system of record",
+    "Immutable event history makes handoffs, exceptions, and charge decisions reviewable"
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "Clinic PIMS CSV exports",
+    "Clinic service catalog",
+    "Clinic schedule configuration",
+    "Clinic estimate templates"
+   ],
+   "estimated_development_time": "3-6 weeks",
+   "dev_time_rationale": "The binding component is the integrated careboard-to-triage-to-handoff workflow plus CSV/export validation; it is mostly deterministic CRUD, rules, and checks with no external provider or unverified\u2026",
+   "pricing_strategy": "Subscription priced by clinic location and active staff seats: approximately $299-$599 per location per month, with a $1,000-$2,500 implementation and workflow-configuration fee for initial import mappings. Offer a 30-day pilot with one location, then charge for additional locations, advanced reporting, and higher export volume; avoid per-visit pricing so the product aligns with predictable practice operations.",
+   "market_fit_score": 0.55,
+   "technical_feasibility_score": 0.85,
+   "data_feasibility_score": 0.92,
+   "data_access_model": "public",
+   "data_acquisition_notes": "Uses clinic-supplied schedule, service-catalog, estimate, and appointment CSV exports plus user-entered configuration. No external data provider is required; data access is operationally obtainable at no API or licensing cost, subject to clinic security, consent, retention, and PIMS export policies.",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.82,
+   "project_type": "saas",
+   "mechanism_tag": "deterministic day-of-care orchestration",
+   "data_source_tag": "clinic-supplied CSV exports",
+   "journey_tag": "import-route-reconcile-export",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "public",
+    "target_market": "b2b",
+    "monetization": "subscription",
+    "monetization_secondary": "one-time",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "continuous",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "conventional",
+    "strengths": [
+     "quick-build"
+    ],
+    "primary_strength": "quick-build",
+    "rationale": "Daily clinic operations are embedded in a location subscription, with implementation fees secondary; workflows touch regulated clinical records."
+   },
+   "programmatic_seo_opportunity": "Medium-low: roughly 55 durable pages from veterinary workflow templates, same-day capacity guides, charge-reconciliation checklists, and PIMS-adjacent operational playbooks. The strongest acquisition comes from high-intent niche pages rather than a large directory corpus.",
+   "content_generation_model": "Manual expert content plus templated pages generated from configurable veterinary workflow scenarios, appointment-capacity policies, technician-routing checklists, and estimate-to-invoice reconciliation examples.",
+   "organic_discovery_queries": [
+    "veterinary same day appointment scheduling software",
+    "veterinary sick visit capacity management",
+    "vet clinic workflow management software",
+    "veterinary technician task routing software",
+    "how to prevent veterinary appointment overbooking",
+    "veterinary estimate to invoice workflow",
+    "veterinary practice patient flow software",
+    "PIMS workflow automation for veterinary clinics"
+   ],
+   "estimated_cac_organic": "$40-100 per customer (high-intent niche content and veterinary operations guides can compound, but the market has a limited search corpus and requires sales-assisted conversion).",
+   "estimated_cac_paid": "$250-600 per customer (specialized veterinary software keywords are expensive and trust-driven; demos and retargeting are likely required).",
+   "seo_scalability_score": 0.35,
+   "estimated_indexable_pages": 55,
+   "novelty_score": 0.35,
+   "conventional_approach": "Most builders would attempt a broad PIMS integration or a replacement practice-management suite containing scheduling, records, billing, inventory, and clinical modules.",
+   "innovation_angle": "This keeps the existing PIMS as the system of record and adds a deterministic, day-of-care control layer that protects urgent capacity, routes support work, and reconciles estimate items before export.",
+   "why_it_works": "Veterinary clinics repeatedly experience same-day access pressure, fragmented routine actions, staff handoff gaps, and missed charges during busy operating days; a configurable CSV-first control layer addresses those operational failures without requiring a risky PIMS migration.",
+   "why_it_works_short": "A CSV-first control layer fixes daily flow and charge gaps without replacing the PIMS.",
+   "solo_dev_feasibility": 0.6,
+   "obviousness_score": 0.65,
+   "market_fit_score_raw": 0.86,
+   "technical_feasibility_score_raw": 0.93,
+   "novelty_score_raw": 0.62,
+   "seo_scalability_score_raw": 0.48,
+   "obviousness_score_raw": 0.55,
+   "solo_dev_feasibility_raw": 0.72,
+   "calibration_notes": "market_fit: Addresses a high-severity (0.82) validated pain regarding same-day capacity, but mechanism parity check confirms IDEXX Neo already ships waitlist backfill and real-time booking; competing head-on with incumbent PIMS features caps fit despite valid pain. | technical_feasibility: CSV import/export and deterministic rules engines are standard web-app components with no exotic data dependencies; build_feas 0.82 confirms viable architecture using public/manual data routes. | novelty: Closest existing thing is IDEXX Neo's native waitlist/backfill module; while 'CSV overlay' avoids integration, the core capability (managing open slots) is a cached first-thought shape that most builders would propose for this pain. | seo_scalability: Content model relies on ~55 manual workflow templates and guides; lacks a programmatically generatable corpus or public dataset to drive scale, capping potential at moderate-low. | obviousness: Managing cancellations and open slots is the primary function of any scheduling system; >70% of competent builders would propose a waitlist or capacity manager as the solution to this specific pain. | solo_dev_feasibility: Build is feasible (0.82), but ongoing ops require maintaining CSV parsers for multiple PIMS formats as they update exports, plus support for clinic-specific workflow configs; recurring maintenance drag prevents hands-off score.",
+   "incumbent_parity": "partial by IDEXX Neo: Neo appointment hours, real-time booking, waitlist backfill",
+   "refine_binding_constraint": null,
+   "adjacent_market_parity": "Covetrus Pulse (Veterinary Practice Management Software): Cloud-based PIMS with AI workflow and productivity tools for entire practice management.",
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "bundle",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "vertical_workflow",
+   "angle_rationale": "The edge lives in a vertical workflow \u2014 specifically, the day-of-care triage, routing, and handoff control layer that protects urgent capacity without replacing the incumbent practice management system. Rivals miss this intermediate operational step by either building generic schedulers or attempting full system replacements, leaving the actual day-of-care flow unmanaged.",
+   "novelty_rationale": "A familiar rules-engine mechanism is expected for operational dashboards; the distinctiveness is applying it strictly to the day-of-care veterinary workflow without attempting to replace the underlying system of record.",
+   "differentiation_locus": "The day-of-care triage, routing, and handoff workflow layer that sits alongside the incumbent practice management system."
+  },
+  {
+   "solution_name": "VetOps Continuity Ledger",
+   "idea_id": "idea_d4e66ef3f1e24334ab8d527516774e82",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Validate Veterinary PIMS Migrations Before Gaps Cause Harm",
+   "short_description": "Reconcile migrated veterinary records, prices, inventory, and reports with evidence packets that expose gaps before they affect care or month-end close.",
+   "description": "A clinic uploads exports from its old and new PIMS, along with communications, diagnostic, pricing, inventory, and reporting files, into a secure workspace. VetOps Continuity Ledger maps columns, matches patients, products, transactions, and encounters using stable identifiers first and transparent normalized-field rules second, then displays matched, missing, conflicting, and unmatched records with row-level provenance. Staff review exceptions in queues, approve or reject suggested matches, and generate correction packets containing CSV and PDF evidence for the PIMS vendor, implementation team, bookkeeper, or clinic operator. The clinic can rerun versioned reconciliation rules after corrections and retain an audit trail showing what was checked, changed, and still unresolved. Scheduled operational audits compare later exports so inventory drift, pricing discrepancies, duplicate reporting work, and newly fragmented patient records are caught before clinical or financial deadlines.",
+   "value_proposition": "Prove what survived a PIMS migration\u2014and create a clean operational bridge for records, prices, inventory, and recurring reporting before the clinic discovers gaps during care or month-end.",
+   "pain_points_addressed": [
+    "PIMS migration leaves historical records and pricing data incomplete",
+    "PIMS inventory counts and usage records cannot be trusted"
+   ],
+   "source_pain": null,
+   "source_segment": null,
+   "source_frame": "pain",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": null,
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.54,
+   "source_segment_payability_class": "mixed",
+   "audience_fit": false,
+   "core_features": [
+    "Secure clinic-controlled export upload with tenant isolation and encryption",
+    "Deterministic column mapping templates for common veterinary PIMS exports",
+    "Stable-ID-first and transparent normalized-field entity matching",
+    "Patient-record continuity checks across communications, diagnostics, visits, and attachments",
+    "Historical pricing and invoice reconciliation with variance explanations",
+    "Inventory count, usage, adjustment, and medication-product reconciliation",
+    "Recurring report and external-integration bridge checks for duplicate operational work",
+    "Exception queues with approve, reject, split, and manually-link workflows",
+    "Versioned reconciliation rules and rerunnable audit jobs",
+    "Row-level provenance showing source file, row, field, rule, and decision history",
+    "Downloadable CSV and PDF correction packets",
+    "Migration baseline and scheduled post-migration audit dashboards"
+   ],
+   "target_personas": [
+    "Practice owners and managing veterinarians overseeing PIMS implementations",
+    "Practice managers responsible for operational continuity, billing, inventory, and reporting",
+    "Veterinary operations consultants and PIMS implementation specialists",
+    "Multi-location veterinary groups standardizing migration validation",
+    "Clinic finance or inventory leads investigating reconciliation discrepancies"
+   ],
+   "technical_approach": "Build a secure single-tenant upload workspace with encrypted object storage, PostgreSQL, signed download URLs, role-based access, and immutable audit events. Use deterministic column mapping, configurable entity matching with stable IDs first and transparent normalized-field matching second, versioned reconciliation rules, row-level provenance, and idempotent processing jobs. Model patients, owners, encounters, communications, diagnostics, products, prices, inventory movements, reports, and external-export records as linked reconciliation entities rather than overwriting source data. Provide a review UI for exceptions and correction decisions, plus downloadable CSV/PDF correction packets. Optional official FDA/DailyMed lookup can normalize a clinic-supplied veterinary drug name, while all clinic data remains the authoritative source for operational decisions.",
+   "differentiation_factors": [
+    "Evidence-first migration validation rather than a replacement PIMS",
+    "One reconciliation model spans clinical continuity, pricing, inventory, and reporting operations",
+    "Stable-ID matching is prioritized, while fallback matches expose the exact normalized fields and confidence rationale",
+    "Correction packets are designed for vendor and implementation-team remediation, not just internal dashboards",
+    "Clinic-controlled exports avoid dependence on privileged PIMS API access",
+    "Versioned rules and row-level provenance make recurring audits defensible"
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "Clinic PIMS exports",
+    "Clinic billing and pricing exports",
+    "Clinic inventory and medication usage exports",
+    "Clinic communications and diagnostic exports",
+    "FDA NDC Directory",
+    "DailyMed"
+   ],
+   "estimated_development_time": "2-4 months",
+   "dev_time_rationale": "The binding component is cross-source entity matching: even with stable IDs, normalized-field fallback requires handling ambiguous, missing, and conflicting identifiers against real PIMS exports\u2026",
+   "pricing_strategy": "Implementation-led subscription: $2,500-$7,500 one-time migration setup covering mapping and baseline reconciliation, then $299-$999 per clinic per month based on export volume, locations, and recurring audit frequency. Offer a $750-$2,000 fixed-price audit for clinics needing a one-time migration review, with consultant and multi-location plans priced separately.",
+   "market_fit_score": 0.65,
+   "technical_feasibility_score": 0.8,
+   "data_feasibility_score": 0.94,
+   "data_access_model": "unverified",
+   "data_acquisition_notes": "Data route UNVERIFIED \u2014 could not confirm or refute a public source; verify obtainability before building. Evidence documents DrChrono clinical exports and generic CMS/ONC APIs, but does not confirm a",
+   "market_fit_claimed_route": null,
+   "build_feasibility_score": 0.7,
+   "project_type": "saas",
+   "mechanism_tag": "provenance-backed-reconciliation",
+   "data_source_tag": "clinic-controlled exports",
+   "journey_tag": "upload-review-correct-audit",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "unverified",
+    "target_market": "b2b",
+    "monetization": "one-time",
+    "monetization_secondary": "subscription",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "episodic",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "medium",
+    "novelty_level": "moderate",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "PIMS migration is primarily a fixed implementation project, followed by optional monitoring; sensitive patient and clinical data create regulatory exposure."
+   },
+   "programmatic_seo_opportunity": "Moderate: approximately 75 indexable pages from migration checklists, PIMS export guides, veterinary inventory reconciliation topics, reporting templates, and software-specific workflow explainers; pages should be educational and avoid claiming unsupported vendor compatibility.",
+   "content_generation_model": "Manual expert content plus templated pages for veterinary PIMS migration checklists, export-field mapping guides, inventory reconciliation scenarios, reporting workflows, and correction-packet examples.",
+   "organic_discovery_queries": [
+    "veterinary PIMS migration checklist",
+    "veterinary practice software data migration validation",
+    "how to audit veterinary medical records after migration",
+    "veterinary inventory reconciliation spreadsheet",
+    "veterinary practice inventory usage report",
+    "PIMS migration missing patient records",
+    "veterinary software billing data migration errors",
+    "veterinary practice management reporting reconciliation",
+    "how to reconcile veterinary drug inventory",
+    "veterinary PIMS implementation audit"
+   ],
+   "estimated_cac_organic": "$80-180 per clinic (high-intent migration guides and consultant referrals can generate qualified leads, but the niche has limited search volume and requires trust-building).",
+   "estimated_cac_paid": "$250-700 per clinic (specialized veterinary software and practice-management keywords are costly, while implementation timing makes conversion episodic).",
+   "seo_scalability_score": 0.5,
+   "estimated_indexable_pages": 75,
+   "novelty_score": 0.6,
+   "conventional_approach": "Most builders would create another veterinary PIMS, a generic data-import tool, or a consulting-only migration checklist that relies on manual spreadsheet comparisons.",
+   "innovation_angle": "This product is a bounded, evidence-producing reconciliation layer that preserves source exports, validates four operational continuity surfaces together, and turns exceptions into vendor-ready correction packets without requiring privileged PIMS APIs.",
+   "why_it_works": "Migration distrust is expensive because errors compound across patient care, billing, inventory, and reporting; clinic-controlled exports let the product produce transparent, defensible evidence without waiting for vendor API access.",
+   "why_it_works_short": "Clinic exports expose compounded migration gaps before they affect care, billing, inventory, or reporting.",
+   "solo_dev_feasibility": 0.7,
+   "obviousness_score": 0.4,
+   "market_fit_score_raw": 0.86,
+   "technical_feasibility_score_raw": 0.91,
+   "novelty_score_raw": 0.74,
+   "seo_scalability_score_raw": 0.48,
+   "obviousness_score_raw": 0.55,
+   "solo_dev_feasibility_raw": 0.62,
+   "calibration_notes": "market_fit: Addresses migration distrust pain (0.72) with evidence-producing reconciliation; no incumbent found offering bounded continuity validation, making this a defensible niche within high-stress migration events. | technical_feasibility: Secure upload, deterministic mapping, and audit logs are standard; no external API dependencies. Data feasibility high despite 'unverified' tag since it uses client-provided exports. | novelty: Closest existing thing is manual spreadsheet comparison or consulting checklists; automated four-surface continuity validation with vendor-ready correction packets is a genuine structural improvement over DIY. | seo_scalability: Migration checklists and vendor-specific export guides create ~75 indexable pages; moderate scale from evergreen migration content but limited by private nature of core value. | obviousness: Data validation during migration is expected, but productizing it as a standalone evidence layer is less common; ~40% of builders might propose a migration tool, fewer would scope it as bounded continuity proof. | solo_dev_feasibility: Upload workspace + processing worker is solo-buildable; ops are batch-oriented with no real-time demands; fits 0.7 band comfortably.",
+   "incumbent_parity": "none found",
+   "refine_binding_constraint": null,
+   "adjacent_market_parity": null,
+   "red_team_verdict": null,
+   "red_team_caveats": null,
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "bundle",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "novel_differentiation",
+   "angle_rationale": "The edge lives in a distinct mechanism \u2014 an evidence-producing reconciliation layer that validates records, prices, and inventory continuity without requiring direct database access to the incumbent systems. While migration checklists could attract search traffic, the true moat is the bounded reconciliation engine that turns exceptions into vendor-ready correction packets, which generic import tools miss.",
+   "novelty_rationale": "A familiar data-validation mechanism is expected for migration tools; the distinctiveness is bundling multiple operational continuity surfaces into a single, evidence-producing reconciliation layer.",
+   "differentiation_locus": "The evidence-producing reconciliation mechanism that validates multiple operational continuity surfaces without requiring direct database access to incumbent systems."
+  },
+  {
+   "solution_name": "AccreditedVetMapper",
+   "idea_id": "idea_068187098837485c73c28eef2134a348",
+   "idea_revision": 1,
+   "identity_origin": "phase1",
+   "identity_operation_id": "initial",
+   "headline": "Controlled Substance Audit Logs for Veterinary Clinics",
+   "short_description": "Upload a controlled-substance log, reconcile discrepancies, verify prescriber accreditation, and export an audit-ready DEA documentation packet.",
+   "description": "A clinic uploads a CSV or spreadsheet export of its controlled-substance log, then maps each prescribing veterinarian to the current USDA APHIS National Veterinary Accreditation Program directory. The tool normalizes medication, quantity, transaction, and prescriber fields; flags unexplained count differences, missing attestations, and accreditation-status mismatches; and shows each exception in a review queue. Staff can assign explanations, attach supporting notes, and record the responsible reviewer without changing the source log. Once reviewed, the clinic exports a timestamped audit packet containing reconciliation results, prescriber verification evidence, exception notes, and DEA-oriented log summaries. The browser workflow is designed for independent practices that need a repeatable month-end or pre-inspection check without re-entering the same information into a PIMS and separate compliance documents.",
+   "value_proposition": "AccreditedVetMapper turns a clinic\u2019s existing controlled-substance export into a reconciled, prescriber-verified audit packet without duplicate manual reporting or spreadsheet investigation.",
+   "pain_points_addressed": [
+    "PIMS inventory counts and usage records cannot be trusted",
+    "PIMS reporting and external integrations force duplicate operational work"
+   ],
+   "source_pain": null,
+   "source_segment": "Independent General-Practice Clinic Owners and Solo Operators",
+   "source_frame": "user_seed",
+   "unanchored_hypothesis": null,
+   "duplicate_of": null,
+   "evaluation_id": null,
+   "evaluation_source_message_id": null,
+   "proposed_title": null,
+   "synthesis_evaluation": null,
+   "generation_operation_id": "validate",
+   "generation_batch_ordinal": null,
+   "source_segment_payability": 0.47,
+   "source_segment_payability_class": "smb-budget",
+   "audience_fit": true,
+   "core_features": [
+    "CSV/XLSX upload with configurable PIMS column mapping",
+    "Controlled-substance inventory reconciliation by medication, lot, transaction, and period",
+    "Discrepancy detection for opening balance, receipts, administrations, waste, transfers, adjustments, and closing count",
+    "Prescriber-name normalization and matching against the USDA APHIS National Veterinary Accreditation Program directory",
+    "Accreditation-status and directory-match exception queue",
+    "Reviewer workflow for explanations, attestations, notes, and supporting-document references",
+    "Immutable source-file snapshots with processing timestamps and audit history",
+    "DEA-oriented audit packet export in PDF and CSV",
+    "Saved clinic rules for recurring month-end reconciliations",
+    "Role-based access, encryption, retention controls, and deletion tools"
+   ],
+   "target_personas": [
+    "Practice owners and managing veterinarians at independent veterinary clinics",
+    "Veterinary practice managers responsible for inventory control and DEA inspection preparation",
+    "Lead veterinary technicians or controlled-substance custodians performing monthly counts",
+    "Compliance consultants supporting small veterinary practices"
+   ],
+   "technical_approach": "Build a browser SaaS with a multi-tenant backend, encrypted object storage for uploaded logs, and a parsing pipeline for CSV/XLSX files. Use configurable mapping templates and deterministic reconciliation rules rather than relying on generative AI for compliance decisions. Maintain a versioned monthly snapshot of the USDA APHIS accreditation directory, with source URL, retrieval date, checksum, and matching confidence recorded for every result; unmatched names go to human review rather than being silently classified. Generate PDFs from structured reconciliation data, preserve event-level audit logs, and implement least-privilege roles, encrypted transport and storage, configurable retention, and export/delete controls. Start with common export formats from Avimark and Cornerstone while supporting a generic mapping wizard.",
+   "differentiation_factors": [
+    "Combines controlled-substance quantity reconciliation with prescriber accreditation verification in one workflow",
+    "Produces a reviewable audit packet rather than only a dashboard or variance alert",
+    "Uses the clinic\u2019s existing PIMS export, avoiding a second data-entry system",
+    "Stores evidence for each discrepancy and accreditation match, including source version and review history",
+    "Designed specifically for independent veterinary clinics and their recurring DEA-readiness workflow",
+    "Keeps deterministic compliance rules and human review for ambiguous identity matches"
+   ],
+   "requires_data_aggregation": true,
+   "data_sources": [
+    "USDA APHIS National Veterinary Accreditation Program directory",
+    "Clinic-provided PIMS inventory and controlled-substance log exports"
+   ],
+   "estimated_development_time": "4-6+ months",
+   "dev_time_rationale": "The binding constraint is the unverified APHIS data route combined with prescriber identity/status matching: obtaining a dependable directory source and tuning entity resolution against messy\u2026",
+   "pricing_strategy": "Paid subscription with a clinic-based plan: $149/month for one clinic and up to 10 users, including monthly reconciliation runs, directory refreshes, audit exports, and 24 months of history; $299/month for multi-location groups and longer retention. Offer a $249 one-time assisted setup/import service, not a permanent free tier. The subscription is justified even though this pain\u2019s WTP is unknown because the niche shows documented tooling spend of $99-$500/month and the product replaces recurring compliance labor while reducing inspection risk; validate conversion with paid pilots before expanding features.",
+   "market_fit_score": 0.45,
+   "technical_feasibility_score": 0.55,
+   "data_feasibility_score": 0.62,
+   "data_access_model": "unverified",
+   "data_acquisition_notes": "Data route UNVERIFIED \u2014 could not confirm or refute a public source; verify obtainability before building. APHIS NVAP page confirms the program exists, but evidence does not show a public directory/AP",
+   "market_fit_claimed_route": "USDA APHIS National Veterinary Accreditation Program",
+   "build_feasibility_score": 0.58,
+   "project_type": "saas",
+   "mechanism_tag": "aggregates-public-records",
+   "data_source_tag": "government-open-data",
+   "journey_tag": "enters-inputs-gets-calculation",
+   "tags": {
+    "project_type": "saas",
+    "data_access": "unverified",
+    "target_market": "b2b",
+    "monetization": "subscription",
+    "monetization_secondary": "one-time",
+    "growth_channels": [
+     "content",
+     "integrations"
+    ],
+    "risk_flags": [
+     "regulatory"
+    ],
+    "usage_cadence": "continuous",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
+    "build_complexity": "high",
+    "novelty_level": "conventional",
+    "strengths": [],
+    "primary_strength": null,
+    "rationale": "B2B compliance workflow used regularly; subscription is primary, setup is secondary, and controlled-substance records create regulatory exposure."
+   },
+   "programmatic_seo_opportunity": "Medium: approximately 100-300 durable pages are possible from genuinely useful, non-sensitive content such as PIMS export mapping guides, controlled-substance reconciliation checklists, DEA inspection preparation guides, and state-specific veterinary compliance explainers. Clinic data must remain private, so the product should not create public pages from customer records; SEO is primarily template- and guide-driven rather than a large directory.",
+   "content_generation_model": "Editorial and programmatic content built from PIMS-specific import guides, controlled-substance reconciliation examples, recurring DEA-readiness checklists, state compliance explainers, and downloadable audit templates; customer uploads generate private reports, not public SEO pages.",
+   "organic_discovery_queries": [
+    "veterinary controlled substance inventory reconciliation",
+    "DEA audit preparation for veterinary clinics",
+    "controlled drug log discrepancy veterinary practice",
+    "veterinary DEA inventory log template",
+    "how to reconcile veterinary drug inventory",
+    "Avimark controlled substance report audit",
+    "Cornerstone controlled substance inventory reconciliation",
+    "accredited veterinarian lookup USDA APHIS",
+    "DEA prescribing veterinarian verification"
+   ],
+   "estimated_cac_organic": "$25-75 per customer (high-intent compliance guides and PIMS-specific import pages can capture recurring practice-manager searches, though the niche content volume is limited).",
+   "estimated_cac_paid": "$150-350 per customer (specialized veterinary software and compliance keywords have limited volume, while clicks from practice-management buyers can be expensive).",
+   "seo_scalability_score": 0.45,
+   "estimated_indexable_pages": 180,
+   "novelty_score": 0.35,
+   "conventional_approach": "Most builders would add another inventory report inside a PIMS or create a generic spreadsheet template that compares beginning and ending controlled-substance counts without verifying each prescriber\u2019s accreditation status.",
+   "innovation_angle": "This pairs deterministic controlled-substance reconciliation with a versioned USDA APHIS directory match and evidence-backed prescriber attestations, turning a fragmented monthly check into a portable audit packet outside the PIMS.",
+   "why_it_works": "The stated pain combines untrusted PIMS inventory records with duplicate reporting work, while the brief identifies a specific missing artifact: accreditation status is absent even when Cornerstone or Avimark totals tie out; a downloadable monthly USDA APHIS directory makes the verification step practical without requiring a fragile PIMS integration.",
+   "why_it_works_short": "It fills the gap between accurate PIMS totals and missing prescriber accreditation evidence.",
+   "solo_dev_feasibility": 0.35,
+   "obviousness_score": 0.65,
+   "market_fit_score_raw": 0.78,
+   "technical_feasibility_score_raw": 0.88,
+   "novelty_score_raw": 0.68,
+   "seo_scalability_score_raw": 0.46,
+   "obviousness_score_raw": 0.74,
+   "solo_dev_feasibility_raw": 0.72,
+   "calibration_notes": "market_fit: Addresses a high-severity (0.72) compliance pain, but the core mechanism is unverified: the idea claims to pair reconciliation with USDA APHIS accreditation data, yet the provided technical_approach explicitly marks 'data access: unverified' and lists no integration\u2026 (route not confirmed: the verifier did not establish this data route \u2014 access model: unverified) | technical_feasibility: CSV/XLSX parsing and deterministic reconciliation are standard, but the innovation relies on integrating USDA APHIS accreditation data which is marked 'unverified' in the source; without a confirmed API or bulk download route for this specific directory, the key differentiator\u2026 | novelty: Closest existing thing: IDEXX Neo already ships controlled-substance reconciliation reports and VetSnap integration per the mechanism parity check. The proposed twist (adding USDA APHIS accreditation matching) is a minor data-enrichment layer over an incumbent-shipped core\u2026 | seo_scalability: Content model targets PIMS export mapping guides and DEA-readiness checklists; these are useful but finite (bounded by ~10-15 major PIMS vendors), and the corpus must be hand-authored per vendor format rather than programmatically generated from a verified data source. | obviousness: Controlled-substance reconciliation is a cached first-thought shape in veterinary compliance software, and IDEXX Neo already ships it; adding an accreditation lookup is a natural extension that most competent builders would propose when seeing the gap, making this mildly obvious\u2026 | solo_dev_feasibility: Build feasibility is only 0.58 due to unverified data access and multi-format parsing complexity; ongoing ops require maintaining brittle PIMS export parsers as vendors update formats, handling sensitive controlled-substance data with compliance liability, and providing support\u2026",
+   "incumbent_parity": "shipped by IDEXX Neo: IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation",
+   "refine_binding_constraint": null,
+   "adjacent_market_parity": "GreshamTech (Regulatory Reporting Software): Regulatory reporting platform that centralizes data and automates compliance for financial institutions",
+   "red_team_verdict": "weakened",
+   "red_team_caveats": [
+    "The search evidence shows category incumbents such as Shepherd, VetBadger, Veterian, and other veterinary practice-management platforms, but it does not establish that any specifically reconciles controlled-substance exports; therefore displacement and differentiation remain unproven.",
+    "Free or bundled alternatives are only weakly evidenced: AVMA offers practice-management resources, while mainstream PIMS products are shown as platforms for records, billing, and inventory. The evidence does not show a free tool that produces this audit packet, nor a buyer willing to pay for a standalone upload-and-reconcile utility.",
+    "The mechanism is not demonstrated for the modal failure case. The idea assumes a usable CSV/XLSX export plus configurable mappings and deterministic rules, but the search evidence says nothing about inconsistent schemas, missing or incorrect source data, multi-location workflows, prescriber verification, or whether reconciliation can establish an audit-ready record rather than merely flag discrepancies."
+   ],
+   "red_team_revised": null,
+   "rebuild_origin": null,
+   "red_team_vocab_mismatch": null,
+   "idea_tier": "single",
+   "candidate_status": "active",
+   "merged_from": null,
+   "winning_angle": "vertical_workflow",
+   "angle_rationale": "The best path to market is through a vertical workflow. While general practice management systems like ezyVet handle basic inventory tracking, they miss the specific compliance step of cross-referencing controlled-substance logs against USDA APHIS prescriber accreditation to generate audit-ready packets. The edge lives in owning this deep, high-stakes regulatory workflow that generic practice management modules overlook.",
+   "novelty_rationale": "A familiar data-matching and reporting mechanism is expected for compliance software; its distinctiveness comes from addressing a highly specific regulatory workflow rather than introducing a new technical paradigm.",
+   "differentiation_locus": "The specific compliance workflow step of matching controlled-substance logs against USDA APHIS prescriber accreditation to generate audit-ready packets, which general PIMS inventory modules miss."
+  }
+ ],
+ "pains": [
+  {
+   "title": "Cannot keep communications and diagnostic records in one patient file",
+   "severity_score": 0.66,
+   "mention_count": 19,
+   "representative_quotes": [
+    "If the different forms of communication were automatically added, or if texting and email were connected to the program used to store patient records (we use Avimark), that would save teams a lot of labor and time.",
+    "o ezyvet before I left the field entirely (wish I had made that call before going through the training.) It absolutely blew my mind that I couldn't just click on a patient name and get what I needed.",
+    "Our new owner picked avimark as our POS and I\u2019d rather use paper files than avimark.",
+    "The most recent glitch is that when you archive a patient (most commonly due to euthanasia/death) Digitail is NOT automatically canceling the pets future appointments.",
+    "We use EzyVet, I have nothing else to add but sometimes there is a little voice inside me that says \u201cf*ck it, I\u2019m going back to paper records\u201d",
+    "It's very practical, and you don't have to find a menu buried in a menu to enter a simple task (like Avimark sometimes makes you do).",
+    "Every hospital I have worked with has struggled with PMS transitions if they were using avimark.",
+    "Ezyvet is great if you have an entire team to design the template and make it functional, on its own it is empty and difficult to learn.",
+    "My clinic just switched to Ezyvet (the associate doctors had no say in it) and I hate it so very, very much.",
+    "Like, why is a product designed by Idexx unable to seamlessly move over patient charts from Cornerstone, which is also Idexx?",
+    "If you add a line item (say lab work, or a single X-ray), EZYvet will refuse to add it to the invoice on the invoice screen.",
+    "We are using avimark and no one seems to know how to use it fully."
+   ],
+   "source_post_ids": [
+    "uy6cnm",
+    "1fjit4m",
+    "r8p910",
+    "1m32li7",
+    "1j5139t",
+    "1j5139t",
+    "1sffouw",
+    "1rht9k5",
+    "1rht9k5",
+    "1rht9k5",
+    "th8rkd",
+    "1ftu2x2"
+   ]
+  },
+  {
+   "title": "Routine veterinary actions require too many PIMS screens",
+   "severity_score": 0.55,
+   "mention_count": 22,
+   "representative_quotes": [
+    "o ezyvet before I left the field entirely (wish I had made that call before going through the training.) It absolutely blew my mind that I couldn't just click on a patient name and get what I needed.",
+    "We were transitioning to ezyvet before I left the field entirely (wish I had made that call before going through the training.) It absolutely blew my mind that I couldn't just click on a patient name and get what I needed.",
+    "Ezyvet is great if you have an entire team to design the template and make it functional, on its own it is empty and difficult to learn.",
+    "I first reached out of Digitail about this issue well over 2 weeks ago\u2026 they brushed me off and required proof.",
+    "my current clinic uses avimark currently and I think the UI is extremely unintuitive and you often have to do things in really clunky manners",
+    "The tabbing system was ezyvet's biggest flaw for me, and it annoyed me that I couldn't view both the client and patient information at the same time.",
+    "We use EzyVet, I have nothing else to add but sometimes there is a little voice inside me that says \u201cf*ck it, I\u2019m going back to paper records\u201d",
+    "It's very practical, and you don't have to find a menu buried in a menu to enter a simple task (like Avimark sometimes makes you do).",
+    "Like, why is a product designed by Idexx unable to seamlessly move over patient charts from Cornerstone, which is also Idexx?",
+    "It\u2019s a click of the button for most people ordering but for us it happens many times a day and it interrupts our appointments and sick patients!",
+    "I'm a software engineer by profession and, while visiting the vet with my cat, I noticed that the practice I went to was slowed down by their PMS.",
+    "In a few instances, I've had to wait extra because it was slowing down or somebody had issues operating it."
+   ],
+   "source_post_ids": [
+    "1fjit4m",
+    "1fjit4m",
+    "1rht9k5",
+    "1m32li7",
+    "1j5139t",
+    "1fjit4m",
+    "1j5139t",
+    "1j5139t",
+    "1rht9k5",
+    "1mqd3oo",
+    "18w0ixp",
+    "18w0ixp"
+   ]
+  },
+  {
+   "title": "PIMS migration leaves historical records and pricing data incomplete",
+   "severity_score": 0.58,
+   "mention_count": 18,
+   "representative_quotes": [
+    "my current clinic uses avimark currently and I think the UI is extremely unintuitive and you often have to do things in really clunky manners",
+    "We use EzyVet, I have nothing else to add but sometimes there is a little voice inside me that says \u201cf*ck it, I\u2019m going back to paper records\u201d",
+    "Like, why is a product designed by Idexx unable to seamlessly move over patient charts from Cornerstone, which is also Idexx?",
+    "Ezyvet is such garbage and they fucked up our conversion so bad that we're looking for another new software.",
+    "My clinic just switched to Ezyvet (the associate doctors had no say in it) and I hate it so very, very much.",
+    "We switched to ezyvet from Avimark this past year and it was a nightmare in the beginning.",
+    "A few things I\u2019m sick of already with Ezyvet compared to Avimark (we just switched about a month and a half ago): 1.",
+    "Our clinic hated it so much, we used it for 6 months and just ended up going back to avimark.",
+    "I never thought I\u2019d say this, but I really miss being able to see all the pets (living and deceased) under a client on Avimark.",
+    "Our new owner picked avimark as our POS and I\u2019d rather use paper files than avimark.",
+    "Every hospital I have worked with has struggled with PMS transitions if they were using avimark.",
+    "Conversion from our old software has also (STILL) been a headache with missing data and their response time is getting worse."
+   ],
+   "source_post_ids": [
+    "1j5139t",
+    "1j5139t",
+    "1rht9k5",
+    "15mwo1v",
+    "1rht9k5",
+    "1fjit4m",
+    "1fjit4m",
+    "1rht9k5",
+    "1fjit4m",
+    "r8p910",
+    "1sffouw",
+    "1lap3d1"
+   ]
+  },
+  {
+   "title": "Cannot reserve same-day sick capacity without overbooking",
+   "severity_score": 0.82,
+   "mention_count": 24,
+   "representative_quotes": [
+    "The most recent glitch is that when you archive a patient (most commonly due to euthanasia/death) Digitail is NOT automatically canceling the pets future appointments.",
+    "I first reached out of Digitail about this issue well over 2 weeks ago\u2026 they brushed me off and required proof.",
+    "Veterinarians used to always have a few urgent spots open throughout the day but now they're booked out for weeks for a simple vaccination appointment and they force you to go to emergency rooms that cost $2.5K just to be looked at.",
+    "Appointments are at MINIMUM of three weeks out, even in the event of an emergency.",
+    "It\u2019s kind of insane, before Covid we would have been able to book same day or next day appointments no problem.",
+    "I'm still looking for the dream clinic schedule that doesn't think it's an anomaly that sick pets call the vet and need seeing same day.",
+    "One hospital I worked at doing relief used to do that to me and they would get upset that I was always running behind.( there would be days were I only saw one or two wellness exams and all the rest would be sick or euthanasia -20 min for everything) On top of everything the staff wasn\u2019t very helpful so I was pretty much starting the appointment, drawing vaccines and if I send a sick animal to the treatment area, since they were understaffed that meant that was by myself on many of the appointments.",
+    "I have an appointment booked at a smaller clinic that can get me in way sooner.",
+    "Sometimes they'll book online for the following week for a really sick pet because it's the only open slot, when if they called, we'd find a way to get them seen that day.",
+    "I always hate seeing a sick patient on the schedule for the last appointment of the day.",
+    "Clients routinely schedule sick appointments as wellness or special appointments that are longer (new puppy, radiographs, etc) as regular shorter visits.",
+    "I just want to see what other clinics are doing because I\u2019m feeling burnt out and I think it\u2019s the volume of sick appointments they have me seeing but I\u2019m being told I don\u2019t know how to manage my time."
+   ],
+   "source_post_ids": [
+    "1m32li7",
+    "1m32li7",
+    "1mog50u",
+    "1mog50u",
+    "gm5x2p",
+    "murs0b",
+    "1kinqfl",
+    "1mog50u",
+    "uj62ti",
+    "1kinqfl",
+    "uj62ti",
+    "1kinqfl"
+   ]
+  },
+  {
+   "title": "PIMS does not route treatment and patient-flow work to support staff",
+   "severity_score": 0.48,
+   "mention_count": 17,
+   "representative_quotes": [
+    "The tabbing system was ezyvet's biggest flaw for me, and it annoyed me that I couldn't view both the client and patient information at the same time.",
+    "There\u2019s no way to mark a client\u2019s profile \u201cred\u201d like in Avimark to warn staff to AOWC.",
+    "My clinic just switched to Ezyvet (the associate doctors had no say in it) and I hate it so very, very much.",
+    "We use EzyVet, I have nothing else to add but sometimes there is a little voice inside me that says \u201cf*ck it, I\u2019m going back to paper records\u201d",
+    "If you add a line item (say lab work, or a single X-ray), EZYvet will refuse to add it to the invoice on the invoice screen.",
+    "I want to make it clear that there are technicians or VAs that will try to help as much as they can; however, it is drilled into staff that estimates, treatment sheets, phone calls from people asking for a doctor, taking histories, and even transferring over radiographs are a doctor's responsibility only.",
+    "Tech appts technically took up a doctor appointment spot, since we didnt have enoigh staff to have both going at the same time.",
+    "Much of the workload placed on doctors includes answering phones, creating estimates, obtaining patient histories, submitting x-rays, transferring plans to treatment sheets, and ensuring every single treatment\u2014feeding orders included\u2014is properly entered.",
+    "Tasks that are typically delegated to support staff in other hospitals are regularly pushed onto doctors here, leaving patient care and medical records as an afterthought.",
+    "One hospital I worked at doing relief used to do that to me and they would get upset that I was always running behind.( there would be days were I only saw one or two wellness exams and all the rest would be sick or euthanasia -20 min for everything) On top of everything the staff wasn\u2019t very helpful so I was pretty much starting the appointment, drawing vaccines and if I send a sick animal to the treatment area, since they were understaffed that meant that was by myself on many of the appointments.",
+    "Staff are frequently late in getting my appointments set up in the room, and they prioritize tech appointments over doctor visits way too often.",
+    "My last clinic had 1 tech per dr so I understand falling behind, for us (private clinic) there was no way the Drs cared enough to put blocks, they\u2019d just get stressed and one doc (the owner) would become bitchy and rude but \ud83e\udd37\ud83c\udffd\u200d\u2640\ufe0f yeah we\u2019d regularly be behind 15-20 minutes especially bc we did in house fecals as well and those and HW tests could never be run until exam was done since we didn\u2019t have anyone to set them up until the pet was back in the exam room."
+   ],
+   "source_post_ids": [
+    "1fjit4m",
+    "1fjit4m",
+    "1rht9k5",
+    "1j5139t",
+    "th8rkd",
+    "1m36vy7",
+    "1c52ncu",
+    "1m36vy7",
+    "1m36vy7",
+    "1kinqfl",
+    "uj62ti",
+    "1jw2n30"
+   ]
+  },
+  {
+   "title": "Estimate items do not reliably become complete veterinary invoices",
+   "severity_score": 0.76,
+   "mention_count": 13,
+   "representative_quotes": [
+    "If you add a line item (say lab work, or a single X-ray), EZYvet will refuse to add it to the invoice on the invoice screen.",
+    "My clinic just switched to Ezyvet (the associate doctors had no say in it) and I hate it so very, very much.",
+    "Our clinic hated it so much, we used it for 6 months and just ended up going back to avimark.",
+    "Why on God's green earth is it necessary to create an estimate and then physically re-enter every single item into the invoice?",
+    "It seems like I have to create a treatment plan and that becomes the estimate somehow.",
+    "Figuring out the right code for each line item was a bitch and it took us several months to get used to charging appropriately.",
+    "So if you accidentally double-tap f6 when wanting to view their chart, you now have to manually remove the check in, delete the appt from the calendar, and re-add it.",
+    "I'm missing the most recent bloodwork and urinalysis results and my emails seem to be getting ignored.",
+    "Confirmed with my vet that they literally fired everyone within a single day\u2014I had been on the phone with them the day previously trying and struggling to book an appointment (other issue\u2014fully fed up with them for not providing services that we had paid for as \u201ctotal wellness members\u201d)",
+    "I\u2019m front office with one other and my boss seems shocked that we NEED to stay later than he expects because of all the things we haven\u2019t gotten to throughout the day due to phone calls interruptions, getting directed to chase down records or forms for a sudden new client, on and on.",
+    "Neo has some MAJOR problems that makes me wonder how it is even allowed to be called a 'electronics record program', but I digress.",
+    "I work at a vet clinic and Chewy was a pain in the ass to deal with so yes we switched to owners picking up scripts to send to them."
+   ],
+   "source_post_ids": [
+    "th8rkd",
+    "1rht9k5",
+    "1rht9k5",
+    "1rht9k5",
+    "1vkt3fu",
+    "586y60",
+    "1fjit4m",
+    "1m8bnh6",
+    "1m8bnh6",
+    "1g9tw8g",
+    "11dx9df",
+    "1qyfj1i"
+   ]
+  },
+  {
+   "title": "PIMS inventory counts and usage records cannot be trusted",
+   "severity_score": 0.72,
+   "mention_count": 11,
+   "representative_quotes": [
+    "I like the Idexx lab integration, it makes viewing results really seamless, however our inventory is screwed beyond your wildest imaginations.",
+    "But that doesn't change the fact that Cornerstone will randomly screw up prices or inventory counts.",
+    "We've had it since November and it's going fine overall but it can be persnickety and the inventory aspect of it is awful IMO but if you're small and don't have 2 trucks and an office worth of inventory then it's probably not a big deal.",
+    "Currently, we don't have any serious inventory tracking system, so many times when our partner sells something, we actually don't have it and he has no way of knowing until an issue has already been created.",
+    "Biggest pain points would be limited/poor integrations with outside software that isn't owned/partnered with covetrus, reporting is terrible, and inventory management is cumbersome.",
+    "We're mixed animal, and cloud based for farm calls is great (except when you don't have service in heavy Amish areas), but the inventory management DOES NOT do what they advertise, and reporting functions SUCK.",
+    "Especially the way surgery bundles are made can make creating estimates quickly difficult, and it will sometimes \u201ceat\u201d exam findings so we have to retype them.",
+    "The records it generates are such a mess that it was genuinely embarrassing to send them sometimes.",
+    "And even then it's still super clunky, labor intensive and not really integrated into your PMS/medical records.",
+    "I have to spend ten minutes of every recheck appointment opening the 87 - 100 unlabled PDF files that contain the previous Cornerstone records.",
+    "After working on it firsthand, I was kind of surprised at how difficult it was to use to the point that I feel like it sometimes hindered more than helped the people using it.",
+    "It\u2019s like someone wanted to make it all fancy and pretty and forgot how ANNOYING it is that you have to click through a million tabs to find basic info 4."
+   ],
+   "source_post_ids": [
+    "129ooig",
+    "129ooig",
+    "1lap3d1",
+    "195c1hf",
+    "11dx9df",
+    "11dx9df",
+    "129ooig",
+    "1fjit4m",
+    "uy6cnm",
+    "1rht9k5",
+    "1fjit4m",
+    "1fjit4m"
+   ]
+  },
+  {
+   "title": "Mobile veterinary teams cannot document visits when connectivity fails",
+   "severity_score": 0.58,
+   "mention_count": 10,
+   "representative_quotes": [
+    "We use EzyVet, I have nothing else to add but sometimes there is a little voice inside me that says \u201cf*ck it, I\u2019m going back to paper records\u201d",
+    "I used to try to use ezyvet on the run on my ipad, but it was absolutely hopeless on that so i recently bought a windows tablet and it works well for me to quickly type notes on the road if I get a spare few minutes",
+    "We\u2019ve been slowly practicing it over the past couple weeks and we\u2019re all ready to off ourselves, including the doctors \ud83d\ude2d\ud83d\ude2d\ud83d\ude2d I truly feel for my PM right now because this whole integration has been a nightmare and their Pulse support also sucks.",
+    "Some of the server based systems are frustrating because it\u2019s more difficult to do records work remotely.",
+    "Absolutely horrendous, we don\u2019t have the freedom to adjust things the way we want, pricing is challenging, a lot of stuff our doctors do complementary we can\u2019t put in complimentary without having to do a bunch of extra steps, some of our non tech people are completely incapable of resolving an issues if things are giving errors, the documents VCA wants us to use are not good and lack a lot of details our previous made ones had.",
+    "I want something super easy, since I'm mobile and all of my work is out in the field (large animal practice).",
+    "especially in equine ambulatory which is often compounded by: no one wants to fuck around with an ipad in the field especially when internet coverage is spotty.",
+    "They\u2019ve assured me it\u2019s been escalated to their development team, but they\u2019ve also confirmed to me that they\u2019re not proactively notifying clinics of this error that could be detrimental to a client during their grieving.",
+    "To add to the potential problems, sometimes you\u2019re tired to annoying intermediary third party remote desktop programs like Go2MyPC which don\u2019t allow you the flexibility of using the native resolution and monitor resolution settings on the device you\u2019re using remotely.",
+    "I demo\u2019d Neo and Pulse when we opened our practice last year and greatly disliked both of them.",
+    "We use a remote IT company instead...well it costs a lot less and it's worth it because 1 system outage can end up costing you way more.",
+    "He goes on to yell that his computer can\u2019t do that and I say \u201clegally if I pay for those images they belong to me\u201d and then he says \u201cfine, then I just won\u2019t charge you for them."
+   ],
+   "source_post_ids": [
+    "1j5139t",
+    "okc7jx",
+    "1sffouw",
+    "11dx9df",
+    "129ooig",
+    "okc7jx",
+    "uy6cnm",
+    "1m32li7",
+    "11dx9df",
+    "11dx9df",
+    "1vbqebv",
+    "1qqhtm6"
+   ]
+  },
+  {
+   "title": "Prescription requests require disconnected manual pharmacy follow-up",
+   "severity_score": 0.3,
+   "mention_count": 14,
+   "representative_quotes": [
+    "My clinic just switched to Ezyvet (the associate doctors had no say in it) and I hate it so very, very much.",
+    "I first reached out of Digitail about this issue well over 2 weeks ago\u2026 they brushed me off and required proof.",
+    "If you add a line item (say lab work, or a single X-ray), EZYvet will refuse to add it to the invoice on the invoice screen.",
+    "I actually switched vets because the one I had been using applied a new policy that if you didn\u2019t use their online pharmacy, which easily cost 10% more than everyone else, they\u2019d charge you a $20 fee to send your prescription elsewhere.",
+    "We don\u2019t get paid any extra for tracking down the prescription, locate the record, search through the history to verify the refill, dose, and meds, then find the doctor to approve, and then approve the request.",
+    "I hate my vet\u2019s online pharmacy and chewy is a little cheaper actually but it causes a hassle so it\u2019s annoying.",
+    "My old vet also stopped sending prescriptions anywhere but a new online pharmacy where I was paying more, paying for shipping, and waiting longer.",
+    "ending prescriptions anywhere but a new online pharmacy where I was paying more, paying for shipping, and waiting longer.",
+    "My vets will not authorize over the phone or email with any online service other than their own affiliated pharmacy.",
+    "As someone more on the veterinary side, calling out and dealing with outside pharmacies can be a massive headache and waste of labor, especially since most clinics are understaffed.",
+    "Not to mention the amount of people requesting medications through Chewy that nobody told them to get, aka we can't approve - we still have to call those in every single time.",
+    "At my vet's office I was told that having the vet staff work to approve Chewy prescriptions for free was practically a full-time job."
+   ],
+   "source_post_ids": [
+    "1rht9k5",
+    "1m32li7",
+    "th8rkd",
+    "1qyfj1i",
+    "1mqd3oo",
+    "1qyfj1i",
+    "1nos5c8",
+    "1nos5c8",
+    "1mqd3oo",
+    "1mqd3oo",
+    "1qyfj1i",
+    "1nos5c8"
+   ]
+  },
+  {
+   "title": "PIMS reporting and external integrations force duplicate operational work",
+   "severity_score": 0.72,
+   "mention_count": 15,
+   "representative_quotes": [
+    "Cornerstone and Avimark month end reports always tie out to the penny, all of our clients with online softwares never balance and their reporting is immature and error prone.",
+    "The other downside of ezyvet it is doesn\u2019t integrate with the better online booking systems and reminder systems but has its own which are not as effective no msg what they say.",
+    "If the different forms of communication were automatically added, or if texting and email were connected to the program used to store patient records (we use Avimark), that would save teams a lot of labor and time.",
+    "Biggest pain points would be limited/poor integrations with outside software that isn't owned/partnered with covetrus, reporting is terrible, and inventory management is cumbersome.",
+    "We're mixed animal, and cloud based for farm calls is great (except when you don't have service in heavy Amish areas), but the inventory management DOES NOT do what they advertise, and reporting functions SUCK.",
+    "I like the Idexx lab integration, it makes viewing results really seamless, however our inventory is screwed beyond your wildest imaginations.",
+    "Integrations with 3rd party software/equipment (phones, payment processing, websites, inventory management, lab equipment, etc) are very limited.",
+    "The barriers that have been stopping my practice from switching are: very prohibitive cost, incomplete or problematic data preservation and transfer between old and new system, and stretched staff has no time to change all SOPs to reflect new software.",
+    "Comms \u2014 their \u201cnew\u201d communications system \u2014 turned out to be a rebranded version of old software with thin integration, bugs, and serious limitations.",
+    "We\u2019ve been slowly practicing it over the past couple weeks and we\u2019re all ready to off ourselves, including the doctors \ud83d\ude2d\ud83d\ude2d\ud83d\ude2d I truly feel for my PM right now because this whole integration has been a nightmare and their Pulse support also sucks.",
+    "We don\u2019t all use the same practice management systems so presumably Vetco uses one which automatically updates, but most of the systems would not make the API available for this to talk to a different software to automatically display the price, so someone would have to manually update the products on the website or incur additional costs to get someone else to make some fancy way of doing it, when it\u2019s just easier for us to reply to an email enquiry with actual up to date information for the maybe 1% of clients who price check every single line item before buying.",
+    "The patient/referring vet reports I send out have very limited customization options and SUCK to parse through on the other end."
+   ],
+   "source_post_ids": [
+    "1iuyvac",
+    "th8rkd",
+    "uy6cnm",
+    "11dx9df",
+    "11dx9df",
+    "129ooig",
+    "129ooig",
+    "18w0ixp",
+    "1o0gpvy",
+    "1sffouw",
+    "1kli5v3",
+    "18w0ixp"
+   ]
+  }
+ ],
+ "posts_reddit": [
+  {
+   "post_id": "18w0ixp",
+   "author": "RedPenguinGB",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-01-01T16:41:17Z"
+  },
+  {
+   "post_id": "1m36vy7",
+   "author": "SubstantialCheek1883",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-07-18T16:27:06Z"
+  },
+  {
+   "post_id": "1hapkkk",
+   "author": "Original_Yam_3640",
+   "subreddit": "VetTech",
+   "created_utc": "2024-12-10T00:57:28Z"
+  },
+  {
+   "post_id": "1iuyvac",
+   "author": "jwolf185",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-02-21T19:07:41Z"
+  },
+  {
+   "post_id": "1fwry0e",
+   "author": "[deleted]",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-10-05T14:43:04Z"
+  },
+  {
+   "post_id": "1tnvaqb",
+   "author": "transdermalcelebrity",
+   "subreddit": "Albuquerque",
+   "created_utc": "2026-05-26T03:46:17Z"
+  },
+  {
+   "post_id": "17hpda3",
+   "author": "Difficult_Key_5936",
+   "subreddit": "VetTech",
+   "created_utc": "2023-10-27T14:54:39Z"
+  },
+  {
+   "post_id": "1d9hmpt",
+   "author": "circuffaglunked",
+   "subreddit": "unpopularopinion",
+   "created_utc": "2024-06-06T13:02:18Z"
+  },
+  {
+   "post_id": "15oavbb",
+   "author": "[deleted]",
+   "subreddit": "chicago",
+   "created_utc": "2023-08-11T14:45:54Z"
+  },
+  {
+   "post_id": "1i8en4u",
+   "author": "[deleted]",
+   "subreddit": "FPandA",
+   "created_utc": "2025-01-23T21:31:11Z"
+  },
+  {
+   "post_id": "1hauvxw",
+   "author": "Cleverwabbit5",
+   "subreddit": "AskLosAngeles",
+   "created_utc": "2024-12-10T05:41:37Z"
+  },
+  {
+   "post_id": "1buv3x8",
+   "author": "bigstressy",
+   "subreddit": "Pets",
+   "created_utc": "2024-04-03T15:13:51Z"
+  },
+  {
+   "post_id": "1o7lkf1",
+   "author": "StormNice5207",
+   "subreddit": "Pets",
+   "created_utc": "2025-10-15T20:03:30Z"
+  },
+  {
+   "post_id": "1ol76uz",
+   "author": "a_lee4",
+   "subreddit": "Pets",
+   "created_utc": "2025-10-31T21:45:26Z"
+  },
+  {
+   "post_id": "5xbune",
+   "author": "clamonmytummy",
+   "subreddit": "personalfinance",
+   "created_utc": "2017-03-03T17:58:07Z"
+  },
+  {
+   "post_id": "1kli5v3",
+   "author": "Ok_Cauliflower2825",
+   "subreddit": "Pets",
+   "created_utc": "2025-05-13T10:06:14Z"
+  },
+  {
+   "post_id": "1c2l2fy",
+   "author": "Thin-Consideration44",
+   "subreddit": "Pets",
+   "created_utc": "2024-04-12T21:38:38Z"
+  },
+  {
+   "post_id": "1me2t9f",
+   "author": "Mysterious-Fish8010",
+   "subreddit": "Pets",
+   "created_utc": "2025-07-31T14:17:51Z"
+  },
+  {
+   "post_id": "1kinqfl",
+   "author": "Bubbly-Conference791",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-05-09T17:08:39Z"
+  },
+  {
+   "post_id": "uj62ti",
+   "author": "protryon",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-05-05T20:10:07Z"
+  },
+  {
+   "post_id": "murs0b",
+   "author": "RhacodactylusC",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2021-04-20T14:38:20Z"
+  },
+  {
+   "post_id": "1ptwnyu",
+   "author": "Same_Teaching_5241",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-12-23T15:26:27Z"
+  },
+  {
+   "post_id": "gm5x2p",
+   "author": "Heyyther",
+   "subreddit": "Veterinary",
+   "created_utc": "2020-05-18T17:29:09Z"
+  },
+  {
+   "post_id": "1rl6ywv",
+   "author": "thatplantistoxic",
+   "subreddit": "Veterinary",
+   "created_utc": "2026-03-05T03:40:43Z"
+  },
+  {
+   "post_id": "1mog50u",
+   "author": "K3g378910",
+   "subreddit": "Pets",
+   "created_utc": "2025-08-12T18:06:27Z"
+  },
+  {
+   "post_id": "1dnwiu7",
+   "author": "MuskyPeachBusch",
+   "subreddit": "VetTech",
+   "created_utc": "2024-06-25T03:35:15Z"
+  },
+  {
+   "post_id": "i5xgfc",
+   "author": "vet_man91",
+   "subreddit": "Veterinary",
+   "created_utc": "2020-08-08T11:15:23Z"
+  },
+  {
+   "post_id": "zmc4z7",
+   "author": "Alert_Nobody_0608",
+   "subreddit": "VetTech",
+   "created_utc": "2022-12-15T04:32:41Z"
+  },
+  {
+   "post_id": "1g9tw8g",
+   "author": "Allyahoy",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-10-22T21:40:17Z"
+  },
+  {
+   "post_id": "7kpx9y",
+   "author": "schtitzel",
+   "subreddit": "VetTech",
+   "created_utc": "2017-12-19T01:38:39Z"
+  },
+  {
+   "post_id": "1i3jb6z",
+   "author": "Roomba_of_Thought",
+   "subreddit": "AskVet",
+   "created_utc": "2025-01-17T15:48:37Z"
+  },
+  {
+   "post_id": "151ilrv",
+   "author": "_RigorMortis",
+   "subreddit": "VetTech",
+   "created_utc": "2023-07-16T21:44:46Z"
+  },
+  {
+   "post_id": "1jw2n30",
+   "author": "thatplantistoxic",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-04-10T16:50:49Z"
+  },
+  {
+   "post_id": "r8p910",
+   "author": "[deleted]",
+   "subreddit": "VetTech",
+   "created_utc": "2021-12-04T13:03:12Z"
+  },
+  {
+   "post_id": "16wmxov",
+   "author": "Horsedogz",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-10-01T00:37:34Z"
+  },
+  {
+   "post_id": "129ooig",
+   "author": "pookie_dook",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-04-02T15:34:21Z"
+  },
+  {
+   "post_id": "1fjit4m",
+   "author": "hey_grey",
+   "subreddit": "VetTech",
+   "created_utc": "2024-09-18T02:57:24Z"
+  },
+  {
+   "post_id": "1sffouw",
+   "author": "Ordinary_Diamond7588",
+   "subreddit": "VetTech",
+   "created_utc": "2026-04-08T01:56:24Z"
+  },
+  {
+   "post_id": "wohyvb",
+   "author": "dogtormusician",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2022-08-14T22:00:05Z"
+  },
+  {
+   "post_id": "586y60",
+   "author": "kamalanc",
+   "subreddit": "VetTech",
+   "created_utc": "2016-10-18T22:54:02Z"
+  },
+  {
+   "post_id": "1m32li7",
+   "author": "RDymndz",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-07-18T13:39:06Z"
+  },
+  {
+   "post_id": "1m8bnh6",
+   "author": "JVNTPA",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-07-24T18:05:25Z"
+  },
+  {
+   "post_id": "8ww8ka",
+   "author": "newskuulcool",
+   "subreddit": "Veterinary",
+   "created_utc": "2018-07-07T20:50:13Z"
+  },
+  {
+   "post_id": "1kgycs7",
+   "author": "SpaceOnions",
+   "subreddit": "Thrifty",
+   "created_utc": "2025-05-07T14:12:04Z"
+  },
+  {
+   "post_id": "1lapmpr",
+   "author": "jak3h134",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-06-13T20:02:45Z"
+  },
+  {
+   "post_id": "1lap3d1",
+   "author": "jak3h134",
+   "subreddit": "VetTech",
+   "created_utc": "2025-06-13T19:40:31Z"
+  },
+  {
+   "post_id": "okc7jx",
+   "author": "goddessofPtown",
+   "subreddit": "Veterinary",
+   "created_utc": "2021-07-14T19:54:55Z"
+  },
+  {
+   "post_id": "1rht9k5",
+   "author": "HollyDaze1",
+   "subreddit": "Veterinary",
+   "created_utc": "2026-03-01T09:43:01Z"
+  },
+  {
+   "post_id": "th8rkd",
+   "author": "kharmatika",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-03-18T17:44:41Z"
+  },
+  {
+   "post_id": "1ufshd2",
+   "author": "Wise-Lawyer-1991",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2026-06-26T01:15:19Z"
+  },
+  {
+   "post_id": "wtef8c",
+   "author": "TheSwimmingLady",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-08-20T18:47:43Z"
+  },
+  {
+   "post_id": "tzll6e",
+   "author": "mynaivethoughts",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-04-09T04:33:36Z"
+  },
+  {
+   "post_id": "1d0g8g1",
+   "author": "umaruuchann",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2024-05-25T16:52:36Z"
+  },
+  {
+   "post_id": "t5s6nz",
+   "author": "MookieMoonn",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-03-03T13:59:40Z"
+  },
+  {
+   "post_id": "1e4d643",
+   "author": "Holiday_Ad1101",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-07-16T02:16:31Z"
+  },
+  {
+   "post_id": "1ih9rsh",
+   "author": "No_Ambassador_929",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-02-04T04:42:30Z"
+  },
+  {
+   "post_id": "1v1nk68",
+   "author": "Birdie-girl",
+   "subreddit": "Veterinary",
+   "created_utc": "2026-07-20T14:44:04Z"
+  },
+  {
+   "post_id": "1d22ld2",
+   "author": "[deleted]",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2024-05-27T21:18:20Z"
+  },
+  {
+   "post_id": "1n8qplp",
+   "author": "Nag1n1luv",
+   "subreddit": "VetTech",
+   "created_utc": "2025-09-05T00:17:53Z"
+  },
+  {
+   "post_id": "uy6cnm",
+   "author": "cat-dad-88",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-05-26T12:20:08Z"
+  },
+  {
+   "post_id": "1dzhtlg",
+   "author": "[deleted]",
+   "subreddit": "Equestrian",
+   "created_utc": "2024-07-10T00:09:32Z"
+  },
+  {
+   "post_id": "15gzmvg",
+   "author": "Correct_Woodpecker_4",
+   "subreddit": "Equestrian",
+   "created_utc": "2023-08-03T09:50:03Z"
+  },
+  {
+   "post_id": "1r479ax",
+   "author": "lonesomedreamers",
+   "subreddit": "Equestrian",
+   "created_utc": "2026-02-14T01:24:44Z"
+  },
+  {
+   "post_id": "11dx9df",
+   "author": "BallpointTattoos",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-02-28T04:52:22Z"
+  },
+  {
+   "post_id": "1rluxje",
+   "author": "[deleted]",
+   "subreddit": "VetTech",
+   "created_utc": "2026-03-05T21:51:47Z"
+  },
+  {
+   "post_id": "1qqhtm6",
+   "author": "The1WhereWeLaugh",
+   "subreddit": "Equestrian",
+   "created_utc": "2026-01-29T19:07:33Z"
+  },
+  {
+   "post_id": "zsn8ks",
+   "author": "[deleted]",
+   "subreddit": "relationship_advice",
+   "created_utc": "2022-12-22T14:23:32Z"
+  },
+  {
+   "post_id": "9ic5fj",
+   "author": "Squidmaster2013",
+   "subreddit": "Veterinary",
+   "created_utc": "2018-09-23T21:32:39Z"
+  },
+  {
+   "post_id": "1jwwznd",
+   "author": "ejxhyperplane",
+   "subreddit": "Pets",
+   "created_utc": "2025-04-11T18:30:44Z"
+  },
+  {
+   "post_id": "1q030sk",
+   "author": "FewProblem4509",
+   "subreddit": "Buffalo",
+   "created_utc": "2025-12-31T03:50:04Z"
+  },
+  {
+   "post_id": "1vbqebv",
+   "author": "Ok_Ticket_2298",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2026-07-31T13:04:24Z"
+  },
+  {
+   "post_id": "1o0gpvy",
+   "author": "hermanoZ",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-10-07T14:43:10Z"
+  },
+  {
+   "post_id": "16ohf7k",
+   "author": "BoozySlushPops",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-09-21T14:30:58Z"
+  },
+  {
+   "post_id": "1lhip1l",
+   "author": "Icy_Platform6676",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-06-22T08:05:25Z"
+  },
+  {
+   "post_id": "oxt5u2",
+   "author": "MitJuice",
+   "subreddit": "okc",
+   "created_utc": "2021-08-04T13:53:56Z"
+  },
+  {
+   "post_id": "1c52ncu",
+   "author": "pandemoniumpangolin",
+   "subreddit": "VetTech",
+   "created_utc": "2024-04-16T00:38:38Z"
+  },
+  {
+   "post_id": "tl9dt3",
+   "author": "WelcomeToBrooklandia",
+   "subreddit": "Austin",
+   "created_utc": "2022-03-23T19:30:47Z"
+  },
+  {
+   "post_id": "18vlveb",
+   "author": "gobluetoo",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-01-01T01:17:55Z"
+  },
+  {
+   "post_id": "1ovlsgb",
+   "author": "Putrid_Entry6255",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-11-12T23:54:15Z"
+  },
+  {
+   "post_id": "1bai58q",
+   "author": "FunConsideration3476",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-03-09T13:49:16Z"
+  },
+  {
+   "post_id": "16xi6rq",
+   "author": "pavetta",
+   "subreddit": "medicine",
+   "created_utc": "2023-10-02T00:36:43Z"
+  },
+  {
+   "post_id": "1jx1w7g",
+   "author": "moeljartin",
+   "subreddit": "healthIT",
+   "created_utc": "2025-04-11T22:02:23Z"
+  },
+  {
+   "post_id": "1i8d7rr",
+   "author": "kjvdp",
+   "subreddit": "InventoryManagement",
+   "created_utc": "2025-01-23T20:32:19Z"
+  },
+  {
+   "post_id": "1kfa109",
+   "author": "OkWait1901",
+   "subreddit": "pinoymed",
+   "created_utc": "2025-05-05T12:10:13Z"
+  },
+  {
+   "post_id": "1gibu6h",
+   "author": "Nerd_Doctor",
+   "subreddit": "FamilyMedicine",
+   "created_utc": "2024-11-03T01:27:09Z"
+  },
+  {
+   "post_id": "195c1hf",
+   "author": "Your_Dark_Soul",
+   "subreddit": "InventoryManagement",
+   "created_utc": "2024-01-13T01:36:11Z"
+  },
+  {
+   "post_id": "1i2clbl",
+   "author": "CheeseShanty",
+   "subreddit": "royaloak",
+   "created_utc": "2025-01-16T00:43:56Z"
+  },
+  {
+   "post_id": "1ux84te",
+   "author": "SharpParking2706",
+   "subreddit": "enshittification",
+   "created_utc": "2026-07-15T14:53:12Z"
+  },
+  {
+   "post_id": "1e9lie5",
+   "author": "Own-Activity2516",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-07-22T18:27:53Z"
+  },
+  {
+   "post_id": "1dxelns",
+   "author": "Swanh",
+   "subreddit": "Veterinary",
+   "created_utc": "2024-07-07T11:42:23Z"
+  },
+  {
+   "post_id": "1qfxcl8",
+   "author": "Swimming_Antelope239",
+   "subreddit": "NiceVancouver",
+   "created_utc": "2026-01-18T03:15:34Z"
+  },
+  {
+   "post_id": "15mwo1v",
+   "author": "The12thDimension",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-08-10T00:25:36Z"
+  },
+  {
+   "post_id": "1j5139t",
+   "author": "mlcrownover",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-03-06T17:37:48Z"
+  },
+  {
+   "post_id": "1ux7pat",
+   "author": "SavingsEffort8391",
+   "subreddit": "VeterinaryPMs",
+   "created_utc": "2026-07-15T14:36:56Z"
+  },
+  {
+   "post_id": "1tx8ncd",
+   "author": "ArtistImpossible5012",
+   "subreddit": "BusinessPH",
+   "created_utc": "2026-06-05T02:52:43Z"
+  },
+  {
+   "post_id": "woi0cx",
+   "author": "dogtormusician",
+   "subreddit": "Veterinary",
+   "created_utc": "2022-08-14T22:01:38Z"
+  },
+  {
+   "post_id": "17h4ad5",
+   "author": "FurBallFixer",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-10-26T19:21:45Z"
+  },
+  {
+   "post_id": "1ftu2x2",
+   "author": "Most-Choice5101",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2024-10-01T17:40:00Z"
+  },
+  {
+   "post_id": "17aeuz4",
+   "author": "V3DRER",
+   "subreddit": "Veterinary",
+   "created_utc": "2023-10-18T01:41:03Z"
+  },
+  {
+   "post_id": "1jse6ej",
+   "author": "stbargabar",
+   "subreddit": "VetTech",
+   "created_utc": "2025-04-05T21:28:47Z"
+  },
+  {
+   "post_id": "1vhswsx",
+   "author": "Sad-Maize6576",
+   "subreddit": "RunningWithDogs",
+   "created_utc": "2026-08-07T06:34:35Z"
+  },
+  {
+   "post_id": "1vglbam",
+   "author": "photogcapture",
+   "subreddit": "declutter",
+   "created_utc": "2026-08-05T21:55:43Z"
+  },
+  {
+   "post_id": "1sqw9z3",
+   "author": "philthybiscuits",
+   "subreddit": "ProductManagement",
+   "created_utc": "2026-04-20T17:33:44Z"
+  },
+  {
+   "post_id": "1ucv06g",
+   "author": "Cheeseaisleinheaven",
+   "subreddit": "MiddleClassFinance",
+   "created_utc": "2026-06-22T19:52:35Z"
+  },
+  {
+   "post_id": "1ptf126",
+   "author": "Grouchy_Land895",
+   "subreddit": "Pets",
+   "created_utc": "2025-12-22T23:58:09Z"
+  },
+  {
+   "post_id": "1ox7h6m",
+   "author": "FewSuccess2025",
+   "subreddit": "Pets",
+   "created_utc": "2025-11-14T20:23:25Z"
+  },
+  {
+   "post_id": "1tmi8ht",
+   "author": "rainbow_ninja_squid",
+   "subreddit": "SaltLakeCity",
+   "created_utc": "2026-05-24T17:19:42Z"
+  },
+  {
+   "post_id": "1ueee84",
+   "author": "puppy_boyka",
+   "subreddit": "DOG",
+   "created_utc": "2026-06-24T14:02:18Z"
+  },
+  {
+   "post_id": "1ps9ish",
+   "author": "sana_vet_437",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2025-12-21T15:48:29Z"
+  },
+  {
+   "post_id": "1vjcy5t",
+   "author": "princetonwu",
+   "subreddit": "medicine",
+   "created_utc": "2026-08-09T01:37:35Z"
+  },
+  {
+   "post_id": "1mqd3oo",
+   "author": "Stormallthetime",
+   "subreddit": "dogs",
+   "created_utc": "2025-08-14T21:00:46Z"
+  },
+  {
+   "post_id": "1qyfj1i",
+   "author": "unsinkabletwo",
+   "subreddit": "Pets",
+   "created_utc": "2026-02-07T14:43:11Z"
+  },
+  {
+   "post_id": "1njltu8",
+   "author": "Anxious-Vel",
+   "subreddit": "Veterinary",
+   "created_utc": "2025-09-17T18:52:13Z"
+  },
+  {
+   "post_id": "1nos5c8",
+   "author": "just321askin",
+   "subreddit": "dogs",
+   "created_utc": "2025-09-23T20:16:57Z"
+  },
+  {
+   "post_id": "1ut6yyz",
+   "author": "Puzzleheaded-Yard719",
+   "subreddit": "Veterinary",
+   "created_utc": "2026-07-11T01:53:54Z"
+  },
+  {
+   "post_id": "1uw7t3d",
+   "author": "hermanoZ",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2026-07-14T12:51:42Z"
+  },
+  {
+   "post_id": "1v80udv",
+   "author": "No_Thoughts_Duh",
+   "subreddit": "veterinaryprofession",
+   "created_utc": "2026-07-27T13:44:34Z"
+  },
+  {
+   "post_id": "1uxip2i",
+   "author": "Thin-Bat4202",
+   "subreddit": "Pets",
+   "created_utc": "2026-07-15T21:19:32Z"
+  },
+  {
+   "post_id": "1uy5z1w",
+   "author": "Melody_Lee19",
+   "subreddit": "Pets",
+   "created_utc": "2026-07-16T15:23:37Z"
+  },
+  {
+   "post_id": "1vkt3fu",
+   "author": "datumvdata",
+   "subreddit": "CanadianDentists",
+   "created_utc": "2026-08-10T18:29:23Z"
+  },
+  {
+   "post_id": "wwg487",
+   "author": "To-becowdoc13",
+   "subreddit": "dvm",
+   "created_utc": "2022-08-24T10:39:26Z"
+  },
+  {
+   "post_id": "2phv6x",
+   "author": "incollegemom",
+   "subreddit": "dvm",
+   "created_utc": "2014-12-16T19:13:10Z"
+  }
+ ],
+ "posts_generic": []
+}

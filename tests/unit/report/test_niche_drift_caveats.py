@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nicheiq.report.report_generator import ReportGenerator
+from nicheiq.report.utils.number_formatters import format_percent
 
 
 def _generator(telemetry=None, coverage_caveats=None):
@@ -65,10 +66,23 @@ def test_inactive_anchors_emits_caveat():
     assert any("drift protection inactive" in c for c in summary.quality_caveats)
 
 
-def test_low_query_anchor_pct_emits_caveat():
-    gen = _generator(telemetry={"anchors_active": True, "query_anchor_pct": 0.2})
+@pytest.mark.parametrize("q_pct", [0.0, 0.038, 0.2, 0.39])
+def test_query_anchor_pct_never_produces_a_caveat(q_pct):
+    """query_anchor_pct is not a fidelity signal and must not reach the reader.
+
+    It counts discovery queries containing a literal niche anchor ENTITY, so an
+    on-niche JTBD query scores 0; its old 0.4 threshold was the same value the
+    query generator caps anchor share toward; and ANCHOR_PCT_FLOOR = 0.0 means
+    nothing acts on a low share. Measured 2026-08-17: the old caveat fired on 11
+    of the 13 reports carrying this telemetry. Asserted as a property (no caveat
+    is derived from query_anchor_pct at all), not as an absent sentence.
+    """
+    gen = _generator(telemetry={"anchors_active": True, "query_anchor_pct": q_pct})
     summary = gen._generate_data_quality_summary()
-    assert any("niche-anchored" in c for c in summary.quality_caveats)
+    rendered = format_percent(q_pct)
+    for caveat in summary.quality_caveats:
+        assert "search queries" not in caveat, caveat
+        assert rendered not in caveat, caveat
 
 
 def test_idea_coverage_caveats_surface():

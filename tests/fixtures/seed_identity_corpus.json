@@ -732,5 +732,129 @@
         ]
       }
     }
+  ],
+  "route_gate": [
+    {
+      "id": "alias_route_named_in_pitch_under_another_label",
+      "axis": "route_alias",
+      "must_hold_because": "The pitch names the dependency as the 'Companies House feed' and the candidate declares it as the 'Companies House API'. The same source under a different access noun is not a NEW route, so nothing here is unpitched. Reaches `_alias_route_role_contexts`, which no other selected test executes: the alias branch is taken only when `seed_mentions_exact_route` is False and an alias prefix is found, and without this row the whole function is invisible to mutation coverage.",
+      "pitch": "A web app for UK bookkeeping firms that reconciles uploaded supplier invoices against filed company records. It requires the Companies House feed for every match, so stale directorships stop slipping through.",
+      "candidate": {
+        "solution_name": "LedgerMatch Companies House Reconciler",
+        "description": "A web app for UK bookkeeping firms that reconciles uploaded supplier invoices against filed company records. Every match requires the Companies House API.",
+        "value_proposition": "Reconcile supplier invoices against filed company records.",
+        "data_sources": ["Companies House API"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": []
+    },
+    {
+      "id": "external_prefix_route_pitched_under_its_bare_name",
+      "axis": "route_alias",
+      "must_hold_because": "The declared route carries a leading 'External' qualifier the pitch does not use. `alias_leading_words` exists to strip exactly that before the alias prefix is matched; drop 'external' from it and the pitch stops being read as naming the route at all, so an honest run is refused for a word the product copy added to its own label.",
+      "pitch": "A web app for small bookkeeping firms that reconciles uploaded supplier invoices. It requires the Acme feed for every match.",
+      "candidate": {
+        "solution_name": "AcmeInvoiceMapper",
+        "description": "A web app for small bookkeeping firms that reconciles uploaded supplier invoices. Every match requires the External Acme feed.",
+        "data_sources": ["External Acme feed"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": []
+    },
+    {
+      "id": "optional_route_marked_with_a_capitalised_contraction",
+      "axis": "route_role_negation",
+      "must_hold_because": "The candidate says the recall feed is NOT required, in a sentence that starts with a capitalised contraction — text real users type. `_normalize_route_language` must expand \"Doesn't\" before the optional cue 'does not require' can be seen, and it only does so because the replacement pass runs with re.IGNORECASE. Without that flag the lower-cased patterns miss the capital, the optional cue is lost, and a route the copy calls optional is flagged as an unpitched core dependency.",
+      "pitch": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+      "candidate": {
+        "solution_name": "VetInventory Reconciler",
+        "description": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies, annotates rows from the Acme Recall Registry feed, and generates audit-ready DEA logs.",
+        "technical_approach": "Clinic-uploaded CSV exports drive the reconciliation. Doesn't require the Acme Recall Registry feed.",
+        "data_sources": ["Clinic-uploaded CSV files", "Acme Recall Registry feed"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": []
+    },
+    {
+      "id": "optional_route_marked_with_an_apostrophe_less_contraction",
+      "axis": "route_role_negation",
+      "must_hold_because": "The same sentence typed without the apostrophe. This is the row that answers the standing proposal to delete the twelve apostrophe-less entries from the replacement table because 'both their blanking mutants survive': blank the `\\bdont\\b` entry and \"we dont require\" is never expanded, the negation strip in `_requires_route` (which matches the literal 'not requir…') no longer applies, the surviving 'require' cue fires, and the route the copy calls OPTIONAL is classified REQUIRED. Surviving mutants meant no test, not no dependent.",
+      "pitch": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+      "candidate": {
+        "solution_name": "VetInventory Reconciler",
+        "description": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies, annotates rows from the Acme Recall Registry feed, and generates audit-ready DEA logs.",
+        "technical_approach": "Clinic-uploaded CSV exports drive the reconciliation. We dont require the Acme Recall Registry feed.",
+        "data_sources": ["Clinic-uploaded CSV files", "Acme Recall Registry feed"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": []
+    },
+    {
+      "id": "first_party_upload_route_is_implementation_detail",
+      "axis": "first_party_route",
+      "must_hold_because": "A route the LANDLORD uploads is the user's own data arriving by a new file name, not a third party the product silently acquired — so it stays out of the failure list even when the copy calls it required. `_is_first_party_route` recognises it only through the upload/artefact pair ('uploaded' AND 'csv|file|export|…'); weaken either half of that conjunction and every honest first-party upload route starts refusing runs.",
+      "pitch": "A web app for small landlords that reads utility bills and splits costs fairly across tenants.",
+      "candidate": {
+        "solution_name": "RUBSChargeLedger",
+        "description": "A web app for small landlords that reads utility bills and splits costs fairly across tenants. Every split requires the landlord-uploaded meter CSV export.",
+        "data_sources": ["Landlord-uploaded meter CSV export"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": []
+    },
+    {
+      "id": "grouped_role_covers_both_named_routes",
+      "axis": "route_role_grouping",
+      "must_hold_because": "'requires BOTH the Ofgem register and the Land Registry feed' states one role over two routes, and neither is in the pitch. The grouped-role branch keeps the whole unit as the context for both; split the unit on 'and' first and the trailing route loses the verb, so the second unpitched dependency walks through.",
+      "pitch": "A web app for UK landlords that reconciles uploaded utility bills against the ledger.",
+      "candidate": {
+        "solution_name": "DualRegistryLedger",
+        "description": "A web app for UK landlords that reconciles uploaded utility bills against the ledger. Reconciliation requires both the Ofgem register and the Land Registry feed.",
+        "data_sources": ["Ofgem register", "Land Registry feed"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": ["Ofgem register", "Land Registry feed"]
+    },
+    {
+      "id": "role_arrives_two_sentences_after_the_route",
+      "axis": "route_role_continuation",
+      "must_hold_because": "The route is named in one sentence and called required two sentences later, with an anaphoric sentence in between — ordinary technical prose. Only the follow-up window carries the role across, and only because the intervening 'It is refreshed nightly' matches the pronoun/definite-noun pattern that keeps the window open. Break that pattern and the window closes on the first sentence, the required role is never read, and the route is accepted. Deliberately mentions the route ONLY in `technical_approach`: with it in a core promise field `promoted_core` would flag the route on its own and the follow-up window could break silently.",
+      "pitch": "A web app for UK landlords that reconciles uploaded utility bills against the ledger.",
+      "candidate": {
+        "solution_name": "OfgemLedger",
+        "description": "A web app for UK landlords that reconciles uploaded utility bills against the ledger.",
+        "technical_approach": "Each meter is matched to the Ofgem register. It is refreshed nightly. That register is required for every match.",
+        "data_sources": ["Ofgem register"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": ["Ofgem register"]
+    },
+    {
+      "id": "partially_named_route_still_carries_its_role",
+      "axis": "route_term_threshold",
+      "must_hold_because": "Copy rarely repeats a declared route in full: the source is 'Acme Recall Registry' and the sentence that makes it required says 'the Acme registry'. Two of the three distinctive terms is what the match threshold is set to accept; raise it to three and a route named required in the product's own words stops being seen at all.",
+      "pitch": "A web app for small bookkeeping firms that reconciles uploaded supplier invoices.",
+      "candidate": {
+        "solution_name": "AcmeInvoiceMapper",
+        "description": "A web app for small bookkeeping firms that reconciles uploaded supplier invoices by matching every account through the Acme registry, which is required for every match.",
+        "data_sources": ["Acme Recall Registry"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": ["Acme Recall Registry"]
+    },
+    {
+      "id": "aggregation_declared_with_a_placeholder_route",
+      "axis": "aggregation_route",
+      "must_hold_because": "The candidate declares that it REQUIRES data aggregation and then names 'TBD' as the source. A placeholder is not a route: the run would be scored on a mechanism with nothing behind it. Both findings are asserted — the placeholder verdict and the route itself — because the placeholder screen and the route loop reach the same string by different paths, and a corpus that pinned only one would let the other rot.",
+      "pitch": "A web app for UK landlords that reconciles uploaded utility bills against the ledger.",
+      "candidate": {
+        "solution_name": "LedgerAggregator",
+        "description": "A web app for UK landlords that reconciles uploaded utility bills against the ledger by aggregating supplier tariff records.",
+        "requires_data_aggregation": true,
+        "data_sources": ["TBD"],
+        "source_frame": "user_seed"
+      },
+      "unpitched_routes": ["required data aggregation route is invalid: TBD", "TBD"]
+    }
   ]
 }

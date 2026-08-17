@@ -1,5 +1,5 @@
 {
- "_note": "Captured 2026-08-10 from output/checkpoints. One row per run whose recommendation resolves. Regenerate with tests/unit/utils/test_audience_axes.py::test_the_vendored_corpus_still_matches_the_runs_on_disk.",
+ "_note": "Captured 2026-08-10 from output/checkpoints, refreshed 2026-08-17 after the winning_angle repair run (job 8500b97d) landed a 36th run. One row per run whose recommendation resolves. Regenerate with tests/unit/utils/test_audience_axes.py::test_the_vendored_corpus_still_matches_the_runs_on_disk.",
  "runs": [
   {
    "run": "checkpoint__ab-angle-seo2_20260630_111945",
@@ -97,6 +97,23 @@
     "Aspiring Contributors and New Developers Seeking Entry Points",
     "Technical Solo Founders and Indie Developers",
     "Machine Learning and AI Open Source Enthusiasts"
+   ]
+  },
+  {
+   "run": "checkpoint_ai_visibility_for_local_businesses_in_london_8500b97d-8248-4979-909f-374e54e78674_20260816_192930",
+   "requested_audience": "local businesses in London",
+   "primary_segment": "Independent London Tradespeople and Home-Service Contractors",
+   "recommended_source_segments": [
+    "London High-Street Retailers Seeking Physical Foot Traffic",
+    "Independent London Tradespeople and Home-Service Contractors",
+    "High-Intent London Dental and Small Professional Practices"
+   ],
+   "all_segment_names": [
+    "Independent London Tradespeople and Home-Service Contractors",
+    "Independent London Restaurant and Hospitality Operators",
+    "High-Intent London Dental and Small Professional Practices",
+    "London High-Street Retailers Seeking Physical Foot Traffic",
+    "Boutique Fitness and Wellness Studio Operators"
    ]
   },
   {

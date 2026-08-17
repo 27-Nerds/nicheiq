@@ -3,7 +3,7 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import Any, Literal, Optional, TypedDict
+from typing import Any, Literal, Optional, TypedDict, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -2155,7 +2155,13 @@ class ResearchState(BaseModel):
         default=None,
         description="Quality tier from Stage 5 validation: EXCELLENT, GOOD, MINIMAL, or INSUFFICIENT"
     )
-    social_content_metrics: Optional[dict[str, int]] = Field(
+    # Heterogeneous on purpose: six of the seven keys SocialContentValidator emits are
+    # counters (int), but `avg_engagement_per_source` is a mean rounded to 1dp — a float.
+    # `dict[str, int]` made a live state fail its own round-trip
+    # (`model_validate(model_dump(mode="json"))` -> int_from_float on 49.7); `dict[str, float]`
+    # would have fixed that by widening the counters to 116.0 in every checkpoint and report
+    # payload. The union keeps each key's real type under pydantic's smart union.
+    social_content_metrics: Optional[dict[str, Union[int, float]]] = Field(
         default=None,
         description="Social content collection metrics (sources, interactions, engagement)"
     )

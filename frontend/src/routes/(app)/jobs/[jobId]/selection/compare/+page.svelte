@@ -37,6 +37,7 @@
   import {
     adversarialReviewFinding,
     adversarialReviewSummary,
+    incumbentParityPhrase,
     isPremiseUnproven,
     PREMISE_UNPROVEN_LABEL,
   } from "$lib/utils/adversarialReview";
@@ -313,8 +314,18 @@
     // chain left 81 residual jargon instances and invented 99 lower-cased sentence starts
     // ("…mechanism. using AI…"); the shared authority leaves 0 of each, keeps parenthetical
     // dash PAIRS intact, and knows the cold-start and corpus vocabulary the chain never had.
+    // `incumbent_parity` is STORED as an internal stamp ("shipped by X: …", "none found").
+    // This cell used to render it raw, so the one surface that puts three ideas side by side
+    // printed the bare class token for a hit and the literal "none found" for a miss — the
+    // latter read as a proven empty market where the system holds only the result of queries
+    // built from that idea's own wording. `buyerFacingIdeaProse` humanizes prose; it does not
+    // know this vocabulary. Phrase the stamp first, with the same helper the overlay, the
+    // workbench and the analyst use, so all four say one thing about one finding.
+    const parityNote = typeof idea.incumbent_parity === "string"
+      ? incumbentParityPhrase(idea.incumbent_parity) || null
+      : null;
     return buyerFacingIdeaProse(
-      idea.critic_concern ?? idea.incumbent_parity ?? idea.data_acquisition_notes,
+      idea.critic_concern ?? parityNote ?? idea.data_acquisition_notes,
     ) || "No additional evidence note is recorded.";
   }
 

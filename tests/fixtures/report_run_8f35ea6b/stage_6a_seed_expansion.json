@@ -1,0 +1,312 @@
+{
+  "keywords": [
+    {
+      "keyword": "coffee safety",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "Core category phrase for food-safety intelligence specific to coffee."
+    },
+    {
+      "keyword": "import refusals",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Directly reflects FDA refusal-report data and high-intent compliance research."
+    },
+    {
+      "keyword": "food safety",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "High-volume regulatory concept that can be qualified through coffee-focused content."
+    },
+    {
+      "keyword": "FDA alerts",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Captures searches for FDA warnings relevant to imported coffee inputs."
+    },
+    {
+      "keyword": "RASFF notifications",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Targets the EU notification system central to the directory’s data coverage."
+    },
+    {
+      "keyword": "origin risk",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Concise category term for country-level coffee safety assessment."
+    },
+    {
+      "keyword": "supplier due diligence",
+      "cluster": "Supplier Due Diligence",
+      "priority": 1,
+      "rationale": "Matches wholesale roasters’ need to verify suppliers beyond marketing claims."
+    },
+    {
+      "keyword": "traceability records",
+      "cluster": "Supplier Due Diligence",
+      "priority": 2,
+      "rationale": "Supports lot-level sourcing and defensible procurement documentation."
+    },
+    {
+      "keyword": "contamination risk",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Addresses safety-risk evaluation before purchasing or production."
+    },
+    {
+      "keyword": "coffee compliance",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "B2B regulatory term aligned with imported coffee sourcing operations."
+    },
+    {
+      "keyword": "safety database",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "Describes the searchable directory format without using the invented brand name."
+    },
+    {
+      "keyword": "refusal database",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "Captures users seeking consolidated import refusal records."
+    },
+    {
+      "keyword": "supplier verification",
+      "cluster": "Supplier Due Diligence",
+      "priority": 1,
+      "rationale": "Strong transactional need for wholesale and professional roasters."
+    },
+    {
+      "keyword": "lot traceability",
+      "cluster": "Supplier Due Diligence",
+      "priority": 2,
+      "rationale": "Connects safety research to inventory and lot-separation workflows."
+    },
+    {
+      "keyword": "origin records",
+      "cluster": "Origin Risk Research",
+      "priority": 2,
+      "rationale": "Broad but domain-specific phrase for historical country and shipment research."
+    },
+    {
+      "keyword": "food alerts",
+      "cluster": "Regulatory Compliance",
+      "priority": 2,
+      "rationale": "Useful regulatory discovery term for notification monitoring."
+    },
+    {
+      "keyword": "quality control",
+      "cluster": "Roastery Operations",
+      "priority": 1,
+      "rationale": "Established audience vocabulary connecting safety information to production quality."
+    },
+    {
+      "keyword": "green inventory",
+      "cluster": "Roastery Operations",
+      "priority": 2,
+      "rationale": "Uses audience language while opening content around risk-aware inventory decisions."
+    },
+    {
+      "keyword": "roast profiles",
+      "cluster": "Roastery Operations",
+      "priority": 3,
+      "rationale": "Connects the directory to technical roastery operations without drifting into equipment."
+    },
+    {
+      "keyword": "cupping protocols",
+      "cluster": "Roastery Operations",
+      "priority": 3,
+      "rationale": "Targets professional sensory evaluation and quality-control workflows."
+    },
+    {
+      "keyword": "COGS coffee",
+      "cluster": "Business Segment Needs",
+      "priority": 3,
+      "rationale": "Addresses profitability concerns for roasters managing landed and production costs."
+    },
+    {
+      "keyword": "roast loss",
+      "cluster": "Roastery Operations",
+      "priority": 2,
+      "rationale": "Directly reflects a stated profitability pain point."
+    },
+    {
+      "keyword": "supply planning",
+      "cluster": "Roastery Operations",
+      "priority": 2,
+      "rationale": "Captures procurement planning and consistent supply concerns."
+    },
+    {
+      "keyword": "coffee sourcing",
+      "cluster": "Supplier Due Diligence",
+      "priority": 1,
+      "rationale": "Core professional activity where safety records influence supplier selection."
+    },
+    {
+      "keyword": "wholesale roasting",
+      "cluster": "Business Segment Needs",
+      "priority": 1,
+      "rationale": "Targets the primary commercial persona and its higher-volume risk needs."
+    },
+    {
+      "keyword": "micro roasting",
+      "cluster": "Business Segment Needs",
+      "priority": 2,
+      "rationale": "Reaches small professional roasteries needing efficient research workflows."
+    },
+    {
+      "keyword": "café roasting",
+      "cluster": "Business Segment Needs",
+      "priority": 2,
+      "rationale": "Targets on-site production operations within the defined market."
+    },
+    {
+      "keyword": "coffee subscriptions",
+      "cluster": "Business Segment Needs",
+      "priority": 3,
+      "rationale": "Covers subscription businesses managing freshness and consistent sourcing."
+    },
+    {
+      "keyword": "roastery database",
+      "cluster": "Coffee Safety Data",
+      "priority": 2,
+      "rationale": "Positions the directory as a practical data resource for roastery teams."
+    },
+    {
+      "keyword": "coffee records",
+      "cluster": "Coffee Safety Data",
+      "priority": 2,
+      "rationale": "Broad searchable-data phrase anchored to the coffee domain."
+    },
+    {
+      "keyword": "country coffee safety record",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Directly mirrors the solution’s differentiated country-page search intent."
+    },
+    {
+      "keyword": "FDA coffee import refusals",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Highly specific query for the primary government data source."
+    },
+    {
+      "keyword": "EU RASFF coffee notifications",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Captures European safety-notification research for globally sourced coffee."
+    },
+    {
+      "keyword": "coffee origin risk database",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Combines origin assessment with the directory/database product format."
+    },
+    {
+      "keyword": "green coffee supplier verification",
+      "cluster": "Supplier Due Diligence",
+      "priority": 1,
+      "rationale": "Addresses procurement teams needing independent supplier-risk evidence."
+    },
+    {
+      "keyword": "coffee import refusal database",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "Strong product-category query matching searchable refusal aggregation."
+    },
+    {
+      "keyword": "coffee food safety alerts",
+      "cluster": "Coffee Safety Data",
+      "priority": 1,
+      "rationale": "Combines coffee relevance with alert-monitoring intent."
+    },
+    {
+      "keyword": "country of origin coffee risk",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Targets users assessing country-level safety history before sourcing."
+    },
+    {
+      "keyword": "wholesale roaster compliance research",
+      "cluster": "Business Segment Needs",
+      "priority": 2,
+      "rationale": "Tailors regulatory research to the primary wholesale segment."
+    },
+    {
+      "keyword": "micro roaster supplier risk",
+      "cluster": "Business Segment Needs",
+      "priority": 2,
+      "rationale": "Addresses small-team sourcing decisions with limited research capacity."
+    },
+    {
+      "keyword": "coffee lot traceability records",
+      "cluster": "Supplier Due Diligence",
+      "priority": 2,
+      "rationale": "Connects searchable records with lot separation and inventory accountability."
+    },
+    {
+      "keyword": "coffee importer safety history",
+      "cluster": "Supplier Due Diligence",
+      "priority": 2,
+      "rationale": "Supports evaluation of importer and supply-chain risk."
+    },
+    {
+      "keyword": "FDA refusal reports coffee",
+      "cluster": "Regulatory Compliance",
+      "priority": 1,
+      "rationale": "Natural reverse-order variant targeting users seeking official reports."
+    },
+    {
+      "keyword": "RASFF coffee safety database",
+      "cluster": "Competitive Alternatives",
+      "priority": 2,
+      "rationale": "Captures users looking for searchable RASFF resources in a coffee context."
+    },
+    {
+      "keyword": "coffee supplier risk score",
+      "cluster": "Origin Risk Research",
+      "priority": 1,
+      "rationale": "Aligns with the value proposition of defensible, independent risk scoring."
+    }
+  ],
+  "topic_clusters": [
+    {
+      "name": "Coffee Safety Data",
+      "description": "Core searches for coffee-specific food-safety records, import refusals, alerts, and searchable data resources.",
+      "strategic_importance": 1
+    },
+    {
+      "name": "Origin Risk Research",
+      "description": "Keywords about country-of-origin safety history, contamination risk, and defensible supplier-risk research.",
+      "strategic_importance": 1
+    },
+    {
+      "name": "Supplier Due Diligence",
+      "description": "Searches supporting wholesale roaster supplier verification, traceability, lot review, and procurement decisions.",
+      "strategic_importance": 1
+    },
+    {
+      "name": "Regulatory Compliance",
+      "description": "FDA, RASFF, import compliance, food-safety notifications, and documentation workflows for roasters.",
+      "strategic_importance": 2
+    },
+    {
+      "name": "Roastery Operations",
+      "description": "Operational terms connecting safety intelligence with inventory, roast planning, quality control, and production constraints.",
+      "strategic_importance": 2
+    },
+    {
+      "name": "Business Segment Needs",
+      "description": "Queries tailored to micro-roasters, café-based roasters, wholesale suppliers, subscriptions, and shared facilities.",
+      "strategic_importance": 3
+    },
+    {
+      "name": "Competitive Alternatives",
+      "description": "Comparison and alternative searches involving established refusal-report, RASFF, trade-data, and compliance-data resources.",
+      "strategic_importance": 3
+    }
+  ],
+  "expansion_rationale": "This is a global B2B specialty-coffee operations and food-safety directory opportunity. The keyword set prioritizes searchable safety records, import refusals, RASFF data, origin risk, supplier due diligence, and compliance, while adding operational modifiers relevant to micro-roasters, café roasters, wholesale teams, subscriptions, and cooperatives. It deliberately avoids the already-covered broad seed “green coffee” and the invented solution name, instead using category language such as database, directory, records, alerts, and risk assessment."
+}

@@ -1,0 +1,476 @@
+{
+ "labelled_by": "builder agent, by hand, 2026-08-17",
+ "unit": "one (case, vendor) pair \u2014 case = a distinct idea, vendor = the covered_by name a parity judge stamped for it. Arm and rep are STRIPPED from the export, so a label cannot be tuned toward an arm; the same vendor stamped by two arms is one pair with one label.",
+ "criterion": "FROZEN in probes/parity_eval_harness.py's docstring before the first judge call. yes = the named entity is a REAL, currently-available product, first-party platform feature, or (for a `substitute` stamp) a concrete free/DIY route, AND it delivers this idea's CORE MECHANISM for this idea's buyer, outright or in substantial part. no = (i) not a product at all (content page, blog post, listicle, buyer's guide, directory, forum thread, retailer/marketplace SKU page, PDF checklist); (ii) a real product doing a DIFFERENT job than the idea's core mechanism; (iii) not identifiable as a specific named vendor. unclear = evidence too thin to decide. BORDERLINES RESOLVE TO `no` \u2014 the harm being measured is a false positive that caps a novel idea's market_fit, so an unproven vendor must not be credited as a genuine incumbent. Class correctness (shipped vs partial vs substitute) is NOT part of this label.",
+ "application_notes": [
+  "Decided from the idea's value_proposition + technical_approach, the judge's own evidence line, and the recorded Serper snippet the stamp was drawn from \u2014 i.e. the evidence the pipeline actually had. World knowledge is used only to decide whether the named entity is a real product, never to supply a mechanism match the evidence does not show.",
+  "AMBIGUITY THE CRITERION LEFT OPEN, resolved uniformly and blind to arm: if the named entity cannot be resolved to a specific product/vendor/URL in the snippet, then a `shipped`/`partial` stamp (which asserts a COMMERCIAL product) is `no`, and a `substitute` stamp (where a generic free/DIY route is legitimate) is `unclear`.",
+  "SAME-BUYER REQUIREMENT is applied strictly: a product that ships the mechanism for a DIFFERENT payer (e.g. a city-government compliance suite vs the idea's short-term-rental host) is `no`. This makes the absolute precision level conservative for EVERY arm; between-arm contrasts are unaffected because the rule is applied identically.",
+  "`world` is an AUXILIARY field, not the label: it records whether the vendor is a genuine incumbent for this mechanism under an evidence-independent reading (world knowledge allowed). It exists so the 'right vendor, unauditable evidence line' class is countable instead of hidden inside `no`. Headline precision uses `label`.",
+  "Evidence-grounding rule for a stamp whose evidence line is ABSENT from every recorded snippet (the `vendor_in_snippets` flag): `unclear` when the named entity is a real product plausibly doing this job, `no` when the entity or the job is wrong. World knowledge never supplies a mechanism match the evidence does not show."
+ ],
+ "labels": {
+  "130d74cb4909": {
+   "label": "no",
+   "world": "genuine",
+   "vendor": "Truckstop",
+   "idea": "BrokerPay Shield",
+   "why": "Cited evidence is LoadPay/Factoring payment-rail integration with McLeod PowerBroker \u2014 paying carriers. The idea's core mechanism is predicting whether a BROKER will pay (FMCSA authority/bond data) and driving an invoice->bond-claim escalation. Different job on the evidence shown. `world`=genuine because Truckstop's load board does sell broker credit/days-to-pay data in reality, so the cap is arguably deserved \u2014 but the probe never found that, and the user-visible evidence line is a non-sequitur."
+  },
+  "1eec5b43bbaf": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Granicus Host Compliance",
+   "idea": "NeighborWatchList",
+   "why": "Granicus ships a 24/7 neighbour complaint hotline, so the mechanism exists \u2014 but it is sold to MUNICIPALITIES and routes complaints to the enforcement authority. The idea's buyer is the host/co-host and its whole point is to intercept complaints BEFORE enforcement. Same mechanism, opposite direction, different payer."
+  },
+  "2062b94c3036": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "everylocalai.com VRAM calculator",
+   "idea": "LayerOffloadProfiler",
+   "why": "substitute stamp, and the free route is concrete and resolvable (everylocalai.com/calculator/vram): a GGUF VRAM calculator quoted at +/-10% for llama.cpp/Ollama, same buyer (self-hosters), delivering the core outcome (will this quant fit my VRAM) in substantial part. The idea's per-layer offload split is a refinement of it, not a different job."
+  },
+  "30f7cd284dd5": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Peec AI",
+   "idea": "Citation Fingerprints",
+   "why": "peec.ai ships prompt-level tracking of used vs cited sources at domain/URL granularity with prioritized content actions \u2014 that is the idea's core mechanism (which prompts cite which customer page, by model and date), commercially, for the same buyer."
+  },
+  "3a83449e3e61": {
+   "label": "unclear",
+   "world": "genuine",
+   "vendor": "LLM VRAM Calculator for Self-Hosting",
+   "idea": "LayerOffloadProfiler",
+   "why": "substitute stamp whose `covered_by` is a page-title-shaped string, not a resolvable product; the surrounding snippet is Reddit/LinkedIn chatter. Free VRAM calculators demonstrably exist (see 2062b94c3036), so `world`=genuine, but this particular entity cannot be verified -> unclear per the application note."
+  },
+  "49ec9cbe7072": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Translucent",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "translucent.io/xero-consolidation: combines unlimited Xero entities into one consolidated accounting solution for multi-entity finance teams \u2014 the idea's core mechanism (multi-entity consolidation with mapping and eliminations) shipped commercially to the same buyer."
+  },
+  "54cfec1002d8": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "ServiceWorks",
+   "idea": "WarrantyAuthLedger",
+   "why": "Evidence lists field-service-management coverage (warranty dispatches, parts ordering, POs, inventory, invoicing). The idea's mechanism is capturing informal warranty go-aheads as timestamped, job-linked EVIDENCE to defend reimbursement. FSM breadth is adjacent workflow, not authorization provenance."
+  },
+  "62aeaeaa3f49": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "VetSnap",
+   "idea": "Reconcilio Vet",
+   "why": "VetSnap ships a DEA-compliant digital controlled-drug log with error checking, AUTO-RECONCILIATION and DEA report generation, integrated with PIMS/DaySmart Vet. That is the idea's core mechanism (controlled-substance reconciliation + audit-facing packet) shipped commercially to independent vet clinics."
+  },
+  "67338349ee2c": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Fieldproxy",
+   "idea": "WarrantyAuthLedger",
+   "why": "The cited page is a fieldproxy.ai marketing 'blueprint' for COPIER repair warranty tracking, and the capability quoted (a dashboard that tracks warranty claim approval) is claim-status tracking, not capture and preservation of the authorization itself. Wrong vertical, adjacent job, landing-page evidence."
+  },
+  "678938fd2376": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Frame.io",
+   "idea": "StakeholderSignalMerge",
+   "why": "Frame.io is a genuine incumbent for COLLECTING timestamped client feedback, which is the idea's INPUT. The idea's core mechanism is automatically detecting and merging CONFLICTING notes at the same timestamp. Frame.io does not do that; the evidence line only says it is used for feedback and approvals."
+  },
+  "7594990c48f4": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Applied Epic",
+   "idea": "AppointmentReady",
+   "why": "Evidence is ACORD form breadth + compliance functions, sourced from a third-party comparison blog. ACORD forms are policy/submission forms; the idea assembles CARRIER APPOINTMENT packets from NIPR data. Different job, listicle evidence."
+  },
+  "8f2c61db3c9f": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Wipster",
+   "idea": "ScopeShield Post Kit",
+   "why": "Wipster is a real video-review product and does ship review rounds/approvals, which covers the tracking half. The idea's decisive mechanism is translating fuzzy notes into decision-ready questions and auto-generating OUT-OF-SCOPE CHANGE ORDERS \u2014 commercial scope governance Wipster does not ship. Borderline -> no."
+  },
+  "92d63830b434": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Granicus",
+   "idea": "NeighborWatchList",
+   "why": "Same finding as 1eec5b43bbaf under the bare vendor name: the 24/7 neighbour hotline is sold to municipalities and routes to enforcement, not to the host who is this idea's buyer."
+  },
+  "9ed92c8340bd": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Double",
+   "idea": "RecDiffHunter",
+   "why": "Named off a Financial-Cents listicle of month-end-close software. Close-management workflow is not the idea's mechanism (row-level running-balance divergence diff ranked by dollar impact)."
+  },
+  "a5c7713a84d9": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Profound",
+   "idea": "EntityGraphComparer",
+   "why": "Profound is a real AI-visibility platform, but the recorded snippets only show third-party comparison listicles of AI-visibility tools; nothing establishes reconciliation of location entities across PUBLIC KNOWLEDGE GRAPHS (Wikidata etc.), which is the idea's mechanism. One evidence variant ('Resolution Driver syncs linkage frameworks between Legal Business Identifier dataset and Profound's UDL') is jargon that does not appear in the snippets at all."
+  },
+  "a606dfefc4d1": {
+   "label": "no",
+   "world": "genuine",
+   "vendor": "Airbnb",
+   "idea": "NeighborWatchList",
+   "why": "Airbnb's own neighbour reporting route genuinely exists and genuinely competes for the neighbour's action (`world`=genuine). But it delivers to AIRBNB, not to the co-host, and produces no real-time host alert \u2014 the idea's mechanism and buyer. Same strict same-buyer rule applied to Granicus; borderline -> no."
+  },
+  "a69f95c5fb90": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Hootsuite",
+   "idea": "CoverageGap Archive",
+   "why": "The capability quoted belongs to ArchiveSocial (a social archive stream surfaced inside Hootsuite), not to Hootsuite, and archiving your OWN channels is not the idea's mechanism \u2014 an API-independent audit of which public conversations live monitoring MISSED."
+  },
+  "b0df17e3a6d5": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "First Connect Insurance",
+   "idea": "AppointmentReady",
+   "why": "Evidence is a sentence of marketing prose from First Connect's OWN blog post ('Platforms like First Connect help agents simplify every step'). Nothing establishes automated generation of carrier-compliant appointment packets from NIPR data."
+  },
+  "b0f351ade70c": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Ayzeo",
+   "idea": "Citation Fingerprints",
+   "why": "ayzeo.com/use-cases/local-businesses (the vendor's own product page): monitors 'near me' PROMPTS, validates LocalBusiness schema, tracks AI visibility for local businesses. Prompt-level citation monitoring for exactly this buyer \u2014 the idea's core mechanism in substantial part."
+  },
+  "b6c7e02f8dd4": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Xero",
+   "idea": "ISO20022ReconSpec",
+   "why": "Wrong vendor AND wrong job: the capability quoted belongs to Bankeasy (a Xero app) and converts Xero bills into ISO 20022 PAYMENT INSTRUCTIONS. The idea ships inspectable ISO-20022-derived RECONCILIATION logic for bank-feed matching."
+  },
+  "b9ee1b0665f1": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "FloQast, Gravity Software, OneStream",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "Gravity Software and OneStream do automate multi-entity consolidation with intercompany eliminations \u2014 the idea's core mechanism, shipped commercially. Labelled yes on mechanism; SEPARATELY note that `covered_by` holds THREE names, violating the field's one-incumbent contract, so the user-visible stamp is unauditable and the FloQast third of it is wrong (FloQast is close management, cf. e1fe5974a0a7)."
+  },
+  "c46f1b782a22": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Google Sheets",
+   "idea": "CrumbKey",
+   "why": "A spreadsheet is not a substitute for a visual diagnostic decision tree that pinpoints why a bake failed, and the supporting snippet is a Facebook-group post noting Sheets is 'like Excel in the cloud'. Generic-tool substitute on forum evidence. Costly: home bakers are a low-payability segment, so this stamp routes to the substitute WEAK-WALLET cap (0.35), below the 0.4 demotion bar."
+  },
+  "c93cfaefd304": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Google Sheets",
+   "idea": "ScopeShield Post Kit",
+   "why": "Sheets genuinely is the DIY status quo for revision tracking, but the decisive mechanism (note translation + automatic out-of-scope change orders) is not delivered, and the supporting snippet is the Sheets product page plus a 'study tracker' tutorial. Borderline -> no."
+  },
+  "d11a0243651c": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Numeric",
+   "idea": "RecDiffHunter",
+   "why": "Named off numeric.io's own '10 Best Account Reconciliation Software' BLOG LISTICLE. Numeric does ship reconciliation features, but nothing here establishes the idea's mechanism (row-level running-balance divergence ranked by dollar impact), and a listicle is criterion (i) evidence."
+  },
+  "e1fe5974a0a7": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "FloQast",
+   "idea": "ConsoliClose Hub",
+   "why": "The captured snippet is a Xenett buyer's guide that explicitly frames FloQast as close management rather than consolidation ('Not a multi-entity consolidation tool (FloQast/BlackLine are better for ...)'). Close orchestration is not CoA harmonization + intercompany elimination + 50-entity consolidation."
+  },
+  "e210c6880412": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "JustConsolidate",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "QuickBooks app-store listing for JustConsolidate: 'Multi-Entity Consolidation inside QuickBooks ... for accountants and bookkeepers who need to consolidate and report financials'. Exactly the mechanism, exactly the buyer."
+  },
+  "e46eda906c4b": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Dext",
+   "idea": "CoverageGap Archive",
+   "why": "Dext is receipt/document capture for accounting; the idea audits missed PUBLIC APP CONVERSATIONS via Common Crawl. Unrelated. The evidence is a Xero app-store reviews page \u2014 a directory listing, criterion (i)."
+  },
+  "ee385113d744": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Frame.io",
+   "idea": "ScopeShield Post Kit",
+   "why": "Same reasoning as 8f2c61db3c9f/678938fd2376: Frame.io ships frame-accurate review and comment workflows (the input), not revision-round GOVERNANCE with automatic out-of-scope change orders. Supporting snippet is a LinkedIn post listing tools."
+  },
+  "f803b9b8a5b2": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Karbon",
+   "idea": "ConsoliClose Hub",
+   "why": "Pure lexical false positive: the evidence headline '50 Firms Consolidate on Single Workflow and Billing Platform with Karbon' uses 'consolidate' to mean firms standardizing onto one practice-management platform, not FINANCIAL multi-entity consolidation. Karbon is practice management."
+  },
+  "ffa9e94901c7": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "JustConsolidate",
+   "idea": "ConsoliClose Hub",
+   "why": "Same verified QuickBooks app-store product as e210c6880412, and this idea is the 50-entity CoA-harmonization/intercompany variant of the same mechanism. Real product, right buyer."
+  },
+  "027f6e85a5e0": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "smcleod.net LLM vRAM Estimator",
+   "idea": "LayerOffloadProfiler",
+   "why": "substitute stamp resolving to a real, verifiable free tool (smcleod.net/vram-estimator/) that gives GGUF layer-by-layer VRAM estimates for llama.cpp/Ollama \u2014 the idea's core outcome, same buyer, free today."
+  },
+  "12848f994e95": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "OneStream",
+   "idea": "ConsoliClose Hub",
+   "why": "Evidence is a category DEFINITION lifted from onestream.com's own blog ('Financial consolidation software allows organizations to automate...'), not a capability claim. OneStream is real enterprise CPM; the buyer gap to a freelance bookkeeper is enormous. Contrast b9ee1b0665f1/ad935fa48d70, whose `yes` rests on Gravity/Joiin/JustConsolidate \u2014 SMB Xero/QBO products \u2014 not on OneStream."
+  },
+  "136957dd69ab": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Avail",
+   "idea": "FloodLedger",
+   "why": "Named off Avail's OWN blog listicle ('10 Best Accounting Software Platforms for Landlords'). Generic tax-ready expense export is not the idea's mechanism (read the flood-insurance DOCUMENT, verify it, land it on Schedule E line 9 linked to a property). Listicle evidence, borderline -> no."
+  },
+  "213a45afdc8c": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "MyPeptideMatch",
+   "idea": "VendorShowdown",
+   "why": "mypeptidematch.com/vendors, verified in the snippet: 'Browse and compare 80+ research peptide vendors. See trust signals, pricing, purity testing.' That is this idea's core mechanism, live, free, same buyer. NOTE the criterion tension: rule (i) excludes directories as non-products, but when the IDEA'S mechanism IS a comparison directory, a competing directory is the genuine incumbent. Applied that way uniformly."
+  },
+  "27cd9458ed06": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Excel / Google Sheets",
+   "idea": "Menu Continuity Ledger",
+   "why": "Spreadsheets are the real DIY status quo for green-coffee allocation, but the supporting evidence is a job advert requiring Excel proficiency, and the idea's decisive mechanism (menu-continuity decision + customer-facing brew-risk disclosure) is not delivered by a spreadsheet. Borderline -> no. Also a two-product `covered_by` (slash-separated, so the comma-based multi-vendor flag misses it)."
+  },
+  "2cab0e65c397": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "PlayPause",
+   "idea": "PrepperBazaar",
+   "why": "playpause.io is real review software (frame-accurate client notes) \u2014 the idea's INPUT side. The idea is a human OUTSOURCING marketplace: vetted prep editors delivering SMPTE timeline files. Software for collecting notes is a different job from a service that converts them."
+  },
+  "2de52445cd8c": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Zoho Inventory",
+   "idea": "StockGuard",
+   "why": "zoho.com/us/inventory/reorder-point-calculator: Zoho ships a reorder-point/safety-stock calculator, plus an Etsy integration syncing stock. The idea's core computation (per-channel safety-stock buffer) is shipped commercially to the same buyer; sync-latency awareness is a refinement, not a different job."
+  },
+  "395813e6bca9": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Semrush",
+   "idea": "EntityAnchor Baseline",
+   "why": "semrush.com/kb AI-visibility features + Semrush One prompt tracking: an AI visibility BASELINE with tracking across ChatGPT/Perplexity/Gemini, shipped commercially to this idea's buyer (B2B SEO teams). Covers the idea's mechanism in substantial part."
+  },
+  "4ac7201cf6f7": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Baselane",
+   "idea": "FloodLedger",
+   "why": "Named off a third-party listicle ('Baselane is a popular free option for small landlords'). Generic free rental accounting; nothing about insurance-document verification or Schedule E line 9 provenance."
+  },
+  "5817d2b57426": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Google Drive",
+   "idea": "PrepperBazaar",
+   "why": "Self-refuting evidence: the judge's own line says 'Google Drive used to upload and visualize videos, FEEDBACK STILL SCATTERED' \u2014 i.e. the route explicitly does NOT deliver the idea's outcome, yet it was stamped as a substitute."
+  },
+  "5cfca03a6e6d": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Opendate Venue Management",
+   "idea": "NutLedger Guard",
+   "why": "Opendate genuinely automates booking-to-settlement, but the idea's mechanism is a PRE-SHOW warning that a show lacks a written, artist-shareable house-nut breakdown. Settlement automation downstream is adjacent, not the missing-document alarm. Borderline -> no."
+  },
+  "5d5efb4ed1b3": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Frame.io",
+   "idea": "PrepperBazaar",
+   "why": "Wrong-vendor attribution: the evidence lines describe elevate.io ('captures feedback on the editing timeline, attached to the exact frame'), and Frame.io appears in the snippets only inside a Reddit thread title about Frame.io ALTERNATIVES. Review software is also not the idea's human prep service."
+  },
+  "5ea814983920": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "TenantCloud",
+   "idea": "FloodLedger",
+   "why": "tenantcloud.com product page (not a listicle): expense tracking, bank reconciliation and SCHEDULE E REPORTS for landlords. That delivers 'property-linked Schedule E expense without a separate spreadsheet' in substantial part; only the document-reading step is the idea's own. Distinguished from Avail/Baselane by evidence source (vendor's own site) and by Schedule E being named explicitly."
+  },
+  "6277d3a6ef09": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Opendate",
+   "idea": "ShowClose Settlement Desk",
+   "why": "opendate.io: POS/ticketing wired straight into final settlements, one platform from booking to settlement, for independent venues. That IS this idea's mechanism (pre-show-to-payout settlement workspace producing the final balance) and buyer."
+  },
+  "62f707fc7cbd": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Krock.io",
+   "idea": "ScopeShield Post Kit",
+   "why": "VENDOR ABSENT FROM EVERY RECORDED SNIPPET \u2014 the name came from the model, not the evidence, against a prompt that says 'Cite only what the results actually show'. Krock.io is a real review tool, but the idea's decisive mechanism (scope governance + automatic out-of-scope change orders) is not something it ships, so `no` rather than `unclear`."
+  },
+  "6e528dcaf16f": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Gravity Software",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "gogravity.com: multi-entity automation for continuous close. Gravity is a real SMB multi-entity accounting product doing consolidation and intercompany work \u2014 the idea's mechanism, at a buyer scale a bookkeeping practice can actually reach."
+  },
+  "7b2e6b512e44": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "MyPeptideMatch.com",
+   "idea": "VendorShowdown",
+   "why": "Same verified product as 213a45afdc8c under its domain form."
+  },
+  "8b63f94255d9": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Rankshift AI",
+   "idea": "Citation Fingerprints",
+   "why": "rankshift.ai (own site, in snippet): AI visibility tracking that 'tracks citation and visibility rates in AI search for clients'. Prompt/citation tracking per client page is this idea's core mechanism, shipped."
+  },
+  "8e1591131b26": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Xbert",
+   "idea": "GrantCrosswalk",
+   "why": "Named off a getuku.com listicle. XBert's duplicate detection is bookkeeping-ledger duplicates (double-entered bills), not the idea's mechanism: duplicate GRANT EXPENSES across multiple funder reports reconciled against government-published data."
+  },
+  "94b3080d0d97": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "OtterlyAI",
+   "idea": "GEO Change Ledger",
+   "why": "OtterlyAI tracks AI-search brand visibility. The idea ships a permanent PUBLIC URL proving what GEO change was made, when, and what movement followed \u2014 a provenance artifact, not a visibility dashboard. Different job."
+  },
+  "a85b5a4ebe12": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "everylocalai.com/calculator/vram",
+   "idea": "LayerOffloadProfiler",
+   "why": "Same verified free calculator as 2062b94c3036, stamped here with its URL."
+  },
+  "ad935fa48d70": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Joiin, JustConsolidate, Translucent",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "All three resolve in the snippet to real Xero/QBO consolidation products delivering the idea's mechanism to its buyer. Labelled yes on mechanism; SEPARATELY: `covered_by` holds three names, violating the field's one-incumbent contract, so the user-visible stamp cannot be audited to a single vendor."
+  },
+  "b069d4c22d64": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Profound",
+   "idea": "EntityAnchor Baseline",
+   "why": "The capability claimed is specific and matches the idea on both halves: AI-visibility baseline AND a technical AEO audit that checks crawl blocks \u2014 i.e. the 'evidence-led crawler-denial diagnosis'. Profound is a real commercial platform for this buyer."
+  },
+  "b68922df7cb2": {
+   "label": "unclear",
+   "world": "genuine",
+   "vendor": "Profound",
+   "idea": "Citation Fingerprints",
+   "why": "VENDOR ABSENT FROM EVERY RECORDED SNIPPET. Profound does in reality do prompt-level citation tracking (`world`=genuine), but the criterion forbids using world knowledge to supply a mechanism match the evidence does not show, and the entity is real and plausible -> `unclear`, not `no`."
+  },
+  "bb99586f0869": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Profound",
+   "idea": "GEO Change Ledger",
+   "why": "The only snippet is a Reddit thread asking whether anyone has used Profound. 'Optimization history' is not established, and the idea's mechanism is a permanent public proof URL, not visibility tracking."
+  },
+  "bf244c6ad07e": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "Opendate",
+   "idea": "NutLedger Guard",
+   "why": "Same as 5cfca03a6e6d: settlement automation is not the pre-show missing-house-nut alarm. Supporting snippet is Opendate's help centre and an Instagram post."
+  },
+  "cb92ad615577": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Peptide Library / Path to Peptides / Peptide Resource Center / MyPeptideMatch",
+   "idea": "VendorShowdown",
+   "why": "Four vendor-comparison sites, three verifiable in the snippet (peptidelibrary.app 'Compare verified vendors, find the best price per mg... view vendor ratings at no cost'). This is the idea's mechanism, already free, several times over \u2014 a correct and decision-relevant finding. Worth flagging against the received wisdom that peptide-niche parity stamps are all content-page junk: SOME are, this one is not."
+  },
+  "ccc9483f4874": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "ArchiveSocial",
+   "idea": "CoverageGap Archive",
+   "why": "ArchiveSocial is a real continuous social-archiving product for compliance \u2014 it archives YOUR channels. The idea audits which public conversations a monitoring stack MISSED, from an API-independent corpus (Common Crawl). Adjacent product, different job."
+  },
+  "ce91606e9323": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "Landlord Studio",
+   "idea": "FloodLedger",
+   "why": "landlordstudio.com: rental accounting with SCHEDULE E REPORTS for small landlords, verified in the snippet. Same reasoning as TenantCloud."
+  },
+  "d275ae856928": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "Square Baby",
+   "idea": "SafeBatchProof",
+   "why": "Square Baby is a baby-food subscription company, surfaced from an Instagram reel because the name-anchored query was '\"Square\" allergen batch photo verification'. The idea is a time-stamped photo proving allergen safety for a home-baked batch. Textbook name-anchored query noise producing a nonsense incumbent."
+  },
+  "d66565ad811a": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "QuickBooks Online",
+   "idea": "RecDiffHunter",
+   "why": "quickbooks.intuit.com bank-reconciliation page: QBO auto-matches bank lines to ledger transactions with running-balance views. The idea's mechanism (find where ledger and bank running balances diverge) is a feature of the platform this buyer already pays for. Probably the most decision-relevant true positive in the set."
+  },
+  "e2a9872e4a33": {
+   "label": "yes",
+   "world": "genuine",
+   "vendor": "VenuePilot",
+   "idea": "ShowClose Settlement Desk",
+   "why": "VenuePilot combines booking, ticketing, event management and ARTIST SETTLEMENT for independent venues and promoters \u2014 the idea's mechanism and its exact buyer."
+  },
+  "e457026bca95": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "VenuePilot",
+   "idea": "NutLedger Guard",
+   "why": "Same vendor as e2a9872e4a33 but a different idea: shipping settlement tooling is not the pre-show alarm for a missing written house-nut breakdown. Consistent with the Opendate/NutLedger pairs."
+  },
+  "e9c07b40f479": {
+   "label": "no",
+   "world": "not_genuine",
+   "vendor": "FloQast",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "Same as e1fe5974a0a7: the snippet describes FloQast as centralizing month-end CLOSE activities; consolidation with CoA mapping and intercompany eliminations is a different product category (the same snippet set names FloQast as NOT a multi-entity consolidation tool)."
+  },
+  "f184d07f1458": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "RoasterTools",
+   "idea": "Menu Continuity Ledger",
+   "why": "RoasterTools genuinely ships green-coffee inventory tracking across locations \u2014 the substrate the idea sits on. The idea's mechanism is the allocation DECISION (which lots protect the menu, for how long, what brew risk to disclose), which the evidence does not show. Closest legitimate adjacent in the set; borderline -> no."
+  },
+  "f2f14fe33f14": {
+   "label": "no",
+   "world": "unsure",
+   "vendor": "OneStream",
+   "idea": "GroupConsolidate & Intercompany Eliminator",
+   "why": "Same as 12848f994e95: category-definition evidence from OneStream's own blog, enterprise CPM buyer gap."
+  }
+ }
+}

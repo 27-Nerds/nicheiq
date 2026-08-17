@@ -1,0 +1,19 @@
+{
+  "difficulty_level": "medium",
+  "software_addressability": 0.743,
+  "headline": "Software Fit: Strong — automating inventory and sensory quality control for roasters",
+  "narrative_summary": "Software can directly own about half of the technical and logistical pains in this niche, though you should focus on ideas that leverage existing user data rather than those requiring a new, unproven data corpus. While the software fit is strong, the difficulty is high because the tool ecosystem is already moderately saturated and you must compete head-on with established incumbents for attention. Given that willingness to pay is moderate and some ideas are used only episodically, prioritize models that target specific high-value pain points rather than relying on broad subscription tiers.",
+  "key_challenges": [
+    "Raw idea scores ran optimistic and were corrected down — the obvious framings here are weaker than they first look.",
+    "Web checks found shipping products covering most of these ideas' core mechanisms — the bar is head-on differentiation against named incumbents, not filling an empty field.",
+    "The niche already runs a dense tool ecosystem (10 tools web-verified, 0 with published pricing) — new products compete for attention inside an existing stack. Thin early signal; Deep Research validates."
+  ],
+  "key_strengths": [
+    "Most pains are workflow or data problems a tool can directly own.",
+    "There's room for a genuinely novel angle, not just a clone.",
+    "Usable data is reachable without a heavy cold-start lift."
+  ],
+  "low_confidence": false,
+  "buyer_class": "smb-operator",
+  "buyer_class_note": "Buyers here are small-business operators — price-aware but used to paying for tools that save time or win customers."
+}

@@ -1,0 +1,52 @@
+{
+  "selected_solution_name": "OriginSafetyClearanceIndex",
+  "selection_rationale": "User selected 'OriginSafetyClearanceIndex' via interactive flow. Rationale: Not provided. Selected after reviewing AI-generated solution ideas, pricing/keyword validation data, and competitive landscape analysis.\n\n**Keyword-validation note:** keyword validation favors **DefectFingerprint** (adjusted composite 0.62 vs 0.56), but your selected solution is kept. Review DefectFingerprint as a runner-up.",
+  "original_selection_reasoning": null,
+  "selection_criteria_scores": null,
+  "all_solution_scores": [
+    {
+      "solution_name": "DefectFingerprint",
+      "market_fit_score": 0.5,
+      "technical_feasibility_score": 0.85,
+      "competitive_advantage_score": 0.45,
+      "seo_growth_potential_score": 0.4,
+      "composite_score": 0.603,
+      "rank": 1,
+      "score_source": "interactive",
+      "keyword_demand_score": 0.6559,
+      "adjusted_composite_score": 0.6189,
+      "demand_unmeasured": false
+    },
+    {
+      "solution_name": "Lot Reconciliation Sheet",
+      "market_fit_score": 0.45,
+      "technical_feasibility_score": 0.95,
+      "competitive_advantage_score": 0.3,
+      "seo_growth_potential_score": 0.35,
+      "composite_score": 0.56,
+      "rank": 2,
+      "score_source": "interactive",
+      "keyword_demand_score": 0.6979,
+      "adjusted_composite_score": 0.6014,
+      "demand_unmeasured": false
+    },
+    {
+      "solution_name": "OriginSafetyClearanceIndex",
+      "market_fit_score": 0.4,
+      "technical_feasibility_score": 0.75,
+      "competitive_advantage_score": 0.65,
+      "seo_growth_potential_score": 0.5,
+      "composite_score": 0.52,
+      "rank": 3,
+      "score_source": "interactive",
+      "keyword_demand_score": 0.6559,
+      "adjusted_composite_score": 0.5608,
+      "demand_unmeasured": false
+    }
+  ],
+  "runner_up_solutions": [
+    "Lot Reconciliation Sheet",
+    "DefectFingerprint"
+  ],
+  "recommended_focus": "Build and launch OriginSafetyClearanceIndex targeting identified market gaps."
+}

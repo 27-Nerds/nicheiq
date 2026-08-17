@@ -18,6 +18,7 @@
     directIncumbentParity,
     incumbentParityPhrase,
     noDirectIncumbentFound,
+    NONE_SURFACED_PHRASE,
   } from "$lib/utils/adversarialReview";
   import {
     originalityMetric,
@@ -683,7 +684,10 @@
             <div class="fd-ledger-row">
               <dt class="mini-label">Direct incumbent check</dt>
               <dd class="fd-ledger-value">
-                <p>No incumbent was found shipping this idea's core mechanism.</p>
+                <!-- Not "No incumbent was found shipping this idea's core mechanism.": that
+                     asserted a fact about the MARKET where the system holds only a fact about
+                     its own retrieval. The shared phrase says which. -->
+                <p>{NONE_SURFACED_PHRASE}</p>
               </dd>
             </div>
           {/if}

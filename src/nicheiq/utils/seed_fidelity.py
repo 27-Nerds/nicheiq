@@ -475,6 +475,14 @@ def _normalize_route_language(text: str) -> str:
     import re
 
     normalized = re.sub(r"[’ʼ`´]", "'", text or "")
+    # MUTATION HARNESS DEPENDS ON THE TWO CONSTRUCTS BELOW. Every row here yields
+    # two mutants that no test can ever kill: the pattern, because re.sub is called
+    # with flags=re.IGNORECASE (line ~508), and the replacement, because the return
+    # lowercases everything (line ~509). Those 54 unkillable mutants are declared,
+    # with those two lines as their proof anchors, in probes/mutation_denominator.py
+    # -- so `make mutation-denominator` FAILS if either construct is removed. If you
+    # need to drop the IGNORECASE flag or the trailing .lower(), update the
+    # declaration in the same change; do not just delete it to make the check green.
     replacements = {
         r"\bisn['’]t\b": "is not",
         r"\baren['’]t\b": "are not",
@@ -523,6 +531,11 @@ def _route_role_contexts(
         for route in _route_values(candidate)
     ))
     contexts: list[str] = []
+    # The three re.split/re.search calls below that pass flags=re.IGNORECASE each
+    # yield one case-flip mutant that no test can kill; they are declared line by
+    # line in probes/mutation_denominator.py with `flags=re.IGNORECASE` as the
+    # proof anchor. The re.match near the end of this function does NOT pass the
+    # flag and its case-flip IS killable -- deliberately left in the score.
     for field in fields:
         text = _flatten(getattr(candidate, field, None))
         clauses = re.split(r"[.!?;\n]+", text)

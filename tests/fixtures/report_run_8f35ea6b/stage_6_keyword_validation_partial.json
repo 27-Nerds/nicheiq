@@ -1,0 +1,435 @@
+[
+  {
+    "solution_name": "DefectFingerprint",
+    "validated_count": 1,
+    "total_volume": 349620,
+    "avg_competition": 3.909090909090909,
+    "competition_scale": "0-100",
+    "keyword_demand_score": 0.9792727272727273,
+    "top_keywords": [
+      {
+        "keyword": "quality control",
+        "volume": 74000,
+        "competition": 3
+      },
+      {
+        "keyword": "qc quality control",
+        "volume": 74000,
+        "competition": 3
+      },
+      {
+        "keyword": "green coffee",
+        "volume": 74000,
+        "competition": 43
+      },
+      {
+        "keyword": "total quality control",
+        "volume": 27100,
+        "competition": 4
+      },
+      {
+        "keyword": "total quality control management",
+        "volume": 27100,
+        "competition": 4
+      }
+    ],
+    "top_geographic_keywords": [],
+    "demand_signal": "strong",
+    "validation_signals": {
+      "has_search_demand": true,
+      "keyword_diversity": true,
+      "high_volume_presence": true,
+      "average_volume_per_keyword": 15891.818181818182
+    },
+    "attempts_made": 1,
+    "best_relevance_score": 0.7204545454545455,
+    "accumulated_keywords_count": 1,
+    "niche_relevant_volume": 74000,
+    "validated_keywords": [
+      {
+        "keyword": "green coffee",
+        "search_volume": 74000,
+        "competition": 0.43,
+        "competition_index": 43,
+        "competition_scale": "0-1",
+        "cpc": 0.98,
+        "monthly_searches": [
+          {
+            "year": 2026,
+            "month": 6,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 5,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 4,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 3,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 2,
+            "search_volume": 60500
+          },
+          {
+            "year": 2026,
+            "month": 1,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 12,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 11,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 10,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 9,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 8,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 7,
+            "search_volume": 90500
+          }
+        ]
+      }
+    ],
+    "avg_keyword_difficulty": null,
+    "rankability_factor": null
+  },
+  {
+    "solution_name": "Lot Reconciliation Sheet",
+    "validated_count": 2,
+    "total_volume": 453740,
+    "avg_competition": 8.064516129032258,
+    "competition_scale": "0-100",
+    "keyword_demand_score": 0.9605161290322581,
+    "top_keywords": [
+      {
+        "keyword": "green coffee",
+        "volume": 74000,
+        "competition": 43
+      },
+      {
+        "keyword": "coffee and green",
+        "volume": 74000,
+        "competition": 43
+      },
+      {
+        "keyword": "coffee on the green",
+        "volume": 74000,
+        "competition": 43
+      },
+      {
+        "keyword": "green matcha latte starbucks",
+        "volume": 49500,
+        "competition": 24
+      },
+      {
+        "keyword": "qc checked",
+        "volume": 22200,
+        "competition": 0
+      }
+    ],
+    "top_geographic_keywords": [],
+    "demand_signal": "strong",
+    "validation_signals": {
+      "has_search_demand": true,
+      "keyword_diversity": true,
+      "high_volume_presence": true,
+      "average_volume_per_keyword": 14636.774193548386
+    },
+    "attempts_made": 1,
+    "best_relevance_score": 0.6161290322580645,
+    "accumulated_keywords_count": 2,
+    "niche_relevant_volume": 82100,
+    "validated_keywords": [
+      {
+        "keyword": "green coffee",
+        "search_volume": 74000,
+        "competition": 0.43,
+        "competition_index": 43,
+        "competition_scale": "0-1",
+        "cpc": 0.98,
+        "monthly_searches": [
+          {
+            "year": 2026,
+            "month": 6,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 5,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 4,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 3,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 2,
+            "search_volume": 60500
+          },
+          {
+            "year": 2026,
+            "month": 1,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 12,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 11,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 10,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 9,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 8,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 7,
+            "search_volume": 90500
+          }
+        ]
+      },
+      {
+        "keyword": "raw coffee roaster",
+        "search_volume": 8100,
+        "competition": 0.05,
+        "competition_index": 5,
+        "competition_scale": "0-1",
+        "cpc": 0.5,
+        "monthly_searches": [
+          {
+            "year": 2026,
+            "month": 6,
+            "search_volume": 9900
+          },
+          {
+            "year": 2026,
+            "month": 5,
+            "search_volume": 12100
+          },
+          {
+            "year": 2026,
+            "month": 4,
+            "search_volume": 9900
+          },
+          {
+            "year": 2026,
+            "month": 3,
+            "search_volume": 9900
+          },
+          {
+            "year": 2026,
+            "month": 2,
+            "search_volume": 8100
+          },
+          {
+            "year": 2026,
+            "month": 1,
+            "search_volume": 8100
+          },
+          {
+            "year": 2025,
+            "month": 12,
+            "search_volume": 5400
+          },
+          {
+            "year": 2025,
+            "month": 11,
+            "search_volume": 3600
+          },
+          {
+            "year": 2025,
+            "month": 10,
+            "search_volume": 4400
+          },
+          {
+            "year": 2025,
+            "month": 9,
+            "search_volume": 3600
+          },
+          {
+            "year": 2025,
+            "month": 8,
+            "search_volume": 6600
+          },
+          {
+            "year": 2025,
+            "month": 7,
+            "search_volume": 3600
+          }
+        ]
+      }
+    ],
+    "avg_keyword_difficulty": null,
+    "rankability_factor": null
+  },
+  {
+    "solution_name": "OriginSafetyClearanceIndex",
+    "validated_count": 1,
+    "total_volume": 904800,
+    "avg_competition": 6.933333333333334,
+    "competition_scale": "0-100",
+    "keyword_demand_score": 0.9616,
+    "top_keywords": [
+      {
+        "keyword": "supply chain management",
+        "volume": 246000,
+        "competition": 27
+      },
+      {
+        "keyword": "scm supply chain management",
+        "volume": 246000,
+        "competition": 27
+      },
+      {
+        "keyword": "supply chain",
+        "volume": 201000,
+        "competition": 10
+      },
+      {
+        "keyword": "green coffee",
+        "volume": 74000,
+        "competition": 43
+      },
+      {
+        "keyword": "logistics and supply chain management",
+        "volume": 33100,
+        "competition": 28
+      }
+    ],
+    "top_geographic_keywords": [],
+    "demand_signal": "strong",
+    "validation_signals": {
+      "has_search_demand": true,
+      "keyword_diversity": true,
+      "high_volume_presence": true,
+      "average_volume_per_keyword": 30160.0
+    },
+    "attempts_made": 1,
+    "best_relevance_score": 0.6083333333333333,
+    "accumulated_keywords_count": 1,
+    "niche_relevant_volume": 74000,
+    "validated_keywords": [
+      {
+        "keyword": "green coffee",
+        "search_volume": 74000,
+        "competition": 0.43,
+        "competition_index": 43,
+        "competition_scale": "0-1",
+        "cpc": 0.98,
+        "monthly_searches": [
+          {
+            "year": 2026,
+            "month": 6,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 5,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 4,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 3,
+            "search_volume": 74000
+          },
+          {
+            "year": 2026,
+            "month": 2,
+            "search_volume": 60500
+          },
+          {
+            "year": 2026,
+            "month": 1,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 12,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 11,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 10,
+            "search_volume": 60500
+          },
+          {
+            "year": 2025,
+            "month": 9,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 8,
+            "search_volume": 74000
+          },
+          {
+            "year": 2025,
+            "month": 7,
+            "search_volume": 90500
+          }
+        ]
+      }
+    ],
+    "avg_keyword_difficulty": null,
+    "rankability_factor": null
+  }
+]

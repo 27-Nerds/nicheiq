@@ -291,6 +291,16 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
                 rebuild=True,
             )
             ideas[idx] = rev
+            # A red-team revision replaces its original under a NEW name, and this pass runs
+            # AFTER `_backfill_and_demote` has already stamped `crew.overlap_groups` with the
+            # pool's names — so without this the group keeps naming an idea that no longer
+            # exists and every consumer (SelectionWorkbench hides groups with a non-visible
+            # member) silences it. Live: run 8500b97d's only group still names "Reclaim
+            # Timeline Forensics" after this very line replaced it with "Reclaim Packet QA".
+            # Also snapshots the pre-revision idea so reposition-vs-refine is measurable.
+            commit = getattr(crew, "_commit_idea_replacement", None)
+            if callable(commit):
+                commit(orig, rev, origin="red_team_revision")
             logger.info(f"[RedTeamRevision] accepted '{rev.solution_name}' "
                         f"(composite {_comp(orig):.3f} -> {_comp(rev):.3f})")
             return True

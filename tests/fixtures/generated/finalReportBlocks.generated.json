@@ -1,0 +1,353 @@
+{
+  "alternative_solutions": [
+    {
+      "adjacent_market_parity": null,
+      "angle_rationale": "Weak moat \u2014 vertical workflow by elimination. The nearest existing tool is a generic cloud inventory system or spreadsheet; what this captures is the specific reconciliation moment after a roast, before caf\u00e9 stock is drawn down. The opportunity is inherently thin: the pain is real but narrow, the mechanism is a form-to-PDF generator with minimal switching cost, and the space is already served by Excel and existing inventory tools that roasters adapt.",
+      "best_suited_for": "Owner-operators of micro-roasteries supplying their own caf\u00e9",
+      "build_feasibility_score": 0.88,
+      "candidate_status": "active",
+      "competitive_advantage_score": 0.3,
+      "competitive_intensity": "Medium to High. The direct workflow is narrow, but the solution is adjacent to established coffee-roasting inventory and production platforms, especially the provided RoasterTools incumbent, as well as Cropster and lower-cost or free alternatives such as Artisan, Typica, Excel, and Google Sheets. Competitive intensity is therefore high for the underlying recordkeeping job even if the exact printable worksheet format is less crowded. The angle has real on-workflow risk: the feature can likely be copied by an incumbent, and general spreadsheets or paper already cover much of the process. The ICP may be reachable through specialty-roaster communities, but concentration and pain severity were not independently validated in this run. Genuine switching cost is currently weak: a completed sheet creates historical records, but users can change tools without migrating complex data or retraining a team. The strongest potential lock-in would come from accumulated standardized lot records, filing conventions, audit history, and daily habit\u2014not from technical integration.",
+      "core_features": [
+        "Lot reconciliation form with lot name, green weight in, roast date, and roast profile fields",
+        "Optional expected-yield estimate based on static density and roast-level assumptions",
+        "Printable one-page PDF with blank actual roasted weight and caf\u00e9 drawdown fields",
+        "Remaining-stock calculation cell: actual roasted weight minus caf\u00e9 drawdown",
+        "Download, print, and duplicate-last-sheet actions"
+      ],
+      "critic_concern": "Addresses good severity pain (lot reconciliation, stock tracking) with a paper-based worksheet mechanism. RoasterTools already ships lot-level roast reconciliation (parity check). Innovation is form-factor (printable sheet vs digital system), targeting users who reject software\u2026",
+      "data_access_model": "public",
+      "data_acquisition_notes": "No external data is required. Users supply the lot and batch measurements. Expected-yield estimates use static, editable assumptions rather than claimed live or official data.",
+      "data_feasibility_score": 0.9,
+      "delivery_format": null,
+      "demand_quotes": [
+        "Eg: you roast say 10lb of Guatemala Coban and the inventory app updates taking into account the original inventory weight, charge weight and weight loss and instantly updates.",
+        "Hey guys, I recently received a job as head roaster for a nearby coffee shop (Roasting hundreds of lbs a day.) They currently have no inventory tracking except a visual inspection."
+      ],
+      "description": "A roaster opens the single-page tool, enters the lot name, green weight in, roast date, and optionally selects bean density and roast level to pre-fill an expected-yield estimate. The tool generates a printable PDF with dedicated fields for the roasting profile, actual roasted weight out, caf\u00e9 production drawdown, and remaining stock. After roasting, the user writes the scale reading and caf\u00e9 drawdown onto the sheet, then subtracts drawdown from actual roasted weight to reconcile the specific lot. The completed sheet can be filed beside production records, preserving lot identity without requiring an inventory platform, integrations, or online access.",
+      "differentiation_locus": "The single reconciliation moment between roast output and caf\u00e9 drawdown, made unavoidable through a batch-specific worksheet.",
+      "estimated_cac_organic": "$5-20 per customer (high-intent searches for roast yield calculators, coffee inventory sheets, and printable roast logs)",
+      "estimated_development_time": "3-6 weeks",
+      "evaluation_id": null,
+      "evaluation_source_message_id": null,
+      "generation_batch_ordinal": null,
+      "generation_operation_id": null,
+      "headline": "Printable lot reconciliation sheet for caf\u00e9 production stock",
+      "idea_id": "idea_0c077bd7279b98e848db6890f01247d2",
+      "idea_revision": 1,
+      "idea_tier": "single",
+      "identity_operation_id": "initial",
+      "identity_origin": "phase1",
+      "incumbent_parity": "shipped by RoasterTools: RoasterTools provides lot-level roast reconciliation",
+      "key_differentiator": "Batch-specific actual yield and caf\u00e9 drawdown fields are central, not inferred from generic conversion percentages.",
+      "market_fit_score": 0.45,
+      "market_gaps": [
+        "No competitors could be verified via the available search process in this run.",
+        "The provided market reality identifies RoasterTools as shipping lot-level roast reconciliation, but its product details, pricing, and exact workflow coverage were not independently re-verified here.",
+        "The durability of a printable, batch-specific reconciliation worksheet remains unproven because a software incumbent could potentially add PDF or print-oriented output with limited engineering effort."
+      ],
+      "merged_from": null,
+      "novelty_rationale": "A familiar utility mechanism is expected for this type; the product is a focused workflow artifact rather than a novel system.",
+      "novelty_score": 0.3,
+      "pain_points_addressed": [
+        "Cannot reconcile lot separation with caf\u00e9 production stock",
+        "Cannot reliably track remaining green or roasted coffee after production",
+        "Relies on visual stock checks to determine what remains from a specific lot"
+      ],
+      "pivot_trigger": "Pivot to Lot Reconciliation Sheet if: Strong pivot signal \u2014 the runner-up leads on technical feasibility. Near-parity on market fit. Also consider: easier solo-dev path, if user research favors saas model.",
+      "pricing_model": null,
+      "proposed_title": "Lot Reconciliation Sheet",
+      "rebuild_origin": null,
+      "red_team_caveats": [
+        "The search results show free roast worksheets/downloadable resources, including a result explicitly offering a free updated coffee roasting worksheet; this is a direct substitute for a printable roast record, though the snippet does not establish whether it tracks inventory drawdown.",
+        "The evidence surfaces roast-profile and QC vocabulary\u2014DTR, RORs, heating process, stopping the roast, and sensory testing\u2014but does not show demand for lot reconciliation or caf\u00e9 drawdown tracking. The proposed static yield estimate is therefore unsupported for the modal pain and cannot reliably reconcile actual remaining inventory.",
+        "The search evidence shows no priced buyer, purchasing workflow, deadline, or competitive urgency. It also does not identify a bundled incumbent product; the honest payer case is unproven, with likely pressure toward existing spreadsheets/paper/roaster worksheets rather than a paid standalone tool."
+      ],
+      "red_team_findings": null,
+      "red_team_verdict": "killed",
+      "refine_binding_constraint": "The form is solid but the mechanism is still 'a smarter worksheet.' Push the novelty by making the sheet self-auditing: add a 'Lot Fingerprint' section at the top that the roaster fills once \u2014 origin, lot number, purchase date, supplier \u2014 and the PDF generator stamps a unique lot-code (e.g., GUAT-COB-2025-03) onto every sheet.",
+      "seo_growth_potential_score": 0.35,
+      "short_description": "Generate a one-page roast lot form that records actual yield, caf\u00e9 drawdown, and remaining stock for each specific coffee lot.",
+      "solo_dev_feasibility": 0.98,
+      "solution_name": "Lot Reconciliation Sheet",
+      "source_frame": "pain",
+      "source_segment_payability": 0.15,
+      "source_segment_payability_class": "personal-wallet",
+      "summary": "**Overview:** A roaster opens the single-page tool, enters the lot name, green weight in, roast date, and optionally selects bean density and roast level to pre-fill an expected-yield estimate. The tool generates a printable PDF with dedicated fields for the roasting profile, actual roasted weight out, caf\u00e9 production drawdown, and remaining stock. After roasting, the user writes the scale reading and caf\u00e9 drawdown onto the sheet, then subtracts drawdown from actual roasted weight to reconcile the specific lot. The completed sheet can be filed beside production records, preserving lot identity without requiring an inventory platform, integrations, or online access.\n\n**Key Features:** Lot reconciliation form with lot name, green weight in, roast date, and roast profile fields, Optional expected-yield estimate based on static density and roast-level assumptions, Printable one-page PDF with blank actual roasted weight and caf\u00e9 drawdown fields, Remaining-stock calculation cell: actual roasted weight minus caf\u00e9 drawdown, Download, print, and duplicate-last-sheet actions\n\n**Target Users:** This solution is best suited for Owner-operators of micro-roasteries supplying their own caf\u00e9, Head roasters who need a simple production record without adopting a full inventory system.\nIt differentiates through Batch-specific actual yield and caf\u00e9 drawdown fields are central, not inferred from generic conversion percentages..\n\n**Technical Approach:** A lightweight web form generates a styled one-page PDF in the browser or server-side. Inputs include lot name, green weight, roast date, profile, density, and roast level; a static configurable yield estimate is pre-filled when density and roast level are selected. The PDF leaves actual roasted weight out and caf\u00e9 drawdown as writable fields and includes a remaining-stock calculation layout. No external APIs, accounts, integrations, or live data are required.",
+      "synthesis_evaluation": null,
+      "tags": {
+        "build_complexity": "low",
+        "data_access": "public",
+        "growth_channels": [
+          "content"
+        ],
+        "monetization": "one-time",
+        "monetization_secondary": null,
+        "novelty_level": "conventional",
+        "pricing_shape_mismatch": false,
+        "pricing_shape_note": null,
+        "primary_strength": "solo-friendly",
+        "project_type": "saas",
+        "rationale": "Offline printable record is bought once and used per roast; public inputs create no acquisition or compliance risk.",
+        "risk_flags": [],
+        "strengths": [
+          "quick-build",
+          "solo-friendly"
+        ],
+        "target_market": "b2b",
+        "usage_cadence": "continuous"
+      },
+      "target_personas": [
+        "Owner-operators of micro-roasteries supplying their own caf\u00e9",
+        "Head roasters who need a simple production record without adopting a full inventory system",
+        "Small caf\u00e9-roastery teams that reconcile stock on paper during or after roasting"
+      ],
+      "technical_approach": "A lightweight web form generates a styled one-page PDF in the browser or server-side. Inputs include lot name, green weight, roast date, profile, density, and roast level; a static configurable yield estimate is pre-filled when density and roast level are selected. The PDF leaves actual roasted weight out and caf\u00e9 drawdown as writable fields and includes a remaining-stock calculation layout. No external APIs, accounts, integrations, or live data are required.",
+      "technical_feasibility_score": 0.95,
+      "top_competitors": null,
+      "value_proposition": "Turn each roast into an auditable lot record: print one sheet, record the actual roasted weight and caf\u00e9 drawdown, and see what remains from that specific lot.",
+      "winning_angle": "vertical_workflow"
+    },
+    {
+      "adjacent_market_parity": null,
+      "angle_rationale": "This is a vertical workflow play. The nearest existing tool is a generic QA checklist or photo-upload platform; what rivals miss is the structured inspection moment at receiving, anchored by a curated fingerprint library with sample-count heuristics rather than leaving operators to define defects themselves. The switching cost is the roastery-specific fingerprint customization and accumulated inspection history. The defect catalog is a data representation, but the SEO surface is too thin to make this a distribution play.",
+      "best_suited_for": "Shared-space roastery receiving operator",
+      "build_feasibility_score": 0.85,
+      "candidate_status": "active",
+      "competitive_advantage_score": 0.45,
+      "competitive_intensity": "MEDIUM overall; LOW for the narrowly defined direct workflow and MEDIUM-to-HIGH for adjacent substitutes. Searches did not verify a dedicated competitor focused on green-coffee defect fingerprints, rapid sampling heuristics, and receiving evidence. However, Cropster and other vertical platforms already own operational relationships with roasteries, while Google Sheets, Excel, paper forms, and internal checklists are inexpensive and entrenched. The principal competitive risk is not a current purpose-built rival but incumbent feature expansion and user reluctance to add another system for a possibly infrequent task.",
+      "core_features": [
+        "Five-to-seven curated green-coffee defect fingerprints",
+        "Photo-reference cards with distinguishing cues",
+        "Sample-count and threshold entry",
+        "15-minute inspection timer and fast path",
+        "Moisture, odor, temperature, and storage-condition notes"
+      ],
+      "critic_concern": "Addresses a moderate-severity (moderate) receiving-QA pain with a plausible workflow, but the value prop overlaps heavily with ISO 4072 sampling standards and generic QA checklists; willingness-to-pay for a curated reference wrapper over free/public standards is uncertain.",
+      "data_access_model": "unverified",
+      "data_acquisition_notes": "Data route UNVERIFIED \u2014 could not confirm or refute a public source; verify obtainability before building. SCA search returned only Checkmarx SCA API results; no evidence confirms SCA/SCAA materials p",
+      "data_feasibility_score": 0.9,
+      "delivery_format": null,
+      "demand_quotes": [
+        "Will just touch on green freshness - temperature matters, how they\u2019re stored matters, what happened before they arrived matters but fundamentally you don\u2019t want to be in the habit of punting coffee which is over a year\u2026",
+        "In specialty we often have lot separation for different farms, processes or even pick dates."
+      ],
+      "description": "When a shared roastery receives a lot, the operator opens a 15-minute inspection session and enters the lot size, origin, supplier, and sample weight. Instead of starting with a blank QA checklist, the app presents five to seven curated green-coffee defect fingerprints\u2014such as full blacks, mold, insect damage, sour beans, and severe foreign matter\u2014with compact photo-reference cards, distinguishing cues, and a concrete counting heuristic for each. The operator taps the matching fingerprint while counting the sample, records moisture, odor, temperature, and storage observations, and attaches quick photos when a finding is ambiguous. The decision engine compares the entered observations against the configured heuristics, labels the lot accept, conditional review, or reject, and generates a timestamped evidence sheet that can be sent to the supplier or retained with the receiving record.",
+      "differentiation_locus": "The green-coffee receiving inspection workflow that starts from a curated defect fingerprint library and guides the operator through roastery-specific sampling heuristics to a rapid accept/reject decision.",
+      "estimated_cac_organic": "$20-60 per customer (targeted defect-guide content and receiving-workflow searches can reach a narrow roastery audience)",
+      "estimated_development_time": "3-6 weeks",
+      "evaluation_id": null,
+      "evaluation_source_message_id": null,
+      "generation_batch_ordinal": null,
+      "generation_operation_id": null,
+      "headline": "Green Coffee Defect Fingerprints for Fast Lot Acceptance",
+      "idea_id": "idea_c9679e3b0523fa26814e0527a0e2633a",
+      "idea_revision": 1,
+      "idea_tier": "single",
+      "identity_operation_id": "initial",
+      "identity_origin": "phase1",
+      "incumbent_parity": "none found",
+      "key_differentiator": "Pre-loaded green-coffee defect fingerprints rather than a blank configurable checklist",
+      "market_fit_score": 0.5,
+      "market_gaps": [
+        "No dedicated direct competitor was verified in the searches for a green-coffee receiving SaaS centered on curated defect fingerprints and rapid lot acceptance.",
+        "Existing specialty-coffee platforms primarily emphasize roast profiling, inventory, production, sourcing, or roast-date tracking rather than receiving inspection.",
+        "Operators using Excel or Google Sheets must start with a blank checklist and independently decide which defects, sample sizes, and thresholds matter."
+      ],
+      "merged_from": null,
+      "novelty_rationale": "A curated reference catalog is a familiar mechanism for inspection tools; the edge is the workflow integration at the receiving step, not the catalog itself.",
+      "novelty_score": 0.45,
+      "pain_points_addressed": [
+        "Cannot reject defective green coffee reliably before committing to a lot",
+        "Inconsistent identification of mold, sour, insect-damaged, and black beans during receiving",
+        "Insufficient evidence when disputing a defective lot with a supplier"
+      ],
+      "pivot_trigger": "Pivot to DefectFingerprint if: Strong pivot signal \u2014 the runner-up leads on market fit, technical feasibility. Worth monitoring SEO growth potential. Also consider: easier solo-dev path, if user research favors saas model.",
+      "pricing_model": null,
+      "proposed_title": null,
+      "rebuild_origin": null,
+      "red_team_caveats": null,
+      "red_team_findings": null,
+      "red_team_verdict": null,
+      "refine_binding_constraint": "The fingerprint library is a strong start, but it's still a static lookup table \u2014 any competitor could replicate it by copying the same SCA defect guide. The next sharpening move: make the heuristics adaptive to origin. Different origins have different defect profiles (Ethiopian naturals skew toward insect damage and quakers; washed Colombians toward mold and sour).",
+      "seo_growth_potential_score": 0.4,
+      "short_description": "Inspect a 60kg green-coffee bag in 15 minutes using curated defect fingerprints, photo references, and an evidence-backed accept or reject decision.",
+      "solo_dev_feasibility": 0.8,
+      "solution_name": "DefectFingerprint",
+      "source_frame": "pain",
+      "source_segment_payability": 0.65,
+      "source_segment_payability_class": "corporate-budget",
+      "summary": "**Overview:** When a shared roastery receives a lot, the operator opens a 15-minute inspection session and enters the lot size, origin, supplier, and sample weight. Instead of starting with a blank QA checklist, the app presents five to seven curated green-coffee defect fingerprints\u2014such as full blacks, mold, insect damage, sour beans, and severe foreign matter\u2014with compact photo-reference cards, distinguishing cues, and a concrete counting heuristic for each. The operator taps the matching fingerprint while counting the sample, records moisture, odor, temperature, and storage observations, and attaches quick photos when a finding is ambiguous. The decision engine compares the entered observations against the configured heuristics, labels the lot accept, conditional review, or reject, and generates a timestamped evidence sheet that can be sent to the supplier or retained with the receiving record.\n\n**Key Features:** Five-to-seven curated green-coffee defect fingerprints, Photo-reference cards with distinguishing cues, Sample-count and threshold entry, 15-minute inspection timer and fast path, Moisture, odor, temperature, and storage-condition notes\n\n**Target Users:** This solution is best suited for Shared-space roastery receiving operator, Cooperative green-coffee buyer or quality lead.\nIt differentiates through Pre-loaded green-coffee defect fingerprints rather than a blank configurable checklist.\n\n**Technical Approach:** Build a mobile-first web app with a versioned static fingerprint catalog, each fingerprint containing reference images, identification cues, sampling unit, heuristic text, and safety disclaimers. A relational backend stores lots, inspection sessions, observations, photos, decisions, and signatures; server-side rules calculate heuristic outcomes and generate a compact PDF evidence sheet. Keep the catalog curated in code or an admin-only content file so the solo developer avoids an ongoing marketplace or moderation burden.",
+      "synthesis_evaluation": null,
+      "tags": {
+        "build_complexity": "low",
+        "data_access": "unverified",
+        "growth_channels": [
+          "community",
+          "content"
+        ],
+        "monetization": "subscription",
+        "monetization_secondary": "one-time",
+        "novelty_level": "moderate",
+        "pricing_shape_mismatch": true,
+        "pricing_shape_note": "episodic usage but subscription pricing \u2014 buyers churn between events; consider usage-based pricing or credit packs",
+        "primary_strength": "solo-friendly",
+        "project_type": "saas",
+        "rationale": "Operators use it at each receiving event; subscription funds the library, while custom acceptance-rule setup is secondary one-time revenue.",
+        "risk_flags": [],
+        "strengths": [
+          "quick-build",
+          "solo-friendly"
+        ],
+        "target_market": "b2b",
+        "usage_cadence": "episodic"
+      },
+      "target_personas": [
+        "Shared-space roastery receiving operator",
+        "Cooperative green-coffee buyer or quality lead",
+        "Worker-owner responsible for accepting pooled coffee purchases"
+      ],
+      "technical_approach": "Build a mobile-first web app with a versioned static fingerprint catalog, each fingerprint containing reference images, identification cues, sampling unit, heuristic text, and safety disclaimers. A relational backend stores lots, inspection sessions, observations, photos, decisions, and signatures; server-side rules calculate heuristic outcomes and generate a compact PDF evidence sheet. Keep the catalog curated in code or an admin-only content file so the solo developer avoids an ongoing marketplace or moderation burden.",
+      "technical_feasibility_score": 0.85,
+      "top_competitors": [
+        "Cropster",
+        "RoasterTools",
+        "Ardent Seller"
+      ],
+      "value_proposition": "Help shared roasteries decide within 15 minutes whether a green-coffee lot should be accepted by pairing guided sampling with roastery-specific defect fingerprints and concrete rejection heuristics.",
+      "winning_angle": "vertical_workflow"
+    }
+  ],
+  "data_quality_summary": {
+    "examined_ruled_out": [],
+    "overall_data_quality": "HIGH",
+    "pain_point_confidence_score": 0.8214285714285714,
+    "pain_point_quality_tier": "SILVER",
+    "quality_caveats": [
+      "Stages not run for this solution: Stage 13 (Data Source Research). Sections that depend on them are absent from this report.",
+      "Data feasibility was not independently researched: Stage 13 (Data Source Research) was skipped, so the data-feasibility score and any named data sources come from the idea evaluation itself, not from a verified sourcing pass. Treat them as unconfirmed.",
+      "\u201cCannot predict caf\u00e9 brew performance from traditional cupping\u201d was prioritised for ideation as the closest match to your niche focus; research scored a related pain higher on severity (\u201cCannot connect green coffee purchasing decisions to customer brew outcomes\u201d, 0.55 vs 0.45).",
+      "Calibration note for \"LotClearance\" cites data route \"International Coffee Organization, FDA Import Refusal Reports, European Commission RASFF Window\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+      "Calibration note for \"Roast-to-Cup Translator\" cites data route \"World Coffee Research Coffee Varieties Catalog\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+      "3 ideas address one pain ('Cannot reconcile lot separation with caf\u00e9 production stock') \u2014 above the diversity cap of 2.",
+      "Novelty/obviousness collapsed to exact complements this run \u2014 treat the two originality axes as one signal.",
+      "Calibration note for \"LotClearance: Green Lot Acceptance & Sensory-Risk\" cites data route \"FDA Import Refusal Reports, European Commission RASFF Window\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+      "Idea-set coverage \u2014 validated pains with no idea: Cannot scale sample roast settings to caf\u00e9 production volume. Concentration may reflect where the real opportunity is, not a defect \u2014 shown for your judgment.",
+      "SEO volume honesty: idea-intent keywords carry only 3% of the analyzed volume \u2014 idea-intent demand is 11,370/mo of the 325,010/mo analyzed keyword set; treat the headline keyword volume as category reach, not validated idea demand."
+    ],
+    "social_content_quality_tier": "EXCELLENT"
+  },
+  "research_metadata": {
+    "collection_date": "2026-08-03T13:42:16.605128",
+    "completed_stages": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      6.0,
+      7.0,
+      8.0,
+      9.0,
+      10.0,
+      11.0,
+      12.0
+    ],
+    "data_size_mb": 1.05,
+    "fallback_stages": null,
+    "filtering_stats": {
+      "hackernews_posts_collected": 0,
+      "hackernews_urls_relevant": 0,
+      "hackernews_urls_searched": 0,
+      "overall_filtering_rate": 0.5210084033613446,
+      "reddit_filtering_rate": 0.39361702127659576,
+      "reddit_urls_relevant": 171,
+      "reddit_urls_searched": 282,
+      "total_urls_relevant": 171,
+      "total_urls_searched": 357,
+      "twitter_filtering_rate": 0,
+      "twitter_urls_relevant": 0,
+      "twitter_urls_searched": 0,
+      "youtube_posts_collected": 0,
+      "youtube_urls_searched": 75
+    },
+    "funnel_counts": {
+      "backfill_accepted": 0,
+      "backfill_run": 0,
+      "by_frame": {
+        "data_asset": 2,
+        "gap": 1,
+        "pain": 9
+      },
+      "candidates_shown": 12,
+      "cells_allocated": 8,
+      "cells_run": 7,
+      "concepts_generated": 19,
+      "demoted": 0,
+      "families_available": 6,
+      "families_covered": 6,
+      "frame_cells": 2,
+      "merge_groups": 0,
+      "pain_cells": 6,
+      "pains_identified": 21,
+      "pivots_accepted": 0,
+      "pivots_attempted": 3,
+      "product_families_final": 5,
+      "red_team_empty_evidence_abstained": 0,
+      "red_team_offcategory_abstained": 0,
+      "red_team_reviewed": 2,
+      "red_team_revised": 1,
+      "red_team_revision_accepted": 0,
+      "salvaged": 3,
+      "survived_critics": 10,
+      "variants_absorbed": 0,
+      "winners": 7
+    },
+    "generic_posts_analyzed": 0,
+    "reddit_comments_analyzed": 814,
+    "reddit_posts_analyzed": 116,
+    "started_at": "2026-08-03T13:36:17.912763",
+    "top_subreddits": [
+      {
+        "name": "roasting",
+        "post_count": 52
+      },
+      {
+        "name": "Coffee",
+        "post_count": 24
+      },
+      {
+        "name": "pourover",
+        "post_count": 9
+      },
+      {
+        "name": "switzerlandcoffee",
+        "post_count": 6
+      },
+      {
+        "name": "coffee_roasters",
+        "post_count": 4
+      },
+      {
+        "name": "greencoffee",
+        "post_count": 3
+      },
+      {
+        "name": "CoffeeRoasting",
+        "post_count": 2
+      },
+      {
+        "name": "InventoryManagement",
+        "post_count": 2
+      },
+      {
+        "name": "CoffeePH",
+        "post_count": 1
+      },
+      {
+        "name": "IndiaCoffee",
+        "post_count": 1
+      }
+    ],
+    "twitter_threads_analyzed": 0
+  }
+}

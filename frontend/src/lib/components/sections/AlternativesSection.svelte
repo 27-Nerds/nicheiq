@@ -27,6 +27,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     adversarialReviewCoda,
     directIncumbentParity,
     noDirectIncumbentFound,
+    NONE_SURFACED_PHRASE,
   } from "$lib/utils/adversarialReview";
 
   interface Props {
@@ -490,9 +491,10 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                 Incumbent check (web-verified)
               </div>
               <p class="text-sm text-text-secondary">
-                {noIncumbentFound
-                  ? "No incumbent found shipping this idea's core mechanism."
-                  : directParity}
+                <!-- Not "No incumbent found shipping this idea's core mechanism.": that
+                     asserted a fact about the MARKET where the system holds only a fact
+                     about its own retrieval. The shared phrase says which. -->
+                {noIncumbentFound ? NONE_SURFACED_PHRASE : directParity}
               </p>
             </div>
           {/if}

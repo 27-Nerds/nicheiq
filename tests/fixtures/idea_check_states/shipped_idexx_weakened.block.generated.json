@@ -1,0 +1,286 @@
+{
+ "provisional": true,
+ "user_idea_text": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+ "user_idea_brief": "A browser-based inventory reconciliation tool for independent veterinary clinics that flags controlled-medication discrepancies and generates audit-ready DEA logs.",
+ "assumed_fields": [],
+ "derived_market": "The veterinary practice management software (PIMS) market provides digital infrastructure for clinical operations, including patient records, appointment scheduling, billing, and inventory control. This market encompasses specialized tools designed to maintain regulatory compliance, manage pharmaceutical supply chains, and optimize clinical workflows for veterinary healthcare providers.",
+ "derived_buyer": "Independent General-Practice Clinic Owners and Solo Operators",
+ "desk_limits": [
+  "We read what people said unprompted. We could not ask them the follow-up question.",
+  "Nothing here is commitment evidence. No one has paid, pre-ordered, or given up anything for this idea.",
+  "Severity and mention counts describe this run's captured discussions, not the whole market."
+ ],
+ "experiment_ladder": [
+  {
+   "rung": 1,
+   "action": "Run 5 problem interviews with the buyer you named",
+   "kill_number": "kill if no interview independently describes the problem",
+   "cost_note": "free"
+  },
+  {
+   "rung": 2,
+   "action": "Put up a landing page and drive ~50 clicks to it",
+   "kill_number": "kill below 1% click-to-email",
+   "cost_note": "under $100"
+  },
+  {
+   "rung": 3,
+   "action": "Offer 3 pre-sales at half price",
+   "kill_number": "kill below 3 paid commitments",
+   "cost_note": "reputation only"
+  },
+  {
+   "rung": 4,
+   "action": "Deliver the outcome by hand for one customer (concierge)",
+   "kill_number": "kill if they stop showing up",
+   "cost_note": "a weekend"
+  }
+ ],
+ "next_experiment_index": 0,
+ "pivot": {
+  "attempted": true,
+  "outcome": "rejected",
+  "trigger_finding": "IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation",
+  "because": "limited users included; extra fees per user",
+  "trigger_incumbent": "IDEXX Neo",
+  "keeps": null,
+  "changes": null,
+  "reason_not_shown": "It scored better, but a named product already ships the revised mechanism too, so we're not proposing it.",
+  "ries_label": null,
+  "name": null,
+  "rejection_code": "parity_not_cleared",
+  "rejected_name": "AccreditedVetMapper Solo",
+  "rejected_pitch": "AccreditedVetMapper Solo gives independent and small veterinary clinics a per-clinic, unlimited-staff workflow for turning existing controlled-substance exports",
+  "rejected_composite": 60,
+  "original_composite": 46
+ },
+ "outcome": "occupied",
+ "idea_name": "AccreditedVetMapper",
+ "headline": "Real problem, and a named competitor already ships the core of AccreditedVetMapper. That is demand proof and an entry constraint at the same time.",
+ "parts": [
+  {
+   "key": "problem_real",
+   "state": "supported",
+   "answer": "Supported",
+   "detail": "Linked to real discussion in this run."
+  },
+  {
+   "key": "space_occupied",
+   "state": "shipped",
+   "answer": "Already shipped",
+   "detail": "IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation"
+  },
+  {
+   "key": "demand",
+   "state": "not_measured",
+   "answer": "Not measured",
+   "detail": "Search-demand probes are outside this check's scope. They're the Deep Research step."
+  }
+ ],
+ "score_bands": {
+  "market_fit": "limited",
+  "technical_feasibility": "moderate",
+  "novelty": "limited",
+  "seo_scalability": "limited"
+ },
+ "evidence_confidence": "High",
+ "evidence_confidence_reason": "Broad, repeated discussion from distinct accounts.",
+ "breadth": {
+  "posts": 13,
+  "distinct_authors": 13,
+  "distinct_communities": 5,
+  "months_spanned": 50,
+  "label": "13 posts \u00b7 13 accounts \u00b7 5 communities \u00b7 50 mo"
+ },
+ "anchored_pains": [
+  {
+   "pain_title": "PIMS inventory counts and usage records cannot be trusted",
+   "severity_band": "good",
+   "severity_label": "high",
+   "mention_count": 11,
+   "quotes": [
+    "We're mixed animal, and cloud based for farm calls is great (except when you don't have service in heavy Amish areas), but the inventory management DOES NOT do what they advertise, and reporting functions SUCK.",
+    "The records it generates are such a mess that it was genuinely embarrassing to send them sometimes."
+   ]
+  },
+  {
+   "pain_title": "PIMS reporting and external integrations force duplicate operational work",
+   "severity_band": "good",
+   "severity_label": "high",
+   "mention_count": 15,
+   "quotes": [
+    "We're mixed animal, and cloud based for farm calls is great (except when you don't have service in heavy Amish areas), but the inventory management DOES NOT do what they advertise, and reporting functions SUCK.",
+    "We\u2019ve been slowly practicing it over the past couple weeks and we\u2019re all ready to off ourselves, including the doctors \ud83d\ude2d\ud83d\ude2d\ud83d\ude2d I truly feel for my PM right now because this whole integration has been a nightmare and their Pulse support also sucks."
+   ]
+  }
+ ],
+ "related_pains": [],
+ "stronger_pain_count": 2,
+ "unanchored_hypothesis": false,
+ "incumbent_parity": "shipped by IDEXX Neo: IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation",
+ "existing_equivalent": null,
+ "competitors": [
+  {
+   "name": "IDEXX Neo",
+   "what_they_ship": "cloud PIMS with EMR, scheduling, billing",
+   "price_note": "$290/mo base (3 users)",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited users included; extra fees per user",
+   "url": null,
+   "verdict_trigger": true,
+   "verdict_evidence": "ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation"
+  },
+  {
+   "name": "Covetrus Pulse",
+   "what_they_ship": "unified PIMS with integrations dashboard",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "ezyVet",
+   "what_they_ship": "cloud PIMS, client comms, inventory",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "Shepherd",
+   "what_they_ship": "serverless/cloud PIMS",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "Digitail",
+   "what_they_ship": "cloud PIMS, patient records, scheduling",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "Provet Cloud",
+   "what_they_ship": "cloud PIMS, EMR, billing",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "Vetspire",
+   "what_they_ship": "cloud PIMS, workflow automation",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  },
+  {
+   "name": "Avimark",
+   "what_they_ship": "legacy on-prem PIMS",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "older interface, less intuitive",
+   "url": null
+  },
+  {
+   "name": "Cornerstone",
+   "what_they_ship": "legacy PIMS, charting, inventory",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "dated UX, server-based",
+   "url": null
+  },
+  {
+   "name": "VetPort",
+   "what_they_ship": "cloud PIMS, customizable EMR",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "no pricing disclosed",
+   "url": null
+  }
+ ],
+ "duplicate_of": null,
+ "red_team_verdict": "weakened",
+ "red_team_findings": null,
+ "kill_risks": [
+  {
+   "claim": "The search evidence shows category incumbents such as Shepherd, VetBadger, Veterian, and other veterinary practice-management platforms, but it does not establish that any specifically reconciles controlled-substance exports; therefore displacement and differentiation remain unproven.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "Free or bundled alternatives are only weakly evidenced: AVMA offers practice-management resources, while mainstream PIMS products are shown as platforms for records, billing, and inventory. The evidence does not show a free tool that produces this audit packet, nor a buyer willing to pay for a standalone upload-and-reconcile utility.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The mechanism is not demonstrated for the modal failure case. The idea assumes a usable CSV/XLSX export plus configurable mappings and deterministic rules, but the search evidence says nothing about inconsistent schemas, missing or incorrect source data, multi-location workflows, prescriber verification, or whether reconciliation can establish an audit-ready record rather than merely flag discrepancies.",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  }
+ ],
+ "alternatives": {
+  "count": 8,
+  "named_buyer_count": 4,
+  "top": [
+   {
+    "idea_id": "idea_1dff9d66bf7ab498d34567d14533fe29",
+    "name": "VetAuditMatch",
+    "one_liner": "VetAuditMatch helps veterinary clinics recover billable work by pairing them with trained remote technicians who independently reconcile estimates with final in"
+   },
+   {
+    "idea_id": "idea_6435a9c57127d2e0bd7fdd902d72db5c",
+    "name": "OpenSlotLedger \u2014 Team-Wide Cancellation Capacity Ledger",
+    "one_liner": "Give every role in an independent veterinary clinic a shared, auditable view of cancellations, no-shows, and recovered same-day capacity\u2014without per-user seat f"
+   },
+   {
+    "idea_id": "idea_e55134e1b4b349042509be857a77f30c",
+    "name": "TraumaTap",
+    "one_liner": "TraumaTap turns fast, verbal emergency-care actions into a complete, reviewable charge list without forcing staff through a slow PIMS workflow during treatment."
+   },
+   {
+    "idea_id": "idea_a1ab5b17aca5bed4933711feaf66eea3",
+    "name": "LegacyPriceLedger",
+    "one_liner": "Give clinics a defensible, reviewable reconstruction of their own missing historical prices before importing records into a new PIMS."
+   },
+   {
+    "idea_id": "idea_1cfba52f08205e107dfe8004d0247644",
+    "name": "VetLot Reconcile",
+    "one_liner": "Turn a suspicious veterinary inventory export into an evidence-linked reconciliation report that explains which count discrepancies may be caused by FDA actions"
+   }
+  ]
+ },
+ "seed_candidate_status": "active",
+ "seed_idea_id": "idea_068187098837485c73c28eef2134a348",
+ "seed_idea_revision": 1,
+ "seed_purchasable": true,
+ "seed_display_composite_score": 46,
+ "demotion_reason": null,
+ "evaluated_idea": {
+  "name": "AccreditedVetMapper",
+  "value_proposition": "AccreditedVetMapper turns a clinic\u2019s existing controlled-substance export into a reconciled, prescriber-verified audit packet without duplicate manual reporting or spreadsheet investigation.",
+  "mechanism_summary": "This pairs deterministic controlled-substance reconciliation with a versioned USDA APHIS directory match and evidence-backed prescriber attestations, turning a fragmented monthly check into a portable audit packet outside the PIMS."
+ },
+ "refinement": {
+  "kept": [
+   "audience",
+   "problem",
+   "delivery"
+  ],
+  "changed": [
+   "mechanism"
+  ],
+  "because": null
+ },
+ "original_mechanism_parity": null
+}

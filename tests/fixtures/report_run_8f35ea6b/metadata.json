@@ -1,0 +1,743 @@
+{
+  "niche_description": "small-batch coffee roasters managing green coffee inventory and cupping scores",
+  "job_id": "8f35ea6b-0321-41fd-b747-e4d76605f50f",
+  "schema_version": 1,
+  "allowed_project_types": [
+    "saas",
+    "directory",
+    "aggregator",
+    "comparison-tool",
+    "marketplace"
+  ],
+  "entry_mode": "idea",
+  "started_at": "2026-08-03T13:36:17.912763",
+  "completed_stages": [
+    "stage_1_niche_context",
+    "stage_2_social_content",
+    "stage_3_pain_points",
+    "stage_4_audience_mapping",
+    "stage_5_competitor_mentions",
+    "stage_5_1_divergent",
+    "stage_5_3_refinement",
+    "stage_5_niche_difficulty",
+    "stage_5_6_selection",
+    "stage_5_5_competitive",
+    "stage_6_keyword_validation_partial",
+    "stage_6_keyword_validation",
+    "stage_6a_seed_expansion",
+    "stage_6b_bulk_validation",
+    "stage_6c_enrichment",
+    "stage_6d_difficulty",
+    "stage_6_seo_strategy",
+    "stage_7_pricing_validation",
+    "stage_8_traffic_monetization_partial",
+    "stage_8_traffic_monetization",
+    "stage_9_market_sizing",
+    "stage_10_solution_refinement",
+    "stage_11_trend_longevity",
+    "stage_12_seo_refinement",
+    "stage_13_data_sources"
+  ],
+  "errors": [],
+  "environment": {
+    "python_version": "3.12.7"
+  },
+  "last_checkpoint_at": "2026-08-03T17:25:31.839487",
+  "current_stage": 14,
+  "completed_stage_numbers": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "idea_focus": "auto",
+  "niche_drift_telemetry": {
+    "anchors_active": true,
+    "anchor_entity_count": 14,
+    "query_anchor_pct": 0.118,
+    "dropped_offniche_queries": 0,
+    "pain_evidence_anchor_coverage": 0.412
+  },
+  "stage_completion_timestamps": {
+    "1": "2026-08-03T13:36:40.921167",
+    "2": "2026-08-03T13:42:16.605868",
+    "3": "2026-08-03T13:45:25.052096",
+    "4": "2026-08-03T13:45:25.303667",
+    "6": "2026-08-03T14:23:18.233119",
+    "7": "2026-08-03T14:24:01.847192",
+    "8": "2026-08-03T14:24:28.320911",
+    "9": "2026-08-03T14:25:01.184067",
+    "10": "2026-08-03T14:25:22.938451",
+    "11": "2026-08-03T14:25:31.660340",
+    "12": "2026-08-03T14:25:31.727773",
+    "13": "2026-08-03T14:25:31.805830"
+  },
+  "social_content_quality_tier": "EXCELLENT",
+  "filtering_stats": {
+    "reddit_urls_searched": 282,
+    "reddit_urls_relevant": 171,
+    "reddit_filtering_rate": 0.39361702127659576,
+    "twitter_urls_searched": 0,
+    "twitter_urls_relevant": 0,
+    "twitter_filtering_rate": 0,
+    "youtube_urls_searched": 75,
+    "youtube_posts_collected": 0,
+    "hackernews_urls_searched": 0,
+    "hackernews_urls_relevant": 0,
+    "hackernews_posts_collected": 0,
+    "total_urls_searched": 357,
+    "total_urls_relevant": 171,
+    "overall_filtering_rate": 0.5210084033613446
+  },
+  "social_content_metrics": {
+    "reddit_posts": 116,
+    "twitter_threads": 0,
+    "generic_posts": 0,
+    "total_sources": 116,
+    "total_interactions": 814,
+    "total_engagement": 5768,
+    "avg_engagement_per_source": 49.7
+  },
+  "sources_searched": {
+    "reddit": {
+      "enabled": true,
+      "posts_found": 116
+    },
+    "twitter": {
+      "enabled": false,
+      "posts_found": 0
+    },
+    "hackernews": {
+      "enabled": true,
+      "posts_found": 0
+    },
+    "youtube": {
+      "enabled": true,
+      "posts_found": 0
+    }
+  },
+  "pain_point_quality_tier": "SILVER",
+  "pain_point_confidence_score": 0.8214285714285714,
+  "idea_coverage_caveats": [
+    "“Cannot predict café brew performance from traditional cupping” was prioritised for ideation as the closest match to your niche focus; research scored a related pain higher on severity (“Cannot connect green coffee purchasing decisions to customer brew outcomes”, 0.55 vs 0.45).",
+    "Calibration note for \"LotClearance\" cites data route \"International Coffee Organization, FDA Import Refusal Reports, European Commission RASFF Window\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+    "Calibration note for \"Roast-to-Cup Translator\" cites data route \"World Coffee Research Coffee Varieties Catalog\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+    "3 ideas address one pain ('Cannot reconcile lot separation with café production stock') — above the diversity cap of 2.",
+    "Novelty/obviousness collapsed to exact complements this run — treat the two originality axes as one signal.",
+    "Calibration note for \"LotClearance: Green Lot Acceptance & Sensory-Risk\" cites data route \"FDA Import Refusal Reports, European Commission RASFF Window\" as market-fit support, but the route verifier did not confirm it (data_access_model: unverified). Treat the market-fit score as unverified on the data-route dimension.",
+    "Idea-set coverage — validated pains with no idea: Cannot scale sample roast settings to café production volume. Concentration may reflect where the real opportunity is, not a defect — shown for your judgment."
+  ],
+  "idea_funnel_counts": {
+    "pains_identified": 21,
+    "cells_run": 7,
+    "concepts_generated": 19,
+    "survived_critics": 10,
+    "winners": 7,
+    "salvaged": 3,
+    "demoted": 0,
+    "pivots_attempted": 3,
+    "pivots_accepted": 0,
+    "merge_groups": 0,
+    "variants_absorbed": 0,
+    "backfill_run": 0,
+    "backfill_accepted": 0,
+    "by_frame": {
+      "pain": 9,
+      "gap": 1,
+      "data_asset": 2
+    },
+    "cells_allocated": 8,
+    "pain_cells": 6,
+    "frame_cells": 2,
+    "families_available": 6,
+    "families_covered": 6,
+    "product_families_final": 5,
+    "candidates_shown": 12,
+    "red_team_reviewed": 2,
+    "red_team_revised": 1,
+    "red_team_revision_accepted": 0,
+    "red_team_empty_evidence_abstained": 0,
+    "red_team_offcategory_abstained": 0
+  },
+  "idea_cell_allocation": {
+    "stage": "allocation",
+    "stage_note": "cells_* / by_frame here = ALLOCATION stage (cells built). The funnel's cells_run = GENERATION stage; the funnel's by_frame = FINAL VISIBLE IDEAS. They are different populations by construction.",
+    "family_source": "llm",
+    "classifier_degraded": false,
+    "degradation_reason": null,
+    "families_available": 6,
+    "families_covered": 6,
+    "families_uncovered": [],
+    "cells_by_family": {
+      "profile-repeatability": 1,
+      "supply-continuity": 1,
+      "cost-profit-tracking": 1,
+      "integrated-systems": 1,
+      "green-quality-control": 1,
+      "operator-training": 1
+    },
+    "family_labels": {
+      "supply-continuity": "Supply Continuity",
+      "profile-repeatability": "Profile Repeatability",
+      "integrated-systems": "Integrated Systems",
+      "green-quality-control": "Green Quality Control",
+      "cost-profit-tracking": "Cost & Profit Tracking",
+      "operator-training": "Operator Training"
+    },
+    "cells_allocated": 8,
+    "pain_cells": 6,
+    "frame_cells": 2,
+    "cells_by_frame": {
+      "pain": 6,
+      "gap": 1,
+      "data_asset": 1
+    },
+    "per_cell": [
+      {
+        "index": 0,
+        "frame": "pain",
+        "family_id": "profile-repeatability",
+        "family_label": "Profile Repeatability",
+        "pain_title": "Cannot meet café volume without excessive roasting time",
+        "segment": "Micro-Roasters Selling Direct-to-Consumer Online"
+      },
+      {
+        "index": 1,
+        "frame": "pain",
+        "family_id": "supply-continuity",
+        "family_label": "Supply Continuity",
+        "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+        "segment": "Subscription-Based Roastery Operators"
+      },
+      {
+        "index": 2,
+        "frame": "pain",
+        "family_id": "cost-profit-tracking",
+        "family_label": "Cost & Profit Tracking",
+        "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+        "segment": "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      },
+      {
+        "index": 3,
+        "frame": "pain",
+        "family_id": "integrated-systems",
+        "family_label": "Integrated Systems",
+        "pain_title": "Cannot reconcile lot separation with café production stock",
+        "segment": "Micro-Roasters Selling Direct-to-Consumer Online"
+      },
+      {
+        "index": 4,
+        "frame": "pain",
+        "family_id": "green-quality-control",
+        "family_label": "Green Quality Control",
+        "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+        "segment": "Cooperative and Shared-Space Roastery Operators"
+      },
+      {
+        "index": 5,
+        "frame": "pain",
+        "family_id": "operator-training",
+        "family_label": "Operator Training",
+        "pain_title": "Cannot predict café brew performance from traditional cupping",
+        "segment": "Cooperative and Shared-Space Roastery Operators"
+      },
+      {
+        "index": 6,
+        "frame": "gap",
+        "family_id": null,
+        "family_label": null,
+        "pain_title": null,
+        "segment": "Cooperative and Shared-Space Roastery Operators"
+      },
+      {
+        "index": 7,
+        "frame": "data_asset",
+        "family_id": null,
+        "family_label": null,
+        "pain_title": null,
+        "segment": "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      }
+    ],
+    "budget": {
+      "target": 6,
+      "cap": 8,
+      "pain_min": 6,
+      "max_frames": 2,
+      "frames_minted": 2,
+      "pain_target": 6,
+      "pain_cap": 6
+    },
+    "final_product_families": 5,
+    "final_families_by_id": {
+      "supply-continuity": 1,
+      "integrated-systems": 3,
+      "profile-repeatability": 1,
+      "green-quality-control": 1,
+      "cost-profit-tracking": 1
+    },
+    "final_ideas_unmapped_to_family": 5
+  },
+  "idea_overlap_groups": [
+    {
+      "idea_names": [
+        "SpotGapBlend",
+        "RoastYieldRefTable",
+        "ShopifyRoastReconciler"
+      ],
+      "shared_product": "Green-lot inventory & menu continuity system"
+    },
+    {
+      "idea_names": [
+        "Roast-to-Cup Translator",
+        "DefectFingerprint",
+        "LotClearance",
+        "OriginSafetyClearanceIndex"
+      ],
+      "shared_product": "Green-lot acceptance & sensory-risk tool"
+    }
+  ],
+  "buyer_job_partition": {
+    "source": "llm",
+    "degraded": false,
+    "degradation_reason": null,
+    "families": [
+      {
+        "family_id": "supply-continuity",
+        "buyer": "roastery operations manager",
+        "triggering_job": "maintain café and subscription supply when spot lots disappear",
+        "economic_outcome": "roastery budget buys recurring green supply contracts",
+        "display_label": "Supply Continuity",
+        "member_pain_ids": [
+          "Cannot maintain café and subscription supply when spot coffee disappears",
+          "Cannot schedule roast to order for retail and wholesale freshness windows",
+          "Cannot align roast date with subscription shipping and wholesale delivery"
+        ],
+        "inferred": false
+      },
+      {
+        "family_id": "profile-repeatability",
+        "buyer": "roastery operations manager",
+        "triggering_job": "scale sample roast settings to café production volume",
+        "economic_outcome": "roastery budget buys repeatable roast profiles across machines",
+        "display_label": "Profile Repeatability",
+        "member_pain_ids": [
+          "Cannot scale sample roast settings to café production volume",
+          "Cannot transfer roast curves from sample equipment to production machines",
+          "Cannot meet café volume without excessive roasting time"
+        ],
+        "inferred": false
+      },
+      {
+        "family_id": "integrated-systems",
+        "buyer": "roastery operations manager",
+        "triggering_job": "connect roast logs, green inventory, and customer orders",
+        "economic_outcome": "roastery budget buys integrated roast-inventory-order system",
+        "display_label": "Integrated Systems",
+        "member_pain_ids": [
+          "Cannot connect roast logs to green inventory and customer orders",
+          "Cannot reconcile lot separation with café production stock",
+          "Cannot choose software that fits a small roastery workflow"
+        ],
+        "inferred": false
+      },
+      {
+        "family_id": "green-quality-control",
+        "buyer": "green coffee buyer",
+        "triggering_job": "reject defective green coffee before committing to a lot",
+        "economic_outcome": "green coffee budget buys verified quality lots",
+        "display_label": "Green Quality Control",
+        "member_pain_ids": [
+          "Cannot reject defective green coffee reliably before committing to a lot",
+          "Cannot verify storage and water activity before green coffee production",
+          "Cannot distinguish green coffee potential from finished roasted quality"
+        ],
+        "inferred": false
+      },
+      {
+        "family_id": "cost-profit-tracking",
+        "buyer": "roastery finance lead",
+        "triggering_job": "determine whether roasted coffee remains profitable after roast loss",
+        "economic_outcome": "roastery budget buys accurate lot-level cost accounting",
+        "display_label": "Cost & Profit Tracking",
+        "member_pain_ids": [
+          "Cannot determine whether roasted coffee remains profitable after roast loss",
+          "Cannot calculate true cost per pound for each green coffee lot"
+        ],
+        "inferred": false
+      },
+      {
+        "family_id": "operator-training",
+        "buyer": "head roaster",
+        "triggering_job": "train operators to translate roast data into production actions",
+        "economic_outcome": "roastery budget buys standardized training program",
+        "display_label": "Operator Training",
+        "member_pain_ids": [
+          "Cannot train operators to translate roast data into production actions",
+          "Cannot standardize training from machine operation to green sourcing",
+          "Cannot predict café brew performance from traditional cupping",
+          "Cannot connect green coffee purchasing decisions to customer brew outcomes",
+          "Cannot use quality scores without confusing coffee buyers"
+        ],
+        "inferred": false
+      }
+    ]
+  },
+  "idea_theses": {
+    "family_source": "llm",
+    "theses": [
+      {
+        "family_id": "supply-continuity",
+        "display_label": "Supply Continuity",
+        "buyer": "roastery operations manager",
+        "triggering_job": "maintain café and subscription supply when spot lots disappear",
+        "economic_outcome": "roastery budget buys recurring green supply contracts",
+        "members": [
+          {
+            "name": "SpotGapBlend",
+            "winning_angle": "distribution_seo",
+            "idea_tier": "single",
+            "source_frame": "pain"
+          },
+          {
+            "name": "Freshness Batch Planner",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "bundle",
+            "source_frame": "pain"
+          }
+        ],
+        "lead_idea_name": "SpotGapBlend",
+        "incumbent_status": "occupied",
+        "incumbent_vendors": [
+          "Artisan"
+        ],
+        "fatal_assumptions": [
+          {
+            "idea_name": "SpotGapBlend",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — User-supplied lot and cupping data"
+          },
+          {
+            "idea_name": "SpotGapBlend",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The substitution engine is still a smart comparator — to make it genuinely non-obvious, add a 'blend-role decomposition' step: before ranking substitutes, the roaster tags the missing lot's role (e.g., 40% body anchor, 30% brightness lift, 30% cost filler)."
+          }
+        ]
+      },
+      {
+        "family_id": "profile-repeatability",
+        "display_label": "Profile Repeatability",
+        "buyer": "roastery operations manager",
+        "triggering_job": "scale sample roast settings to café production volume",
+        "economic_outcome": "roastery budget buys repeatable roast profiles across machines",
+        "members": [
+          {
+            "name": "BatchMerge Roaster",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "single",
+            "source_frame": "pain"
+          }
+        ],
+        "lead_idea_name": "BatchMerge Roaster",
+        "incumbent_status": "occupied",
+        "incumbent_vendors": [
+          "Cropster"
+        ],
+        "fatal_assumptions": [
+          {
+            "idea_name": "BatchMerge Roaster",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — User-uploaded café order CSVs; User-entered roaster batch capacity; User-entered SKU-to-recipe mappings"
+          },
+          {
+            "idea_name": "BatchMerge Roaster",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The bin-packing optimizer is solid but reads as a generic operations-research tool applied to coffee. Sharpen the novelty by baking in a coffee-specific heuristic that NO generic bin-packer would have: roast-color compatibility scoring. Many micro-roasters roast the same green bean to different roast levels (light, medium, dark) for different cafés — but those can't be merged into one batch."
+          }
+        ]
+      },
+      {
+        "family_id": "integrated-systems",
+        "display_label": "Integrated Systems",
+        "buyer": "roastery operations manager",
+        "triggering_job": "connect roast logs, green inventory, and customer orders",
+        "economic_outcome": "roastery budget buys integrated roast-inventory-order system",
+        "members": [
+          {
+            "name": "LotClearance",
+            "winning_angle": "novel_differentiation",
+            "idea_tier": "single",
+            "source_frame": "data_asset"
+          },
+          {
+            "name": "Lot Reconciliation Sheet",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "single",
+            "source_frame": "pain"
+          },
+          {
+            "name": "OriginSafetyClearanceIndex",
+            "winning_angle": "distribution_seo",
+            "idea_tier": "salvaged",
+            "source_frame": "data_asset"
+          },
+          {
+            "name": "ShopifyRoastReconciler",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "salvaged",
+            "source_frame": "pain"
+          },
+          {
+            "name": "RoastYieldRefTable",
+            "winning_angle": "distribution_seo",
+            "idea_tier": "salvaged",
+            "source_frame": "pain"
+          }
+        ],
+        "lead_idea_name": "LotClearance",
+        "incumbent_status": "occupied",
+        "incumbent_vendors": [
+          "RoasterTools",
+          "Cropster"
+        ],
+        "fatal_assumptions": [
+          {
+            "idea_name": "Lot Reconciliation Sheet",
+            "source_field": "red_team_verdict",
+            "assumption": "The search results show free roast worksheets/downloadable resources, including a result explicitly offering a free updated coffee roasting worksheet; this is a direct substitute for a printable roast record, though the snippet does not establish whether it tracks inventory drawdown."
+          },
+          {
+            "idea_name": "OriginSafetyClearanceIndex",
+            "source_field": "red_team_verdict",
+            "assumption": "The evidence shows FDA already provides searchable refusal data by country/area and product, with weekly-updated final-action datasets; the proposed aggregation therefore adds uncertain convenience rather than exclusive data access."
+          },
+          {
+            "idea_name": "LotClearance",
+            "source_field": "data_access_model",
+            "assumption": "we could not confirm the data this product needs is actually available — the concept assumes access it has not demonstrated."
+          },
+          {
+            "idea_name": "ShopifyRoastReconciler",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — User-provided roast batch CSVs; User-provided green coffee lot and recipe records"
+          },
+          {
+            "idea_name": "LotClearance",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The clearance workflow is solidly on-pain now, but the mechanism still reads as a linear checklist — search origin → see warnings → request evidence → decide. Sharpen the novelty by making the CROP-AGE WARNING the product's signature hook. Here's the move: instead of a generic 'this lot may be old' flag, build a CROP-WINDOW CALENDAR that maps each origin's typical harvest and export cycle…"
+          },
+          {
+            "idea_name": "Lot Reconciliation Sheet",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The form is solid but the mechanism is still 'a smarter worksheet.' Push the novelty by making the sheet self-auditing: add a 'Lot Fingerprint' section at the top that the roaster fills once — origin, lot number, purchase date, supplier — and the PDF generator stamps a unique lot-code (e.g., GUAT-COB-2025-03) onto every sheet."
+          }
+        ]
+      },
+      {
+        "family_id": "green-quality-control",
+        "display_label": "Green Quality Control",
+        "buyer": "green coffee buyer",
+        "triggering_job": "reject defective green coffee before committing to a lot",
+        "economic_outcome": "green coffee budget buys verified quality lots",
+        "members": [
+          {
+            "name": "DefectFingerprint",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "single",
+            "source_frame": "pain"
+          },
+          {
+            "name": "Menu Continuity Ledger",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "bundle",
+            "source_frame": "pain"
+          }
+        ],
+        "lead_idea_name": "DefectFingerprint",
+        "incumbent_status": "partial",
+        "incumbent_vendors": [
+          "Unleashed"
+        ],
+        "fatal_assumptions": [
+          {
+            "idea_name": "DefectFingerprint",
+            "source_field": "data_access_model",
+            "assumption": "we could not confirm the data this product needs is actually available — the concept assumes access it has not demonstrated."
+          },
+          {
+            "idea_name": "DefectFingerprint",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — Customer-entered inspection data"
+          },
+          {
+            "idea_name": "DefectFingerprint",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The fingerprint library is a strong start, but it's still a static lookup table — any competitor could replicate it by copying the same SCA defect guide. The next sharpening move: make the heuristics adaptive to origin. Different origins have different defect profiles (Ethiopian naturals skew toward insect damage and quakers; washed Colombians toward mold and sour)."
+          }
+        ]
+      },
+      {
+        "family_id": "cost-profit-tracking",
+        "display_label": "Cost & Profit Tracking",
+        "buyer": "roastery finance lead",
+        "triggering_job": "determine whether roasted coffee remains profitable after roast loss",
+        "economic_outcome": "roastery budget buys accurate lot-level cost accounting",
+        "members": [
+          {
+            "name": "RoastMargin Match",
+            "winning_angle": "distribution_seo",
+            "idea_tier": "single",
+            "source_frame": "pain"
+          }
+        ],
+        "lead_idea_name": "RoastMargin Match",
+        "incumbent_status": "occupied",
+        "incumbent_vendors": [
+          "Unleashed"
+        ],
+        "fatal_assumptions": [
+          {
+            "idea_name": "RoastMargin Match",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — User-submitted roaster specifications; User-submitted green coffee costs; User-submitted energy rates and utility bills"
+          },
+          {
+            "idea_name": "RoastMargin Match",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The calculator is on-pain but structurally a spreadsheet — the roaster enters everything manually and gets back numbers. The novelty claim ('ranks green coffees by profit under MY machine') is the right instinct but currently just means sorting a table."
+          }
+        ]
+      },
+      {
+        "family_id": "operator-training",
+        "display_label": "Operator Training",
+        "buyer": "head roaster",
+        "triggering_job": "train operators to translate roast data into production actions",
+        "economic_outcome": "roastery budget buys standardized training program",
+        "members": [
+          {
+            "name": "Roast-to-Cup Translator",
+            "winning_angle": "vertical_workflow",
+            "idea_tier": "single",
+            "source_frame": "gap"
+          }
+        ],
+        "lead_idea_name": "Roast-to-Cup Translator",
+        "incumbent_status": "open",
+        "incumbent_vendors": [],
+        "fatal_assumptions": [
+          {
+            "idea_name": "Roast-to-Cup Translator",
+            "source_field": "data_access_model",
+            "assumption": "we could not confirm the data this product needs is actually available — the concept assumes access it has not demonstrated."
+          },
+          {
+            "idea_name": "Roast-to-Cup Translator",
+            "source_field": "data_sources",
+            "assumption": "Cold start: the product has no data until a customer supplies it — User-supplied roast logs; User-supplied cupping forms"
+          },
+          {
+            "idea_name": "Roast-to-Cup Translator",
+            "source_field": "refine_binding_constraint",
+            "assumption": "The WCR-to-roast-curve mapping is solid but still reads as a lookup table with teaching cards. Sharpen the mechanism: introduce a 'Roast Fingerprint' — a compact visual signature computed from the trainee's curve that distills rate-of-rise inflection points, development ratio, and the gap between first-crack start and end into a single normalized shape."
+          }
+        ]
+      }
+    ],
+    "uncovered_families": [],
+    "unassigned": []
+  },
+  "niche_incumbent_map": [
+    {
+      "name": "Cropster",
+      "pricing": "unknown",
+      "focus": "roasting profiles & inventory",
+      "gap": "no sensory cupping scoring",
+      "source": "corpus-confirmed"
+    },
+    {
+      "name": "RoasterTools",
+      "pricing": "unknown",
+      "focus": "green & roasted inventory",
+      "gap": "no cupping sensory data",
+      "source": "web"
+    },
+    {
+      "name": "Artisan",
+      "pricing": "free",
+      "focus": "roast logging & profiles",
+      "gap": "no inventory or sourcing",
+      "source": "corpus-confirmed"
+    },
+    {
+      "name": "Typica",
+      "pricing": "free",
+      "focus": "roast logging & profiles",
+      "gap": "no inventory or sourcing",
+      "source": "corpus-confirmed"
+    },
+    {
+      "name": "Unleashed",
+      "pricing": "unknown",
+      "focus": "coffee roaster inventory",
+      "gap": "no roast profiling",
+      "source": "web"
+    },
+    {
+      "name": "Acctivate",
+      "pricing": "unknown",
+      "focus": "inventory & QuickBooks sync",
+      "gap": "no roast profiling",
+      "source": "web"
+    },
+    {
+      "name": "Ardent Seller",
+      "pricing": "unknown",
+      "focus": "sourcing & roast-date tracking",
+      "gap": "no sensory cupping",
+      "source": "web"
+    },
+    {
+      "name": "Beanventory",
+      "pricing": "unknown",
+      "focus": "production & inventory",
+      "gap": "no roast profiling",
+      "source": "web"
+    },
+    {
+      "name": "Excel",
+      "pricing": "free",
+      "focus": "custom inventory tracking",
+      "gap": "no roast profiling",
+      "source": "corpus-confirmed"
+    },
+    {
+      "name": "Google Sheets",
+      "pricing": "free",
+      "focus": "custom inventory tracking",
+      "gap": "no roast profiling",
+      "source": "corpus-confirmed"
+    }
+  ],
+  "niche_wallet_brief": {
+    "wallet_class": "mixed",
+    "evidence": "$80/mo paid plan mentioned; free tools (Artisan, Typica) coexist",
+    "free_density": "Artisan, Typica, Excel/Google Sheets"
+  },
+  "niche_data_menu_text": "- International Coffee Organization (official) — monthly composite and group coffee prices, member-country exports/imports, production, consumption, and stocks statistics.\n- USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) database (official) — country-level green-coffee production, domestic consumption, imports, exports, and ending-stock estimates and forecasts.\n- UN Comtrade (public) — reported international customs trade records for coffee HS codes, including green-coffee origin/destination, quantity, value, reporter, partner, and period.\n- FAOSTAT Crops and Livestock Products (official) — historical country-level coffee harvested area, production quantity, and yield series for origin-risk and crop-change models.\n- World Coffee Research Coffee Varieties Catalog (public) — documented coffee-variety attributes including genetic lineage, quality potential, bean characteristics, recommended elevation, and disease-resistance traits.\n- FDA Import Refusal Reports (official) — U.S. import-line refusals with product descriptions, country of origin, importer/shipper fields, dates, and cited regulatory violation codes; usable for supplier/origin food-safety risk signals.\n- European Commission RASFF Window (official) — public food/feed safety notifications, including coffee-related hazards, origin, notification type, dates, and actions taken.\n- ISO 4072 Green coffee — Sampling (licensed) — standardized green-coffee lot sampling procedures and sample handling requirements that can be encoded into receiving, retention-sample, and lot-approval workflows.\n- Google keyword search data via DataForSEO (licensed) — volumes, competition, per-region queries\n- Public community discussions (Reddit/HN/forums, public) — pain language, tool mentions\n- Deterministic arithmetic on the user's own inputs (none) — calculators/planners need no external data",
+  "niche_dissatisfaction_text": "### INCUMBENT DISSATISFACTION (verbatim, from community)\nReal buyers naming a tool they are unhappy with — the strongest demand signal in this corpus. An idea that credibly fixes WHY these users are unhappy starts with demand already proven:\n- Cropster — \"I would never pay for Cropster, it’s way too expensive.\" (r/roasting)",
+  "idea_portfolio_summary": "The current idea pool for the specialty coffee roasting market reflects a landscape where software fit is strong but market saturation is high. Many concepts like Lot Reconciliation Sheet, RoastMargin Match, RoastYieldRefTable, and ShopifyRoastReconciler suffer from weak buyer-segment payability, as they often target micro-roasters who rely on free tools or personal budgets. Similarly, BatchMerge Roaster, Menu Continuity Ledger, and Freshness Batch Planner face significant incumbent parity from established players like Cropster, Artisan, and Unleashed, making it difficult to justify a new entrant. The OriginSafetyClearanceIndex was killed because its core premise is already addressed by existing government datasets, rendering the value proposition redundant. Roast-to-Cup Translator remains a speculative concept with weak SEO scalability and limited market fit, further complicating its viability as a standalone product. SpotGapBlend, DefectFingerprint, and LotClearance offer the most potential with moderate market fit and corporate-budget payability, though they are hampered by episodic usage patterns that necessitate creative pricing models like credit packs rather than standard subscriptions. Given the competitive pressure from incumbents and the prevalence of free alternatives, the most promising candidates for deep validation are SpotGapBlend and DefectFingerprint. These two ideas stand out because they target specific, high-value corporate pain points that are not currently addressed by existing software, providing a clearer path to monetization if the usage-based pricing model can be successfully implemented.",
+  "pipeline_degradations": [
+    "SEO volume honesty: idea-intent keywords carry only 3% of the analyzed volume — idea-intent demand is 11,370/mo of the 325,010/mo analyzed keyword set; treat the headline keyword volume as category reach, not validated idea demand."
+  ],
+  "skipped_stages": [
+    13
+  ]
+}

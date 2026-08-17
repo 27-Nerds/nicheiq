@@ -118,6 +118,21 @@ const INCUMBENT_PARITY_CLASS_ONLY: Record<string, string> = {
 /** Said out loud so a class-only finding is never mistaken for a verified competitor. */
 const CLASS_ONLY_SUFFIX = ' (an alternative class, no product named)';
 
+/**
+ * A "none" stamp is a RETRIEVAL RESULT, never a fact about the market. The parity probe builds
+ * its queries out of the idea's OWN vocabulary, so the wording of the pitch decides the verdict:
+ * a live run shipped "none found" for a #1 recommendation while a same-pain sibling carried
+ * "partial by Synup". Measured over stored runs, 591 ideas carry a "none" stamp and ~90% of them
+ * sit in a run that already names an incumbent on another idea. So the copy states the search
+ * result and not the conclusion. Twin of the Python block's NONE_FOUND_NOTE
+ * (src/nicheiq/report/idea_validation_block.py) and of the frontend copy of this helper — the
+ * three stacks describe one finding and must not contradict each other in one product.
+ *
+ * ONE literal, on one line, in both copies: the anti-drift gate compares the two files' phrase
+ * literals as text, and a concatenation split differently on the two sides would read as drift.
+ */
+export const NONE_SURFACED_PHRASE = "Our searches did not surface a direct competitor. They run on this idea's own wording, so a rival that describes itself differently can be missed.";
+
 /** Vendor slots that are not vendors — see INCUMBENT_PARITY_CLASS_ONLY. */
 const NOT_A_VENDOR = /^(?:red[-\s]?team|evidence)$/i;
 
@@ -131,7 +146,9 @@ const PARITY_SHAPE = /^([a-z_]+)(?:\s+by\s+([^:]+?)|\s*\(([^)]*)\))?\s*(?::\s*([
 export function incumbentParityPhrase(value: string | null | undefined): string {
   const raw = value?.trim();
   if (!raw) return '';
-  if (/^none\b/i.test(raw)) return 'No competing product found';
+  // The `/^none\b/` TEST is load-bearing and unchanged (~139 consumers parse this prefix);
+  // only what it RENDERS changed — see NONE_SURFACED_PHRASE.
+  if (/^none\b/i.test(raw)) return NONE_SURFACED_PHRASE;
 
   const match = PARITY_SHAPE.exec(raw);
   if (!match) return raw;

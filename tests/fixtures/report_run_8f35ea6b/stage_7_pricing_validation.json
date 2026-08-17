@@ -1,0 +1,161 @@
+[
+  {
+    "solution_name": "DefectFingerprint",
+    "recommended_starter_price": "$19/month",
+    "recommended_pro_price": "$39/month",
+    "recommended_enterprise_price": null,
+    "pricing_model": "Freemium-Lite",
+    "pricing_rationale": "Freemium-Lite best fits a SaaS workflow with average WTP of 0.37, high budget sensitivity among micro-roasters and cooperative operators, and entrenched free substitutes such as Excel, Google Sheets, Artisan, Typica, paper forms, and internal checklists. The $19 Starter price sits within the WTP-implied B2B range of $15-$40/month, while the $39 Pro price remains materially below the only cited paid-plan signal of $80/month and avoids pricing like a full roastery ERP. The free tier reduces adoption friction, while paid plans monetize configurable defect rules, supplier evidence, signatures, histories, and team workflows; unit economics are viable for organic acquisition in the optimistic case but do not work for paid acquisition at the current CAC range.",
+    "free_tier_features": [
+      "Up to 3 guided receiving inspections per month",
+      "Five curated green-coffee defect fingerprints with photo-reference cards",
+      "Sample-count, threshold, moisture, odor, temperature, and storage-condition entry",
+      "Accept, conditional-review, or reject recommendation",
+      "Watermarked evidence PDF export"
+    ],
+    "starter_tier_features": [
+      "Unlimited guided 15-minute receiving inspections for one location",
+      "Five-to-seven curated defect fingerprints with distinguishing cues and counting heuristics",
+      "Inspection timer, sample-count and threshold entry, and lot decision engine",
+      "Moisture, odor, temperature, storage notes, photo capture, and signatures",
+      "Supplier-facing evidence PDFs without watermark"
+    ],
+    "pro_tier_features": [
+      "All Starter features",
+      "Configurable roastery-specific defect fingerprints and rejection thresholds",
+      "Versioned fingerprint rules and reference content",
+      "Supplier history and searchable receiving records",
+      "Multi-operator collaboration and role-based access",
+      "Lot comparison and recurring defect trend reporting",
+      "Multi-location workspace support",
+      "Priority export and integration access for inventory or receiving systems"
+    ],
+    "estimated_monthly_ad_revenue": "N/A - subscription model",
+    "estimated_monthly_affiliate_revenue": "N/A - subscription model",
+    "estimated_cpm_rate": "N/A - subscription model",
+    "recommended_ad_networks": [],
+    "estimated_arpu": "$5.48/month",
+    "estimated_ltv": "$65.76 - $164.40 (12-30mo retention)",
+    "ltv_to_cac_ratio": "1.10:1-8.22:1 (LTV $65.76-$164.40 ÷ CAC $60-$20 organic); 0.26:1-1.64:1 (LTV $65.76-$164.40 ÷ CAC $250-$100 paid)",
+    "price_vs_competitors": "Starter is 76% below the cited $80/month paid-plan signal; Pro is 51% below that signal. Free substitutes remain lower priced at $0, while most direct vertical competitors have unverified commercial or quote-based pricing.",
+    "value_proposition_delta": "Adds a purpose-built 15-minute receiving workflow, curated defect fingerprints, concrete counting heuristics, decision recommendations, signatures, and supplier evidence PDFs that are not verified in the listed alternatives, at 76% below the cited paid-plan signal for Starter and 51% below it for Pro.",
+    "pricing_confidence": "Low",
+    "wtp_validation": "The 0.37 average WTP score places DefectFingerprint in the discount and Freemium-Lite band, supporting a $19 entry price and a compelling free inspection allowance rather than ERP-level pricing. The directly addressed pain point of unreliable defective-lot rejection has a 0.35 WTP score, while the strongest related continuity pain point scores 0.65, so paid conversion is plausible when the product demonstrates avoided lot losses or supplier disputes, but high-sensitivity micro-roaster and cooperative segments require conservative pricing.",
+    "market_segment_pricing": [
+      {
+        "segment": "Micro-Roasters Selling Direct-to-Consumer Online",
+        "price": "$19/month"
+      },
+      {
+        "segment": "Café-Based Roasters Managing On-Site Production",
+        "price": "$29/month"
+      },
+      {
+        "segment": "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "price": "$39/month"
+      },
+      {
+        "segment": "Subscription-Based Roastery Operators",
+        "price": "$39/month"
+      },
+      {
+        "segment": "Cooperative and Shared-Space Roastery Operators",
+        "price": "$19/month"
+      }
+    ]
+  },
+  {
+    "solution_name": "OriginSafetyClearanceIndex",
+    "recommended_starter_price": null,
+    "recommended_pro_price": null,
+    "recommended_enterprise_price": null,
+    "pricing_model": "Ad-Supported-Free",
+    "pricing_rationale": "A free, SEO-discoverable directory is the best initial fit because the underlying FDA and EU RASFF records are publicly available, average pain-point WTP is only 0.37, and the primary micro-roaster audience is highly budget sensitive. The product should monetize normalized origin pages through contextual display advertising and carefully selected compliance or supply-chain referrals rather than charging for basic records; subscription, usage-based, and one-time models should be reconsidered only after monitoring, saved searches, and procurement-report usage demonstrate recurring commercial value. A conservative base case of 5,000 monthly pageviews is used because keyword demand is only moderate, total market size is unavailable, and authoritative FDA.gov and European Commission pages create high SEO execution difficulty.",
+    "free_tier_features": null,
+    "starter_tier_features": null,
+    "pro_tier_features": null,
+    "estimated_monthly_ad_revenue": "$15-$40/month at 5,000 pageviews",
+    "estimated_monthly_affiliate_revenue": "$20-$20/month at 2% CTR",
+    "estimated_cpm_rate": "$3-$8 CPM",
+    "recommended_ad_networks": [
+      "Google AdSense",
+      "Ezoic",
+      "Mediavine"
+    ],
+    "estimated_arpu": "$0.007-$0.012 per pageview",
+    "estimated_ltv": "N/A - traffic-based model",
+    "ltv_to_cac_ratio": "N/A - SEO-driven traffic acquisition",
+    "price_vs_competitors": "Free, matching the public-source price and undercutting quote-based commercial alternatives; commercial competitor median is not verifiable",
+    "value_proposition_delta": "Combines FDA refusal data, EU RASFF notifications, source citations, country-level normalization, and coffee-specific risk interpretation in one origin view; 100% lower user price than quote-based commercial alternatives",
+    "pricing_confidence": "Low",
+    "wtp_validation": "The 0.37 average WTP falls in the discount band, where free access, advertising, or affiliate monetization is preferred; only 5 of 21 listed pain points reach the high-WTP threshold. The strongest relevant signal is the 0.65 WTP for supply continuity, but the audience remains budget sensitive and the product currently provides a directory rather than an automated procurement or monitoring workflow, so paid tiers would be premature.",
+    "market_segment_pricing": null
+  },
+  {
+    "solution_name": "Lot Reconciliation Sheet",
+    "recommended_starter_price": "$9/month",
+    "recommended_pro_price": "$19/month",
+    "recommended_enterprise_price": null,
+    "pricing_model": "Freemium-Lite",
+    "pricing_rationale": "Freemium-Lite fits this SaaS better than pure subscription, usage-based billing, advertising, or affiliate monetization because the average WTP is 0.37, the primary audience is highly budget-sensitive, and free substitutes include paper, Excel, Google Sheets, Artisan, and Typica. The free tier should expose the complete printable workflow, while $9/month monetizes unlimited recurring use and $19/month adds searchable history, archiving, exports, and team workflows; both prices remain below the cited $80/month paid-market signal. At the stated paid CAC of $100, the unit economics do not work: the resulting LTV/CAC ratio is below 2:1 across the 12-30 month retention range, so acquisition should rely primarily on organic search and roaster communities rather than paid advertising.",
+    "free_tier_features": [
+      "Lot reconciliation form with lot name, green weight in, roast date, and roast profile fields",
+      "Optional expected-yield estimate using static density and roast-level assumptions",
+      "Printable one-page PDF with actual roasted weight and café drawdown fields",
+      "Remaining-stock calculation from actual roasted weight minus café drawdown",
+      "Up to 5 generated sheets per month"
+    ],
+    "starter_tier_features": [
+      "Unlimited lot reconciliation sheets",
+      "Expected-yield estimates using density and roast-level assumptions",
+      "Printable and downloadable one-page PDFs",
+      "Remaining-stock calculation from actual roasted weight minus café drawdown",
+      "Duplicate-last-sheet workflow for repeat production"
+    ],
+    "pro_tier_features": [
+      "All Starter features",
+      "Searchable historical lot archive",
+      "Unlimited saved production records",
+      "Lot status and remaining-stock history",
+      "Multiple user access for café-roastery teams",
+      "Standardized printable record templates across users",
+      "CSV export or bulk record download",
+      "Extended audit history for completed lot records"
+    ],
+    "estimated_monthly_ad_revenue": "Not applicable - subscription model",
+    "estimated_monthly_affiliate_revenue": "Not applicable - subscription model",
+    "estimated_cpm_rate": "Not applicable - subscription model",
+    "recommended_ad_networks": [
+      "Not applicable - subscription model"
+    ],
+    "estimated_arpu": "$2.40/month, assuming 80% free, 14% Starter, and 6% Pro users",
+    "estimated_ltv": "$28.80 - $72.00 (12-30mo retention)",
+    "ltv_to_cac_ratio": "0.29:1-0.72:1 (LTV $28.80-$72.00 ÷ CAC $100)",
+    "price_vs_competitors": "76%-89% below the cited $80/month paid-market signal; no verified competitor median is available",
+    "value_proposition_delta": "Focused lot-level reconciliation and printable record coverage versus broader inventory and roast-management platforms, at 76%-89% below the cited paid-market signal",
+    "pricing_confidence": "Low",
+    "wtp_validation": "The 0.37 average WTP score falls in the discount/freemium-lite band and supports a free entry point with a low paid starting price. The $9 Starter price is at the upper end of the stated $3-$9 prosumer range, while the $19 Pro price is justified only for professional users receiving recurring value from searchable records, archiving, exports, and team access; the 0.10-0.65 WTP range, only 5 of 21 high-WTP pain points, weak switching costs, and free alternatives argue against higher pricing.",
+    "market_segment_pricing": [
+      {
+        "segment": "Micro-roasters selling direct-to-consumer online",
+        "price": "$9/month"
+      },
+      {
+        "segment": "Café-based roasters managing on-site production",
+        "price": "$19/month"
+      },
+      {
+        "segment": "Wholesale roasters supplying specialty cafés and restaurants",
+        "price": "$19/month"
+      },
+      {
+        "segment": "Subscription-based roastery operators",
+        "price": "$19/month"
+      },
+      {
+        "segment": "Cooperative and shared-space roastery operators",
+        "price": "$19/month"
+      }
+    ]
+  }
+]

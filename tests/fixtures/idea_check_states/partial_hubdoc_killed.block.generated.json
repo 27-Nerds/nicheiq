@@ -1,0 +1,277 @@
+{
+ "provisional": true,
+ "user_idea_text": "A Slack bot for freelance bookkeepers that automatically chases their clients for missing receipts and bank statements, so month-end close stops dragging into a second week",
+ "user_idea_brief": "A Slack bot for freelance bookkeepers that automatically chases clients for missing receipts and bank statements to accelerate the month-end close process.",
+ "assumed_fields": [],
+ "derived_market": "The bookkeeping automation software market provides digital tools designed to streamline financial data collection, reconciliation, and reporting processes. It encompasses platforms and integrations that reduce manual administrative burdens for accounting professionals and their clients.",
+ "derived_buyer": "Digitally Scaling Freelance Bookkeeping Firms",
+ "desk_limits": [
+  "We read what people said unprompted. We could not ask them the follow-up question.",
+  "Nothing here is commitment evidence. No one has paid, pre-ordered, or given up anything for this idea.",
+  "Severity and mention counts describe this run's captured discussions, not the whole market."
+ ],
+ "experiment_ladder": [
+  {
+   "rung": 1,
+   "action": "Run 5 problem interviews with the buyer you named",
+   "kill_number": "kill if no interview independently describes the problem",
+   "cost_note": "free"
+  },
+  {
+   "rung": 2,
+   "action": "Put up a landing page and drive ~50 clicks to it",
+   "kill_number": "kill below 1% click-to-email",
+   "cost_note": "under $100"
+  },
+  {
+   "rung": 3,
+   "action": "Offer 3 pre-sales at half price",
+   "kill_number": "kill below 3 paid commitments",
+   "cost_note": "reputation only"
+  },
+  {
+   "rung": 4,
+   "action": "Deliver the outcome by hand for one customer (concierge)",
+   "kill_number": "kill if they stop showing up",
+   "cost_note": "a weekend"
+  }
+ ],
+ "next_experiment_index": 0,
+ "pivot": {
+  "attempted": true,
+  "outcome": "rejected",
+  "trigger_finding": "Hubdoc users send auto-reminders via Slack every Monday morning for receipts",
+  "because": "now part of QuickBooks ecosystem",
+  "keeps": null,
+  "changes": null,
+  "reason_not_shown": "We drafted one revision of your idea against this gap. It scored no better than your original, so we're not proposing it.",
+  "ries_label": null,
+  "name": null
+ },
+ "outcome": "occupied",
+ "idea_name": "CloseCue",
+ "headline": "Real problem, and a named competitor already ships the core of CloseCue. That is demand proof and an entry constraint at the same time.",
+ "parts": [
+  {
+   "key": "problem_real",
+   "state": "supported",
+   "answer": "Supported",
+   "detail": "Linked to real discussion in this run."
+  },
+  {
+   "key": "space_occupied",
+   "state": "partial",
+   "answer": "Partially shipped",
+   "detail": "Hubdoc users send auto-reminders via Slack every Monday morning for receipts"
+  },
+  {
+   "key": "demand",
+   "state": "not_measured",
+   "answer": "Not measured",
+   "detail": "Search-demand probes are outside this check's scope. They're the Deep Research step."
+  }
+ ],
+ "score_bands": {
+  "market_fit": "moderate",
+  "technical_feasibility": "good",
+  "novelty": "limited",
+  "seo_scalability": "weak"
+ },
+ "evidence_confidence": "High",
+ "evidence_confidence_reason": "Broad, repeated discussion from distinct accounts.",
+ "breadth": {
+  "posts": 8,
+  "distinct_authors": 8,
+  "distinct_communities": 4,
+  "months_spanned": 31,
+  "label": "8 posts \u00b7 8 accounts \u00b7 4 communities \u00b7 31 mo"
+ },
+ "anchored_pains": [
+  {
+   "pain_title": "Cannot close books until clients provide source documents",
+   "severity_band": "good",
+   "severity_label": "medium",
+   "mention_count": 28,
+   "quotes": [
+    "The second most common complaint I've seen is that you have to spend a lot of time chasing clients for invoices/receipts/details.",
+    "I found that chasing clients for clarification over transactions & getting hold of invoices was the biggest time sink\u2026.How many times do we check what transactions are outstanding, double check you have not already been sent it - send an email to the client requesting clarification\u2026I was repeating this every week for every client and I just knew that I wasn\u2019t going to get anything back, or it would come in last minute, weeks after I requested it."
+   ]
+  }
+ ],
+ "related_pains": [
+  {
+   "pain_title": "Client onboarding stalls while access and close responsibilities are collected",
+   "severity_label": "medium",
+   "mention_count": 18,
+   "note": "unmatched"
+  }
+ ],
+ "stronger_pain_count": 1,
+ "unanchored_hypothesis": false,
+ "incumbent_parity": "partial by Hubdoc: Hubdoc users send auto-reminders via Slack every Monday morning for receipts",
+ "existing_equivalent": null,
+ "competitors": [
+  {
+   "name": "Hubdoc",
+   "what_they_ship": "document capture and bank feeds",
+   "price_note": "$12/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "now part of QuickBooks ecosystem",
+   "url": null,
+   "verdict_trigger": true,
+   "verdict_evidence": "users send auto-reminders via Slack every Monday morning for receipts"
+  },
+  {
+   "name": "QuickBooks Online",
+   "what_they_ship": "automates bookkeeping and financial tasks",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited enterprise financial-close depth",
+   "url": null
+  },
+  {
+   "name": "Xero",
+   "what_they_ship": "cloud accounting with multi-currency automation",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "less focus on enterprise reconciliation",
+   "url": null
+  },
+  {
+   "name": "Dext",
+   "what_they_ship": "receipt capture and data extraction",
+   "price_note": "$25-50/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "requires separate accounting platform",
+   "url": null
+  },
+  {
+   "name": "BlackLine",
+   "what_they_ship": "enterprise financial-close automation",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "not aimed at small-business bookkeeping",
+   "url": null
+  },
+  {
+   "name": "FreshBooks",
+   "what_they_ship": "invoicing and bookkeeping for freelancers",
+   "price_note": "$15-49/mo",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "limited multi-user enterprise features",
+   "url": null
+  },
+  {
+   "name": "Bill.com",
+   "what_they_ship": "AP/AR automation and payments",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "narrow focus on bill management",
+   "url": null
+  },
+  {
+   "name": "Puzzle",
+   "what_they_ship": "AI-native bookkeeping for startups",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "early-stage product, limited integrations",
+   "url": null
+  },
+  {
+   "name": "Numeric",
+   "what_they_ship": "month-end close and reconciliations",
+   "price_note": null,
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "enterprise-oriented, not SMB bookkeeping",
+   "url": null
+  },
+  {
+   "name": "Ramp",
+   "what_they_ship": "corporate card and spend automation",
+   "price_note": "free",
+   "price_caveat": "snippet-derived, \u00b11 tier",
+   "gap": "only covers expenses, not full books",
+   "url": null
+  }
+ ],
+ "duplicate_of": null,
+ "red_team_verdict": "killed",
+ "red_team_findings": null,
+ "kill_risks": [
+  {
+   "claim": "The search results show direct document-request/reminder functionality in Plutio: client portals with automatic reminders, which overlaps the core chasing job (receiptrouter.app and Plutio results).",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The evidence points to buyers already using bookkeeping suites, bank features, spreadsheets, Excel templates, and free tools such as Wave; none of the results establish willingness to pay for a Slack-only overlay (Bench, Wave, Reddit, LinkedIn results).",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  },
+  {
+   "claim": "The evidence does not establish that late receipts and bank statements are commonly identified through deterministic patterns or that Slack is the modal client communication channel; it only shows a general discussion of managing incoming documents at scale (Facebook result).",
+   "why_it_matters": null,
+   "falsification": null,
+   "quote": null,
+   "source": "adversarial_review"
+  }
+ ],
+ "alternatives": {
+  "count": 11,
+  "named_buyer_count": 6,
+  "top": [
+   {
+    "idea_id": "idea_558fa7fa28d5cf16f1c6d3736e7ed37b",
+    "name": "EntityResolutionLedger",
+    "one_liner": "Give multi-entity bookkeepers a defensible, repeatable way to identify vendor ownership and route shared transactions without relying on memory or ad hoc judgme"
+   },
+   {
+    "idea_id": "idea_d809e19e11310d5d69ff549a2614505e",
+    "name": "StagingPipelineCleaner",
+    "one_liner": "Convert inconsistent financial exports into repeatable, audit-trailed QBO/Xero import files locally, eliminating manual staging without sacrificing accounting c"
+   },
+   {
+    "idea_id": "idea_04a0ddd3ea0341de5f41d6612f5d1e95",
+    "name": "ISO20022ReconSpec",
+    "one_liner": "Give accounting teams deterministic, inspectable reconciliation logic derived from ISO 20022 standards so every bank-feed match can be tested, explained, and au"
+   },
+   {
+    "idea_id": "idea_262c3ba59fd0c0a0b2174ce7084523eb",
+    "name": "PayoutClarity",
+    "one_liner": "PayoutClarity helps ecommerce bookkeepers identify platform deposits and split available settlement data into gross sales, refunds, fees, tax, and clearing-acco"
+   },
+   {
+    "idea_id": "idea_c02f32962ddc2ab913ba85687ce2a860",
+    "name": "ClearPayout CAMT",
+    "one_liner": "ClearPayout CAMT converts ecommerce payout exports into a deterministic clearing artifact that explains every net bank deposit before it reaches the GL."
+   }
+  ]
+ },
+ "seed_candidate_status": "active",
+ "seed_idea_id": "idea_44ef4cae9f5f3901e20913c6ec2a829c",
+ "seed_idea_revision": 1,
+ "seed_purchasable": true,
+ "seed_display_composite_score": 51,
+ "demotion_reason": null,
+ "evaluated_idea": {
+  "name": "CloseCue",
+  "value_proposition": "For freelance bookkeepers, CloseCue automatically identifies late receipts and bank statements, drafts precise Slack chases, and escalates unresolved requests before month-end close.",
+  "mechanism_summary": "Pattern-based, deadline-aware Slack chasing with optional nonprofit Form 990 prioritization."
+ },
+ "refinement": {
+  "kept": [
+   "audience",
+   "problem",
+   "delivery"
+  ],
+  "changed": [
+   "mechanism"
+  ],
+  "because": null
+ },
+ "original_mechanism_parity": null
+}

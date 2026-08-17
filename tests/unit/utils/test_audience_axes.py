@@ -222,9 +222,9 @@ CORPUS = json.loads(
 def _eligible(rows):
     """Rows the detector can actually speak about: BOTH sides stated, plus a recommendation.
 
-    21 of the 35 captured runs carry no `user_target_audience` at all, so the detector
+    21 of the 36 captured runs carry no `user_target_audience` at all, so the detector
     short-circuits before reading a single axis. Counting them as "silent" measured nothing
-    and inflated the denominator by 2.5x.
+    and inflated the denominator by 2.4x.
     """
     return [
         row for row in rows
@@ -239,18 +239,25 @@ def _candidates(row):
 
 
 def test_the_typed_comparator_is_quiet_where_the_wording_comparator_is_not():
-    """Both directions, over the 14 runs the detector can speak about.
+    """Both directions, over the 15 runs the detector can speak about.
 
-    Measured 2026-08-10: typed fires on 3 of 14 (21%), the wording comparator on 12 of 14 (86%).
-    The three typed fires are the two veterinary runs whose research narrowed a multi-location
-    request to single-location general practice before recommending specialty hospitals, and the
-    music-teacher run that recommended ideas built for the pupils and their parents.
+    Measured 2026-08-10 over 35 runs: typed fires on 3 of 14 (21%), the wording comparator on
+    12 of 14 (86%). Re-measured 2026-08-17 after the `winning_angle` repair run (job 8500b97d,
+    2026-08-16) added a 36th run: typed 3 of 15 (20%), wording 13 of 15 (87%). The new run is
+    itself the cleanest instance of the gap — "local businesses in London" against "Independent
+    London Tradespeople and Home-Service Contractors" is the same buyer in different words, and
+    only the wording comparator objects.
+
+    The three typed fires are unchanged: the two veterinary runs whose research narrowed a
+    multi-location request to single-location general practice before recommending specialty
+    hospitals, and the music-teacher run that recommended ideas built for the pupils and their
+    parents.
     """
     from nicheiq.utils.niche_difficulty import detect_recommendation_audience_drift
 
     runs = _eligible(CORPUS)
-    assert len(CORPUS) == 35
-    assert len(runs) == 14, "re-measure both rates before trusting the bounds below"
+    assert len(CORPUS) == 36
+    assert len(runs) == 15, "re-measure both rates before trusting the bounds below"
 
     typed = [
         row["run"] for row in runs
@@ -270,7 +277,7 @@ def test_the_typed_comparator_is_quiet_where_the_wording_comparator_is_not():
     assert sum("music_teachers" in name for name in typed) == 1
     # The comparison that motivated the replacement. If this ever stops holding, the typed
     # comparator has drifted back toward measuring wording.
-    assert len(lexical) == 12
+    assert len(lexical) == 13
 
 
 def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
@@ -279,11 +286,17 @@ def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
     Run-level counts hide the vocabulary bugs: one genuine axis conflict makes a whole run
     "correct" no matter how many spurious ones came with it. This measures every (left, right)
     pair the detector actually reads — request vs research, request vs each named segment, and
-    research vs each named segment, over all 35 captured runs.
+    research vs each named segment, over all 36 captured runs.
 
     Measured 2026-08-10: 13 fires / 210 pairs, 0 false. Before the vocabulary fixes it was
     22 / 210 with 9 false — six readings of "Direct-to-Consumer" as a consumer audience, two of
     "Student-Union" as a student, and one of "Professionals" as a provider.
+
+    Re-measured 2026-08-17, after the `winning_angle` repair run (job 8500b97d, 2026-08-16)
+    added an 11-pair 36th run: 13 fires / 221 pairs, 0 false. The fire COUNT is unchanged, which
+    is the load-bearing part — all 11 new pairs are London trade/retail/dental/hospitality
+    segments against "local businesses in London", and the comparator stayed silent on every one
+    while the wording comparator gained a run-level false alarm on the same run.
     """
     pairs = []
     for row in CORPUS:
@@ -297,7 +310,7 @@ def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
             if primary:
                 pairs.append((primary, segment))
 
-    assert len(pairs) == 210
+    assert len(pairs) == 221
     fired = [(left, right, conflicting_axes(left, right)) for left, right in pairs]
     fired = [row for row in fired if row[2]]
 

@@ -99,3 +99,127 @@ python_functions = "test_*"
 # Measured 2026-08-15: bare collection was 5918 items, of which 5 were the paid file.
 # To run them deliberately, pass `-m integration` on the command line; it overrides this.
 addopts = "-v -m \"not integration\" --cov=src/nicheiq --cov-report=term-missing"
+
+# ---------------------------------------------------------------------------
+# Mutation testing (advisory). See `make mutation` / .github/workflows/mutation.yml
+#
+# This section institutionalises the manual ritual builders have been running by
+# hand: revert the production line, confirm the named test fails, restore, verify
+# by checksum. That is mutation testing, one mutant at a time. mutmut does it by
+# machine, which is the only way to catch a *blind metric as a class* — a test
+# that stays green when its subject is mutated.
+#
+# Scoping is mandatory, not optional. The full suite is ~5,987 tests / ~7 min;
+# a mutant needs a fresh test run each, so an unscoped run is measured in days.
+# Two scoping levers are used together:
+#   1. `only_mutate` — mutants are generated ONLY for the three files where the
+#      seed-identity defects actually were.
+#   2. `pytest_add_cli_args_test_selection` — only the tests that cover those
+#      files are collected, and mutmut further narrows to the tests whose
+#      execution actually reached the mutated function.
+# For the 12,137-line unified_solution_crew.py, a third lever is applied at the
+# command line: `mutmut run '<glob>'` restricts execution to the seed/identity
+# mutants by name (see the Makefile).
+# ---------------------------------------------------------------------------
+[tool.mutmut]
+source_paths = ["src/nicheiq"]
+
+# Whitelist. Every other file under source_paths is copied but never mutated.
+only_mutate = [
+    "src/nicheiq/utils/seed_fidelity.py",
+    "src/nicheiq/report/idea_validation_block.py",
+    "src/nicheiq/crews/unified_solution_crew.py",
+]
+
+# Do not generate mutants on lines the selected tests never execute. Without this
+# the 12k-line crew file alone yields tens of thousands of mutants, nearly all of
+# them "no tests" noise that buries the signal we care about.
+#
+# KEEP THIS ON. It is mandatory, not a tuning knob.
+#
+# BUT KNOW WHAT IT COSTS, because it is not visible in any score. Mutants exist
+# ONLY for lines the selection executes, so the mutation score is a fraction of a
+# denominator that shrinks silently:
+#
+#   * A function nothing reaches generates zero mutants, contributes nothing to
+#     the denominator, and is INDISTINGUISHABLE FROM A FUNCTION THAT DOES NOT
+#     EXIST. Measured: seed_fidelity._alias_route_role_contexts, 64 live lines
+#     called from unpitched_core_dependencies, contributed nothing at all.
+#   * Coverage is consulted ONCE, at generation. mutmut then caches by MTIME
+#     (__main__.py:create_mutants_for_file -- `if source_mtime < mutant_mtime:
+#     return unmodified`). Adding a test that covers new lines does NOT add
+#     mutants until `make mutation-clean`. The denominator is sticky.
+#   * Separately from coverage, mutmut skips DECORATED classes and all their
+#     children (mutation/file_mutation.py:292). @CrewBase therefore excludes all
+#     143 methods of UnifiedSolutionCrew by construction -- execute_seed_pipeline
+#     and _semantic_seed_identity_matches included.
+#
+# The fix for all three is honesty, not removal: `make mutation-denominator`
+# (probes/mutation_denominator.py) publishes the covered-line fraction next to
+# every score and FAILS on any function that generated zero mutants without a
+# written, mechanically re-verified reason.
+mutate_only_covered_lines = true
+
+# Test selection: every unit test file that imports one of the three targets.
+# Deliberately excludes tests/integration/ — that directory contains the live-LLM
+# seed-identity judge eval, and the `-m "not integration"` spend guard in
+# [tool.pytest.ini_options] is inherited (mutmut copies pyproject.toml into the
+# mutants/ sandbox), but the selection here is a second, explicit guard.
+pytest_add_cli_args_test_selection = [
+    "tests/unit/crews/test_delivery_format_contract.py",
+    "tests/unit/crews/test_seed_identity_enforcement.py",
+    "tests/unit/crews/test_seed_pipeline.py",
+    "tests/unit/crews/test_seed_uniformity_contract.py",
+    "tests/unit/flows/test_seed_identity_trace_write.py",
+    "tests/unit/flows/test_validate_idea_stage5.py",
+    "tests/unit/report/test_idea_validation_block.py",
+    "tests/unit/report/test_idea_validation_fixture.py",
+    "tests/unit/report/test_idea_validation_outcome_resolver.py",
+    "tests/unit/report/test_not_evaluated_fixture_contract.py",
+    "tests/unit/report/test_report_package_imports.py",
+    "tests/unit/test_parity_probe.py",
+    "tests/unit/test_seed_dispatch_id_reset.py",
+    "tests/unit/utils/test_delivery_format_seed_identity.py",
+    "tests/unit/utils/test_red_team_finding_types.py",
+    "tests/unit/utils/test_seed_clause_drift.py",
+    "tests/unit/utils/test_seed_identity_corpus.py",
+    "tests/unit/utils/test_seed_identity_evaluation_fields.py",
+]
+
+# --no-cov: [tool.pytest.ini_options].addopts turns coverage on for every pytest
+# invocation. That is correct for the normal suite and load-bearing elsewhere, but
+# under mutation it is paid once per mutant for a report nobody reads. Overriding
+# on the command line leaves addopts untouched.
+# -p no:cacheprovider: the mutants/ sandbox is disposable; don't write .pytest_cache.
+# --tb=no -q: mutmut prefixes --tb=native, which would print a full traceback for
+# every one of thousands of mutant runs. The short-summary line survives and still
+# names the failing test and its exception -- that is what diagnosed the missing
+# frontend fixture above, with these flags already in place. Changing this list
+# changes mutmut's `test_execution` config fingerprint and invalidates every cached
+# mutant verdict, so re-measure the baseline in the same commit if you touch it.
+#
+# EDITING THIS FILE AT ALL is milder but not free: pyproject.toml is one of
+# mutmut's watched dependency files (__main__.py:_DEFAULT_WATCHED_FILES). The next
+# `mutmut run` after any edit here -- comments included -- prints "N non-Python
+# file(s) changed since the last full run ... cached results were kept". With the
+# default on_dependency_change = "warn" the verdicts SURVIVE; only setting it to
+# "rerun" would reset them. Fingerprint invalidation is triggered by the VALUES of
+# pytest_add_cli_args / pytest_add_cli_args_test_selection / the timeout keys, not
+# by the file's bytes.
+pytest_add_cli_args = ["--no-cov", "-p", "no:cacheprovider", "--tb=no", "-q"]
+
+# Files the selected tests read off disk. mutmut runs pytest inside `mutants/`, so
+# anything resolved relative to the repo root has to be copied in or the test dies
+# with FileNotFoundError -- which mutmut reports as "failed to collect stats", i.e.
+# the whole run aborts. The frontend fixture dir is needed by
+# tests/unit/report/test_not_evaluated_fixture_contract.py, which resolves
+# parents[3]/"frontend"/... (verified: without it, stats collection exits 1).
+also_copy = [
+    ".env.example",
+    "tests/fixtures",
+    "frontend/src/lib/components/__tests__/fixtures",
+]
+
+# Kill the run rather than hang if a mutant produces an infinite loop.
+timeout_multiplier = 6.0
+timeout_constant = 10.0

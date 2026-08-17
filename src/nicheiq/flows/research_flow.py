@@ -2928,8 +2928,10 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 generic_count = 0
                 reddit_comments_count = 0
                 top_subreddits: list[dict] = []
+                collection_timestamp = None
                 social = getattr(state, "social_content", None)
                 if social:
+                    collection_timestamp = getattr(social, "collection_timestamp", None)
                     # Defensive: pydantic models default to [], but treat None
                     # the same to be safe.
                     reddit_posts = getattr(social, "reddit_posts", []) or []
@@ -2959,8 +2961,20 @@ say so — an honest empty landscape is correct, a foreign one is not.
                     "twitter_threads_analyzed": twitter_count,
                     "generic_posts_analyzed": generic_count,
                     "top_subreddits": top_subreddits,
-                    # Materializer-write timestamp (no upstream scrape time).
-                    "collection_date": datetime.utcnow().isoformat(),
+                    # WHEN THE CORPUS WAS SCRAPED, not when this document was written —
+                    # same meaning as the report path
+                    # (ReportGenerator._generate_research_metadata, which fills the same
+                    # field of the same model from the same attribute) and same meaning as
+                    # ResearchMetadata.collection_date's own contract, "when data collection
+                    # occurred". This used to stamp utcnow() under a comment claiming there
+                    # was no upstream scrape time; there is, and the two producers of one
+                    # field disagreed by two weeks on the captured 8f35ea6b run.
+                    # `generated_at` above is the write time and remains so.
+                    # No corpus means no collection: null, never a fabricated fresh date.
+                    "collection_date": (
+                        collection_timestamp.isoformat()
+                        if collection_timestamp is not None else None
+                    ),
                     "filtering_stats": fs,
                     "started_at": state.started_at.isoformat() if getattr(state, "started_at", None) else None,
                     "completed_stages": getattr(state, "completed_stages", []),

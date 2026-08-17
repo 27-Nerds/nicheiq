@@ -1,0 +1,46 @@
+{
+  "geographic_priorities": [
+    "Not geographically differentiated - no location terms in validated keywords"
+  ],
+  "category_pivot_recommendation": null,
+  "feature_priorities": [
+    {
+      "feature_name": "Green coffee safety-risk database",
+      "priority": 1.0,
+      "keyword_support": 2.0,
+      "rationale": "The supplied top-keyword set contains 'green coffee' at 74,000 monthly searches and 'green beans coffee' at 18,100, directly validating demand around the product's green-coffee subject. This is the strongest clearly aligned feature cluster available in the summarized data."
+    },
+    {
+      "feature_name": "Food safety risk analysis",
+      "priority": 2.0,
+      "keyword_support": 1.0,
+      "rationale": "'food safety' generates 90,500 monthly searches, the largest supplied keyword, confirming substantial interest in the underlying risk domain. The broadness of this term means the product should connect its coffee-specific analysis clearly to food-safety workflows rather than position itself only as a coffee directory."
+    },
+    {
+      "feature_name": "Quality-control evidence and reporting",
+      "priority": 3.0,
+      "keyword_support": 1.0,
+      "rationale": "'quality control' generates 74,000 monthly searches, indicating strong demand for operational assurance and documentation. Reporting that makes supplier-risk evidence defensible can align the product with this demand, although the supplied summary does not provide the full keyword list needed to calculate a complete support count."
+    },
+    {
+      "feature_name": "FDA import refusal and alert search",
+      "priority": 4.0,
+      "keyword_support": 0.0,
+      "rationale": "FDA import refusal data and FDA coffee import alerts are core product capabilities, but no FDA-specific term appears in the supplied top-keyword summary, so direct keyword support cannot be confirmed from the available evidence. Keep this feature central to product credibility, but validate its search demand before expanding it into a standalone acquisition pillar."
+    },
+    {
+      "feature_name": "Origin-level searchable safety records",
+      "priority": 5.0,
+      "keyword_support": 0.0,
+      "rationale": "Country-level searchable pages are strategically important to the proposed experience, but the validated summary contains no location terms and no geographic keyword distribution. Build the data architecture for origin pages, while treating programmatic geographic SEO as unvalidated until the complete keyword export confirms demand."
+    }
+  ],
+  "strategic_insights": [
+    "There is no geographic signal in the supplied validation data: top_geographic_keywords is empty and none of the reported validated terms contains a location. Do not prioritize countries or launch country-specific landing pages based on assumption; first collect country/origin query data.",
+    "Demand is concentrated in broad category terms: 'food safety' has 90,500 monthly searches, while 'green coffee' and 'quality control' each have 74,000. This creates a large acquisition opportunity but also a positioning risk because broad traffic may not be seeking coffee supplier-risk intelligence; landing pages must qualify the audience with coffee-import, origin-risk, and wholesale-roaster use cases.",
+    "The 67 measurable keywords generate 325,010 monthly searches, with an exceptional demand score of 0.9186 and an average of 4,850.90 searches per keyword. The opportunity is large enough to support several content hubs, but the summarized top terms alone do not prove commercial intent or willingness to pay.",
+    "Average competition is only 10.35 on a 0-100 scale against 325,010 monthly searches, indicating unusually favorable organic-entry conditions at the aggregate level. Prioritize narrow, product-adjacent pages around food-safety evidence, green-coffee risk, and quality-control documentation before attempting to compete broadly for generic 'food safety' traffic.",
+    "The dataset reports keyword diversity and high-volume presence but does not provide the full query list, intent labels, seasonality, or competitor-specific terms. Consequently, comparison pages, free-trial pages, and purchase-intent pages should not yet be treated as validated priorities; obtain the full export before committing roadmap resources to those acquisition paths.",
+    "The absence of reported location terms directly constrains the original country-page SEO concept: searchable origin records may be a strong product feature, but there is no evidence that country-specific pages will acquire organic traffic. Use them initially as evidence and workflow pages linked from topical content, then scale them programmatically only after location-query demand is measured."
+  ]
+}

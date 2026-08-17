@@ -6,10 +6,14 @@ everything OUTSIDE that set must keep reproducing the live block byte-for-byte.
 """
 
 import json
+import os
+
+import pytest
 
 from nicheiq.report.idea_validation_block import build_idea_validation_block
 
 from .fixture_056b2c68 import expected_block_v1, state_from_fixture
+from .fixture_idea_check_states import CAPTURES, generate_block, golden_path
 
 # Keys the Research Quality Pass deliberately changes (asserted per-PR in the
 # feature tests). Everything else is pinned to the live run.
@@ -162,7 +166,9 @@ def test_live_parts_copy_reconciled():
 
     parts = {p["key"]: p for p in _live_block()["parts"]}
     assert parts["problem_real"]["detail"] == "Linked to real discussion in this run."
-    assert parts["space_occupied"]["answer"] == "No direct equivalent"
+    # A5 R2: "No direct equivalent" asserted a fact about the market; the run knows only
+    # that its own queries (built from this idea's wording) returned nothing.
+    assert parts["space_occupied"]["answer"] == "No equivalent surfaced"
     assert parts["demand"]["detail"] == DEMAND_NOT_MEASURED
 
 
@@ -193,3 +199,166 @@ def test_live_seed_display_composite_score_matches_workbench_scale():
     """The seed's /100 score computed with the workbench's own ranking contract
     (angle composite + visible-pool audience-fit coverage)."""
     assert _live_block()["seed_display_composite_score"] == 53
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# THE OTHER CAPTURED STATES — one per branch tuple `056b2c68` cannot reach.
+#
+# The machinery above is right and was pointed at too little: ONE run in ONE state, held
+# byte-exact. A mutation campaign over `report/idea_validation_block.py` left 476
+# survivors, and the triage found no mutmut noise and no guard elsewhere — the survivors
+# are, almost exactly, the branches this run does not take. `056b2c68` has parity
+# "none found", `red_team_verdict: None`, no typed findings, an active seed, an empty
+# `idea_ruled_out`, a `not_attempted` pivot, and a trim that dropped `audience_fit`, so
+# `named_buyer_count` is `None`. Everything on the other side of each of those is
+# unasserted, and no assertion written against THIS state can reach it.
+#
+# So the remedy is more captured states through the SAME byte-exact machinery, not
+# stronger assertions about this one. See `fixture_idea_check_states` for provenance,
+# the trim recipe, and why each run is here.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+
+def _check_golden(slug: str) -> dict:
+    generated = generate_block(slug)
+    path = golden_path(slug)
+    if os.environ.get("IDEA_VALIDATION_FIXTURE_REGEN"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(generated, indent=1) + "\n")
+
+    assert json.loads(path.read_text()) == generated, (
+        f"The vendored golden for the captured `{slug}` run ({path.name}) has drifted "
+        "from what build_idea_validation_block emits for it. If the change is deliberate, "
+        "regenerate:\n  IDEA_VALIDATION_FIXTURE_REGEN=1 pytest "
+        "tests/unit/report/test_idea_validation_fixture.py\n"
+        "Do NOT hand-edit the JSON: a golden in a shape the pipeline cannot produce is "
+        "exactly what made three rounds of report assertions pass vacuously."
+    )
+    return generated
+
+
+@pytest.mark.parametrize("slug", sorted(CAPTURES))
+def test_captured_state_block_matches_the_real_builder(slug):
+    """Byte-exact drift, per captured branch tuple. This one assertion is worth more than
+    any list of field checks: it fails on ANY change to ANY key of the block for a state
+    the pipeline demonstrably produced, and it names the state that changed."""
+    _check_golden(slug)
+
+
+def _tuple_of(block: dict) -> tuple:
+    """The branch coordinates a state exercises — what makes it worth its own capture."""
+    parts = {p["key"]: p["state"] for p in block["parts"]}
+    return (
+        block["outcome"],
+        parts["space_occupied"],
+        block["red_team_verdict"],
+        block["red_team_findings"] is not None,
+        block["seed_candidate_status"],
+        block["pivot"]["outcome"],
+        tuple(dict.fromkeys(k["source"] for k in block["kill_risks"])),
+    )
+
+
+def test_each_captured_state_takes_a_path_no_other_capture_takes():
+    """A fixture family is only as good as its spread. Six states that all land on
+    `worth_testing / none_found` would look like coverage and buy nothing, and the way
+    that happens is by accident — a checkpoint picked for one field while five others
+    quietly agree with a state already committed.
+
+    Pairwise-distinct branch tuples is the property that cannot be satisfied by accident,
+    and it is what makes the deletion of any one capture a visible loss rather than a
+    silent one.
+    """
+    tuples = {slug: _tuple_of(_check_golden(slug)) for slug in CAPTURES}
+    assert len(set(tuples.values())) == len(tuples), (
+        "two captured states take the same path through the block: "
+        f"{sorted(tuples.items(), key=lambda kv: kv[1])}"
+    )
+
+
+def test_the_captures_reach_the_families_the_legacy_fixture_cannot():
+    """Named, because "distinct" alone would be satisfied by six near-misses.
+
+    Each value below is absent from `idea_check_056b2c68.json` — it is the reason its
+    run was captured, stated where a future reader can check it rather than only in a
+    docstring.
+    """
+    blocks = {slug: _check_golden(slug) for slug in CAPTURES}
+    outcomes = {b["outcome"] for b in blocks.values()}
+    spaces = {p["state"] for b in blocks.values() for p in b["parts"]
+              if p["key"] == "space_occupied"}
+
+    # The legacy fixture reaches exactly `worth_testing` / `none_found`.
+    legacy = _live_block()
+    assert legacy["outcome"] == "worth_testing"
+    assert {"occupied", "ruled_out", "premise_unproven"} <= outcomes
+    assert {"shipped", "partial", "review_concerns"} <= spaces
+
+    # A demoted seed: the `ruled_out` branch outranks a `shipped` parity, the seed stops
+    # being purchasable, and the demotion reason is quoted back with its embedded parity
+    # stamp humanized (`Already well-served — ` -> `Already well-served: `).
+    demoted = blocks["demoted_rentec_ruled_out"]
+    assert demoted["seed_candidate_status"] == "demoted"
+    assert demoted["seed_purchasable"] is False
+    assert demoted["incumbent_parity"].startswith("shipped by Rentec Direct")
+    assert demoted["outcome"] == "ruled_out"
+    assert demoted["demotion_reason"].startswith("Already well-served: ")
+    assert " — " not in demoted["demotion_reason"]
+
+    # Typed red-team findings: the `_kill_risks` arm that carries `finding_kind`, and the
+    # affirmative-evidence headline. The legacy run has `red_team_findings is None`.
+    typed = blocks["typed_findings_killed"]
+    assert [f["kind"] for f in typed["red_team_findings"]] == [
+        "verified_incumbent_overlap", "verified_free_or_bundled_alternative",
+        "evidence_gap"]
+    assert all(r["source"] == "adversarial_review" for r in typed["kill_risks"])
+    assert [r["finding_kind"] for r in typed["kill_risks"]] == [
+        "verified_incumbent_overlap", "verified_free_or_bundled_alternative",
+        "evidence_gap"]
+    assert "found verified counterevidence" in typed["headline"]
+
+    # …and the other arm of the same verdict: killed with PROSE caveats only, where
+    # `has_affirmative_red_team_findings` is false because the record is legacy rather
+    # than because the evidence was weak. Same verdict word, different sentence.
+    unverified = blocks["none_found_killed_unverified"]
+    assert unverified["red_team_verdict"] == "killed"
+    assert unverified["red_team_findings"] is None
+    assert "could not confirm the premise" in unverified["headline"]
+    assert all(r.get("finding_kind") is None for r in unverified["kill_risks"])
+
+    # An ACCEPTED pivot: a second `user_seed` candidate under `validate_pivot`, whose
+    # identity is stamped onto the pivot record — and which is still excluded from the
+    # market's alternatives.
+    pivoted = blocks["pivot_accepted_teamsnap"]
+    assert pivoted["pivot"]["outcome"] == "accepted"
+    assert pivoted["pivot"]["idea_id"] and pivoted["pivot"]["name"]
+    assert pivoted["pivot"]["idea_revision"] is not None
+    assert all(row["idea_id"] != pivoted["pivot"]["idea_id"]
+               for row in pivoted["alternatives"]["top"])
+
+    # A rejected pivot's `trigger_finding` renders humanized, while state keeps the stamp.
+    hubdoc = blocks["partial_hubdoc_killed"]
+    assert hubdoc["pivot"]["outcome"] == "rejected"
+    assert hubdoc["pivot"]["trigger_finding"] == (
+        "Hubdoc users send auto-reminders via Slack every Monday morning for receipts")
+    assert hubdoc["incumbent_parity"].startswith("partial by Hubdoc: Hubdoc ")
+
+
+def test_a_captured_pool_carries_an_odd_named_buyer_count():
+    """`named_buyer_count` is `sum(1 for f in fits if f is True)`, and until these
+    captures landed its ONLY two committed values were `None` (the legacy trim dropped
+    `audience_fit`) and `0` — the exact two values at which the arithmetic is invisible.
+    `sum(2 …)`, `sum(0 …)` and `len(fits)` all agree with the real expression at 0.
+
+    A pool with an odd count ≥ 1 separates all three at once, and the byte-exact goldens
+    above then hold it for free. Asserted here rather than left implicit so a recapture
+    that happens to land on all-even counts fails loudly instead of quietly giving the
+    doubling mutant its cover back.
+    """
+    counts = {slug: _check_golden(slug)["alternatives"]["named_buyer_count"]
+              for slug in CAPTURES}
+    assert all(isinstance(c, int) for c in counts.values()), counts
+    assert any(c >= 1 and c % 2 == 1 for c in counts.values()), (
+        f"no captured pool separates sum(1 …) from sum(2 …) / len(fits): {counts}")
+    # The legacy fixture is the None case; keep the contrast explicit.
+    assert _live_block()["alternatives"]["named_buyer_count"] is None

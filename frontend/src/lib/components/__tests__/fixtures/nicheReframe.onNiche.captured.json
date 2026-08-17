@@ -1,0 +1,90 @@
+{
+  "_provenance": {
+    "source_file": "tests/fixtures/generated/finalReportBase.generated.json",
+    "source_sha256": "a8b40c3f910445ccc5992d8606be0f436ee0dbdabcc51af8d34c98e713bc485d",
+    "json_paths": [
+      ".niche",
+      ".executive_summary",
+      ".selected_solution_name",
+      ".selection_rationale",
+      ".niche_context"
+    ],
+    "sliced_by": "python3 -c \"import json;d=json.load(open(SRC));json.dump({k:d[k] for k in ['niche','generated_at','executive_summary','selected_solution_name','selection_rationale','niche_context'] if k in d},open(DEST,'w'),indent=2)\"",
+    "note": "Real ReportGenerator output for the captured 8f35ea6b run. Stage 1 classified audience_scope='niche' — no reframe happened, so every surface must stay silent. Regenerate with REPORT_FIXTURE_REGEN=1 pytest tests/unit/report/test_final_report_fixture_contract.py, then re-slice."
+  },
+  "niche": "The specialty coffee roasting market involves the sourcing, inventory management, and sensory evaluation of green coffee beans to produce high-quality roasted coffee. It encompasses the technical workflow of roasting profiles, quality control via cupping protocols, and the logistical management of raw agricultural inventory.",
+  "executive_summary": "Market research completed for The specialty coffee roasting market involves the sourcing, inventory management, and sensory evaluation of green coffee beans to produce high-quality roasted coffee. It encompasses the technical workflow of roasting profiles, quality control via cupping protocols, and the logistical management of raw agricultural inventory.. Identified 21 validated pain points and 12 solution concepts. Selected solution: OriginSafetyClearanceIndex.",
+  "selected_solution_name": "OriginSafetyClearanceIndex",
+  "selection_rationale": "User selected 'OriginSafetyClearanceIndex' via interactive flow. Rationale: Not provided. Selected after reviewing AI-generated solution ideas, pricing/keyword validation data, and competitive landscape analysis.\n\n**Keyword-validation note:** keyword validation favors **DefectFingerprint** (adjusted composite 0.62 vs 0.56), but your selected solution is kept. Review DefectFingerprint as a runner-up.",
+  "niche_context": {
+    "anchor_communities": [
+      "r/Roasting",
+      "Home-Barista.com Roasting Coffee forum",
+      "Coffee Roasters Club forum",
+      "Roasters Guild of the Specialty Coffee Association",
+      "Mill City Roasters Coffee Roasting Community",
+      "r/IndiaCoffee (Reddit, discovered)",
+      "r/coffee_roasters (Reddit, discovered)",
+      "r/switzerlandcoffee (Reddit, discovered)",
+      "r/greencoffee (Reddit, discovered)"
+    ],
+    "anchor_entities": [
+      "SCA Coffee Value Assessment",
+      "SCA Cupping Protocol",
+      "SCA Green Coffee Grading Standards",
+      "Coffee Taster’s Flavor Wheel",
+      "World Coffee Research Sensory Lexicon",
+      "Cropster Roast",
+      "Cropster Inventory",
+      "RoasterTools",
+      "Artisan Roaster Scope",
+      "IKAWA Pro X",
+      "Aillio Bullet R1 V2",
+      "Probat P12/2",
+      "Atago PAL-COFFEE",
+      "Agtron Gourmet Scale"
+    ],
+    "audience_jargon": [
+      "green coffee",
+      "lot separation",
+      "crop year",
+      "spot coffee",
+      "pre-ship sample",
+      "arrival sample",
+      "cupping score",
+      "defect count",
+      "water activity",
+      "first crack",
+      "development time ratio",
+      "roast loss"
+    ],
+    "audience_scope": "niche",
+    "community_search_terms": [
+      "coffee roasters",
+      "specialty roasting",
+      "green coffee",
+      "coffee cupping",
+      "micro roastery"
+    ],
+    "disambiguation_exclusions": [
+      "home espresso and consumer brewing enthusiasts",
+      "coffee-shop beverage service and café operations",
+      "green coffee extract supplements and weight-loss products",
+      "commodity coffee futures trading",
+      "coffee farming and agronomy",
+      "therapeutic cupping massage"
+    ],
+    "industry_boundaries": "This market covers the production and quality control side of specialty coffee, including green bean sourcing and roasting operations. It excludes the broader coffee shop service industry (barista training, cafe interior design), large-scale industrial commodity coffee processing, and home-roasting hobbyist equipment markets.",
+    "market_segments": [
+      "Micro-roasters selling direct-to-consumer online",
+      "Café-based roasters managing on-site production",
+      "Wholesale roasters supplying specialty coffee shops and restaurants",
+      "Subscription-based roastery businesses",
+      "Coffee roasting cooperatives and shared-space facilities"
+    ],
+    "niche_description": "The specialty coffee roasting market involves the sourcing, inventory management, and sensory evaluation of green coffee beans to produce high-quality roasted coffee. It encompasses the technical workflow of roasting profiles, quality control via cupping protocols, and the logistical management of raw agricultural inventory.",
+    "niche_input": "small-batch coffee roasters managing green coffee inventory and cupping scores",
+    "resolved_primary_audience": null,
+    "user_target_audience": null
+  }
+}

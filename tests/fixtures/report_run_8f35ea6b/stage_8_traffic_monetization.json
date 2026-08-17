@@ -1,0 +1,80 @@
+[
+  {
+    "solution_name": "OriginSafetyClearanceIndex",
+    "monetization_model": "Affiliate",
+    "estimated_monthly_pageviews": "1,773 - 3,198",
+    "traffic_source_breakdown": [
+      {
+        "source": "organic_search",
+        "percentage": "80%"
+      },
+      {
+        "source": "direct",
+        "percentage": "12%"
+      },
+      {
+        "source": "referral",
+        "percentage": "8%"
+      }
+    ],
+    "estimated_cpm_rate": "$2-$8 CPM (general food-safety, agriculture, and B2B information vertical)",
+    "estimated_monthly_ad_revenue": "$3 - $25",
+    "recommended_ad_networks": [
+      "Google AdSense"
+    ],
+    "affiliate_commission_rate": "0-10% (highly variable; no validated direct green-coffee procurement affiliate program identified)",
+    "estimated_affiliate_ctr": "0.5-2% of pageviews",
+    "estimated_monthly_affiliate_revenue": "$14 - $218",
+    "recommended_affiliate_programs": [],
+    "sponsored_listing_price": "$99/month per verified supplier or compliance-service listing",
+    "premium_placement_price": "$299/month for a featured origin, supplier, laboratory, auditor, or compliance-service placement",
+    "lead_gen_price_per_lead": "$25-$75 per qualified B2B lead",
+    "estimated_monthly_revenue_range": "$17 - $243",
+    "estimated_annual_revenue_range": "$204 - $2,916",
+    "break_even_traffic_threshold": "10,000 monthly pageviews",
+    "monetization_rationale": "The 68% commercial/transactional intent ratio triggers Rule 1, making affiliate or transaction-linked monetization the primary recommendation, with display advertising as the secondary channel. However, direct affiliate opportunities for green-coffee procurement and food-safety due diligence are limited and should not be fabricated; the strongest near-term opportunities are contextual referrals to compliance services, testing laboratories, audit providers, procurement tools, and relevant B2B vendors. Sponsored listings and qualified lead generation should be developed in parallel because the audience consists of wholesale roasters and other commercially valuable buyers.",
+    "scaling_strategy": "During months 1-3, publish the eight Tier 1 pages and place only lightweight AdSense units, source-linked compliance-service referrals, and clearly labeled vendor inquiry calls to action. The Tier 1 quick-win cluster has 24,490 monthly keyword volume and is projected to generate 1,262-2,138 visits per month. During months 3-9, expand into the 11 Tier 2 keywords, which add an estimated 263-702 visits per month, and test supplier-risk report downloads, laboratory referrals, compliance consultants, and sponsored verified listings. Once the site reaches 10,000 monthly pageviews, test Ezoic and direct B2B sponsorships; at 50,000 monthly pageviews, evaluate Mediavine or comparable premium monetization if eligibility and content-quality requirements are met. A $99 verified listing and a $299 featured placement can outperform ads with only one or two paying customers, while qualified leads can be sold to food-safety consultants, laboratories, auditors, and trade-compliance providers at $25-$75 each. The 15 Premium keywords could add 7,193-12,687 visits per month if rankings materialize, but this is full-potential upside rather than an allowable Year 1 or Year 3 forecast.",
+    "monetization_confidence": "Medium",
+    "saas_alternative_viable": true,
+    "saas_vs_traffic_recommendation": "A SaaS alternative is viable because roasters may repeatedly need saved supplier watchlists, FDA/RASFF change alerts, historical risk trends, exports, citations, and auditable procurement reports. The recommended sequence is traffic-first: build free country and origin pages to establish search visibility and trust, then introduce a low-cost monitoring tier and a team plan once users demonstrate recurring workflow value. A subscription product should supplement rather than replace the directory initially because the underlying government data is free and the site must first prove that normalized interpretation is actionable.",
+    "traffic_methodology": "The Year 1 forecast uses the provided difficulty-weighted Backlinko/Ahrefs model: 1,419-2,559 organic visitors per month and 1,773-3,198 total monthly pageviews after the stated 25% direct/referral uplift. This remains at or below the SEO Traffic Ceiling Y1 of 1,419-2,559 organic visits per month. New-site traffic is expected to be only 10-20% of steady state during months 1-3, with the Year 1 range generally requiring 6-12 months to mature. The phased forecast is used directly: Tier 1 quick wins are projected at 1,262-2,138 visits per month in months 1-3; Tier 2 contributes 263-702 visits per month during months 3-9; and Premium keyword upside is 7,193-12,687 visits per month after month 6, but is excluded from the constrained Year 1 and Year 3 ceiling.",
+    "traffic_data_sources": [
+      "Provided keyword validation results covering 67 analyzed keywords and 325,010 searches per month",
+      "Provided difficulty-weighted Backlinko/Ahrefs traffic model",
+      "FDA Import Refusal Reports",
+      "European Commission RASFF notifications",
+      "Provided traffic ceilings, intent distribution, and phased SEO estimates"
+    ],
+    "year3_monthly_pageviews": "1,906 - 3,550",
+    "year3_monthly_revenue": "$19 - $270/month before sponsored-listing and lead-generation upside",
+    "full_potential_monthly_pageviews": "10,898 - 19,409",
+    "full_potential_monthly_revenue": "$104 - $1,476/month before recurring B2B sponsorships and larger lead-generation contracts",
+    "revenue_growth_note": "The constrained Year 1 and Year 3 traffic forecasts remain modest because ranking probability limits capture despite 325,010 monthly keyword volume. The Year 1 baseline of $17-$243 per month is therefore dominated by affiliate or referral conversion rather than advertising. At the supplied Year 3 pageview range, ads remain approximately $4-$28 per month at the $2-$8 CPM band, while affiliate revenue scales to approximately $15-$242 per month. Full-potential revenue assumes the Premium keyword phase succeeds and should not be treated as a Year 1 or Year 3 commitment. One $99 sponsored listing or one $25-$75 qualified lead can materially exceed the value of thousands of low-RPM pageviews.",
+    "revenue_milestones": [
+      {
+        "traffic": "1,773-3,198 pageviews/month",
+        "ad_revenue": "$3-$25/month",
+        "unlock": "Google AdSense, contextual compliance referrals, downloadable risk-report calls to action, and initial outreach to laboratories and food-safety consultants",
+        "total_potential": "$17-$243/month from ads and affiliate/referral activity"
+      },
+      {
+        "traffic": "3,550 pageviews/month",
+        "ad_revenue": "$7-$28/month",
+        "unlock": "Year 3 constrained ceiling; stronger case for paid monitoring trials, saved searches, and the first $99 verified listings",
+        "total_potential": "$22-$270/month before B2B listing and lead revenue"
+      },
+      {
+        "traffic": "10,000 pageviews/month",
+        "ad_revenue": "$20-$80/month",
+        "unlock": "Ezoic eligibility under the stated threshold, direct sponsorship packages, supplier verification offers, and recurring monitoring-plan validation",
+        "total_potential": "$79-$762/month before sponsored placements, depending on affiliate conversion and B2B leads"
+      },
+      {
+        "traffic": "50,000 pageviews/month",
+        "ad_revenue": "$750-$1,500/month at the Mediavine benchmark band",
+        "unlock": "Potential premium ad-network eligibility, direct newsletter sponsorships, multiple paid verified listings, and team-level compliance-monitoring sales",
+        "total_potential": "$1,000-$3,500+/month with ads, referrals, listings, and qualified B2B leads"
+      }
+    ]
+  }
+]

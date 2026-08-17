@@ -113,12 +113,12 @@ _SEED_JUDGE_RETRY_DELAY_S = 1.5
 #
 # **THE CAP IS SATURATED IN PRODUCTION — DO NOT LOWER IT.** The figures this comment used to
 # carry ("rank 1, 2 and 1 — never past 2 … one to spare … lowering it to 2 would still have
-# covered all three pools") were read off `scripts/seed_rank_pool_ab.py`, whose own output
+# covered all three pools") were read off `probes/seed_rank_pool_ab.py`, whose own output
 # records `critic_driven: false`. That is an ordering PRODUCTION NEVER TAKES: `_run_seed_cell`
 # calls `_score_concepts` BEFORE handing the pool to `_tournament_cell`, so the concepts being
 # ordered here always carry critic values. Re-derived with the funded production critic over the
 # 3 captured live pools for job 03d20ff6, 2 critic repeats
-# (`scripts/seed_rank_critic_on_rederive.py`, deterministic, replayed artifacts, no network):
+# (`probes/seed_rank_critic_on_rederive.py`, deterministic, replayed artifacts, no network):
 #
 #     critic OFF (how the A/B ran):  first ACCEPT at ranks [1, 2, 2] on both repeats
 #     critic ON  (how production runs): [1, 3, 1] and [1, 3, 2]  -> deepest = 3 = THE CAP
@@ -1699,6 +1699,21 @@ class UnifiedSolutionCrew:
         self.ruled_out_pains: list[dict] = []
         self.overlap_groups: list[dict] = []
         self.funnel_counts: dict = {}
+        # --- Step 0 instrumentation: OBSERVABILITY ONLY, never gates anything -------------
+        # Search-arm attribution ledger. Before this existed, "which query arm produced this
+        # finding?" was permanently unanswerable after a run: parity snippets are
+        # function-local, and the parity / adjacent-base arms never touched `_ma_serper_calls`
+        # at all, so spend was under-reported AND unattributed. See `search_debug_payload`
+        # for why this is a SEPARATE counter rather than a hook into the gating one.
+        self.search_arm_log: list[dict] = []          # one row per query issued
+        self.search_arm_spend: dict[str, int] = {}    # arm -> queries issued (non-gating)
+        self.search_arm_findings: list[dict] = []     # arm -> per-idea finding produced
+        # Pre/post snapshots of every in-place idea replacement, so "did the rewrite
+        # REPOSITION the product or merely refine it?" is answerable after the fact.
+        self.idea_revision_log: list[dict] = []
+        # old solution_name -> {"successor", "rebuild_origin", "groups_updated"} for the
+        # overlap-group membership maintenance in `_rename_overlap_group_member`.
+        self.overlap_group_successors: dict[str, dict] = {}
         # Buyer-job family partition + allocation telemetry (docs/DIVERSITY_DECISION_2026-08.md).
         # The partition is computed ONCE per run by `_ensure_buyer_job_partition` right before
         # cell allocation; None means "never computed" (unit tests / offline replays / a run that
@@ -2447,6 +2462,197 @@ class UnifiedSolutionCrew:
 
         return {q: (result_map.get(q, "") or "") for q in queries}
 
+    # Bounded excerpt kept per snippet in the search-arm ledger. Full snippet TEXT is
+    # deliberately not stored: the direct-parity arm alone issues up to 3 queries per idea
+    # per wave at 1500 chars each (~60KB/wave on a 13-idea pool) and the probe runs once per
+    # wave — a text-storing ledger would add hundreds of KB to a metadata.json that is
+    # already ~100KB, for data whose only consumer is arm attribution. A sha256 prefix gives
+    # snippet IDENTITY (two arms landing on the same result are provably the same row, which
+    # is exactly the cache-overlap question), the excerpt keeps a row human-auditable without
+    # a re-run, and `chars` preserves the size signal the hash destroys.
+    _SNIPPET_EXCERPT_CHARS = 240
+
+    def _reset_search_arm_instrumentation(self) -> None:
+        """Per-run reset of the Step-0 ledgers, alongside the existing `_ma_serper_calls` /
+        `overlap_groups` resets — a regenerate/seed batch reuses the crew instance, and a
+        ledger carried over from the previous batch would misattribute its spend."""
+        self.search_arm_log = []
+        self.search_arm_spend = {}
+        self.search_arm_findings = []
+        self.idea_revision_log = []
+        self.overlap_group_successors = {}
+
+    def _snippet_fingerprint(self, text: str) -> dict:
+        """Identity + bounded excerpt for one search result. See `_SNIPPET_EXCERPT_CHARS`."""
+        import hashlib
+        t = str(text or "")
+        return {
+            "sha256": hashlib.sha256(t.encode("utf-8", "replace")).hexdigest()[:16],
+            "chars": len(t),
+            "excerpt": t[: self._SNIPPET_EXCERPT_CHARS],
+        }
+
+    def _record_search_arm(self, arm: str, query: str, result, *,
+                           idea: str | None = None, counted: bool = False) -> None:
+        """Append one {arm, idea, query, snippet identity} row to the search-arm ledger.
+
+        OBSERVABILITY ONLY — this must never change what the pipeline does, so it
+        deliberately does NOT touch `_ma_serper_calls`. That counter GATES spend
+        (`_ma_search_batch` truncates its miss list to `budget - used`, and `_ma_search`
+        returns None past the cap), and the currently-uncounted arms run BEFORE counted ones
+        inside the same probe — see `search_debug_payload` for the ordering proof. `counted`
+        records whether this query ALSO went through the gating counter, so the payload can
+        report true spend and the gated subset separately.
+
+        Fail-soft by construction: instrumentation may never break a probe."""
+        try:
+            row: dict = {
+                "arm": arm,
+                "idea": (str(idea)[:160] if idea else None),
+                "query": str(query or "")[:200],
+                "counted": bool(counted),
+                "empty": not bool(result),
+            }
+            if result:
+                row["snippet"] = self._snippet_fingerprint(result)
+            log = getattr(self, "search_arm_log", None)
+            if log is None:
+                log = self.search_arm_log = []
+            log.append(row)
+            spend = getattr(self, "search_arm_spend", None)
+            if spend is None:
+                spend = self.search_arm_spend = {}
+            spend[arm] = spend.get(arm, 0) + 1
+        except Exception:  # noqa: BLE001 — instrumentation never breaks a probe
+            pass
+
+    def _record_search_arm_finding(self, arm: str, idea_name, finding) -> None:
+        """Record the finding an arm produced for one idea, closing the
+        {queries -> snippets -> finding} chain the ledger exists to make derivable."""
+        try:
+            findings = getattr(self, "search_arm_findings", None)
+            if findings is None:
+                findings = self.search_arm_findings = []
+            findings.append({
+                "arm": arm,
+                "idea": str(idea_name or "")[:160],
+                "finding": str(finding or "")[:400],
+            })
+        except Exception:  # noqa: BLE001 — instrumentation never breaks a probe
+            pass
+
+    def search_debug_payload(self) -> dict:
+        """The Step-0 artifact: per-arm search spend, the query->snippet->finding chain, and
+        the pre/post idea-replacement snapshots. Persisted by `_save_search_debug_payload`.
+
+        WHY SPEND IS COUNTED HERE AND NOT IN `_ma_serper_calls` (Step 0's stop condition).
+        The brief asked for the uncounted arms to be routed through the counted path so spend
+        becomes budget-visible, and to STOP if that changes budget-gated behaviour. It does:
+
+          * `_probe_mechanism_parity` issues its own per-idea queries with a raw
+            `search_tool.run` BEFORE it calls `_probe_adjacent_markets` and
+            `_probe_toolbelt_free_bundle` later in the same method.
+          * Those two downstream arms DO go through `_ma_search_batch`, which truncates its
+            cache-miss list to `remaining = market_awareness_serper_budget - _ma_serper_calls`.
+          * So incrementing `_ma_serper_calls` for the direct-parity arm strictly lowers
+            `remaining` for the adjacent niche-frame and toolbelt arms. Queries that are sent
+            today would stop being sent, their snippets would vanish from the judge prompts,
+            and those judges are precisely what write `incumbent_parity` — whose prefix
+            selects a `market_fit` cap in `_parity_cap`. That is a money-bearing change
+            wearing instrumentation's clothes, which is what the brief forbade.
+          * `budget_exempt=True` does not escape this: it lifts the gate for its OWN call but
+            still increments the shared counter, starving every later non-exempt arm.
+
+        So spend is made VISIBLE (here, and in the run summary log) while the gating counter
+        is left byte-for-byte alone. `counted` on each row marks which queries the gating
+        counter already saw, so `gated_spend` vs `total_spend` shows the under-report."""
+        log = list(getattr(self, "search_arm_log", None) or [])
+        successors = dict(getattr(self, "overlap_group_successors", None) or {})
+        by_origin: dict[str, list[dict]] = {}
+        for old, info in successors.items():
+            origin = str(info.get("rebuild_origin") or "unknown")
+            by_origin.setdefault(origin, []).append({"predecessor": old, **info})
+        return {
+            "search_arm_spend": dict(getattr(self, "search_arm_spend", None) or {}),
+            "total_spend": len(log),
+            "gated_spend": sum(1 for r in log if r.get("counted")),
+            "ma_serper_calls": getattr(self, "_ma_serper_calls", 0),
+            "ma_serper_budget": settings.market_awareness_serper_budget,
+            "search_arm_log": log,
+            "search_arm_findings": list(getattr(self, "search_arm_findings", None) or []),
+            "idea_revisions": list(getattr(self, "idea_revision_log", None) or []),
+            "overlap_group_successors": successors,
+            "overlap_group_successors_by_origin": by_origin,
+            "overlap_groups_final": [dict(g) for g in
+                                     (getattr(self, "overlap_groups", None) or [])],
+        }
+
+    def _save_search_debug_payload(self) -> None:
+        """Persist `search_debug_payload()` next to the pipeline's other stage checkpoints.
+
+        Uses the crew's own `checkpoint_mgr.save_stage` (fail-soft, and a no-op when
+        checkpointing is disabled) rather than routing through the flow's state model — the
+        payload is pure run diagnostics with no consumer in the report or the frontend, so it
+        has no business widening `ResearchState`."""
+        mgr = getattr(self, "checkpoint_mgr", None)
+        if mgr is None:
+            return
+        try:
+            mgr.save_stage("stage_5_search_arm_debug", self.search_debug_payload())
+        except Exception as e:  # noqa: BLE001 — diagnostics never abort a run
+            logger.warning(f"[SearchArmDebug] save skipped (non-fatal): {str(e)[:120]}")
+
+    def _snapshot_idea_for_revision(self, idea) -> dict:
+        """Bounded snapshot of the fields that distinguish a REPOSITION from a REFINE:
+        identity, who it is for, what it does, and the parity finding that motivated the
+        rewrite. Scores come along so an accept-guard decision stays reconstructible."""
+        return {
+            "solution_name": (getattr(idea, "solution_name", None) or "")[:160],
+            "value_proposition": (getattr(idea, "value_proposition", None) or "")[:400],
+            "target_personas": [str(p)[:80] for p in
+                                (getattr(idea, "target_personas", None) or [])[:5]],
+            "mechanism_tag": (getattr(idea, "mechanism_tag", None) or "")[:80],
+            "data_source_tag": (getattr(idea, "data_source_tag", None) or "")[:80],
+            "project_type": (getattr(idea, "project_type", None) or "")[:80],
+            "source_pain": (getattr(idea, "source_pain", None) or "")[:200],
+            "incumbent_parity": (getattr(idea, "incumbent_parity", None) or "")[:200],
+            "idea_id": getattr(idea, "idea_id", None),
+            "idea_revision": getattr(idea, "idea_revision", None),
+            "scores": {k: getattr(idea, k, None) for k in
+                       ("market_fit_score", "technical_feasibility_score", "novelty_score",
+                        "seo_scalability_score", "build_feasibility_score",
+                        "solo_dev_feasibility")},
+        }
+
+    def _commit_idea_replacement(self, orig, rev, *, origin: str) -> None:
+        """Single entry point for every in-place `ideas[idx] = rev` replacement.
+
+        Does two things, both required by a replacement and neither previously done:
+          1. Step 0 — persists the PRE-revision idea beside its successor, so how often a
+             red-team rewrite repositions rather than refines becomes measurable.
+          2. Step 1 — keeps `self.overlap_groups` membership in step with the new name via
+             `_rename_overlap_group_member`.
+
+        Fail-soft: a replacement is already committed to the pool by the time this runs, so
+        bookkeeping must never raise back into the caller's accept-guard."""
+        try:
+            log = getattr(self, "idea_revision_log", None)
+            if log is None:
+                log = self.idea_revision_log = []
+            log.append({
+                "rebuild_origin": origin,
+                "before": self._snapshot_idea_for_revision(orig),
+                "after": self._snapshot_idea_for_revision(rev),
+                "renamed": ((getattr(orig, "solution_name", None) or "").strip()
+                            != (getattr(rev, "solution_name", None) or "").strip()),
+            })
+        except Exception as e:  # noqa: BLE001 — diagnostics never break a replacement
+            logger.warning(f"[IdeaRevisionLog] skipped (non-fatal): {str(e)[:120]}")
+        self._rename_overlap_group_member(
+            getattr(orig, "solution_name", None),
+            getattr(rev, "solution_name", None),
+            origin=origin)
+
     def _probe_adjacent_markets(self, top: list) -> tuple[list[str], int]:
         """Audience-independent incumbent probe (JTBD budget-line analysis): the direct parity
         probe searches by each idea's OWN audience framing, so it misses incumbents in the
@@ -2584,10 +2790,16 @@ class UnifiedSolutionCrew:
                     chunks = []
                     for q in (f"{cat} software", f"{cat} pricing"):
                         res = base_results.get(q)
+                        # `counted=False`: this batch bypasses `_ma_serper_calls` entirely
+                        # (that is the under-report Step 0 exists to expose).
+                        self._record_search_arm("adjacent_base", q, res,
+                                                idea=f"family:{key}", counted=False)
                         if res:
                             chunks.append(res[:1500])
                     for q in niche_queries_by_key.get(key, []):
                         res = niche_results.get(q)
+                        self._record_search_arm("adjacent_niche_frame", q, res,
+                                                idea=f"family:{key}", counted=True)
                         if res:
                             chunks.append(res[:1500])
                     if chunks:
@@ -2676,6 +2888,8 @@ class UnifiedSolutionCrew:
                         for idea in members:
                             idea.adjacent_market_parity = note
                             covered += 1
+                            self._record_search_arm_finding(
+                                "adjacent_base", getattr(idea, "solution_name", None), note)
                             adjacent_lines.append(
                                 f"- {getattr(idea, 'solution_name', '?')}: {note}")
 
@@ -2706,6 +2920,9 @@ class UnifiedSolutionCrew:
                                                 (new_cap is not None and new_cap < cur_cap)):
                             idea.incumbent_parity = note
                             backfilled += 1
+                            self._record_search_arm_finding(
+                                "adjacent_niche_frame",
+                                getattr(idea, "solution_name", None), note)
                             logger.info(f"[AdjacentProbe] niche back-fill: "
                                         f"'{getattr(idea, 'solution_name', '?')}' -> {note[:80]}")
                 elif np in ("shipped", "substitute") and nb:
@@ -2828,6 +3045,10 @@ class UnifiedSolutionCrew:
             llm_snippets: list[str] = []
             verify_blobs: list[tuple[str, str]] = []   # (query, result-text[:1500])
             for q, res in result_map.items():
+                # `counted=True`: this arm already goes through `_ma_search_batch`, so the
+                # gating counter saw it — only the ATTRIBUTION was missing.
+                self._record_search_arm("toolbelt", q, res,
+                                        idea=query_owner.get(q), counted=True)
                 if not res:
                     continue
                 llm_snippets.append(f"[{q}]\n{res[:1500]}")
@@ -2937,6 +3158,7 @@ class UnifiedSolutionCrew:
                     idea.incumbent_parity = note
                     covered += 1
                     lines.append(f"- {name}: {note}")
+                    self._record_search_arm_finding("toolbelt", name, note)
                     logger.info(f"[ToolbeltProbe] '{name}' -> {note[:80]}")
             return lines, covered
         except Exception as e:
@@ -3130,11 +3352,23 @@ class UnifiedSolutionCrew:
         Probes the FULL set (2026-07-06, was top-K): a second, evidence-informed critic pass for
         some ideas but not others polluted the relative ranking (live: one idea's novelty rose
         0.45->0.7 in a pass its peers never got). Every idea now gets the same pass; afterwards
-        caps are re-asserted and the classifier outputs cleared so _classify_idea_angles (the very
-        next post-union pass) re-derives every idea's angle + rationales against the FINAL capped
-        scores through the same _classify_batch path. Fail-soft: a failed re-calibration batch
-        keeps its ideas' prior scores — they are still re-classified, so never inconsistent, they
-        just miss the parity evidence. Fail-soft overall: changes nothing."""
+        caps are re-asserted and the classifier outputs cleared.
+
+        RE-DERIVATION CONTRACT (caller's obligation — this method does NOT re-classify):
+        this probe leaves `winning_angle`, `angle_rationale`, `novelty_rationale` and
+        `differentiation_locus` set to None on every idea it probed. The CALLER must run
+        `_classify_idea_angles` afterwards, or the pool ships unclassified. Both callers do:
+          * `execute_pipeline` post-union — parity, then an explicit re-classification pass.
+          * `_score_wave` — the ("parity", ...) step is followed by ("angles", ...).
+        Until 2026-08-13 this method's own comment claimed the classifier was "the very next
+        post-union pass"; b7d9f3a moved a first classification pass IN FRONT of the probe (so
+        `_select_serp_probe_candidates` could read `winning_angle`) and left nothing behind it,
+        which silently disabled the angle feature on every run. The contract is stated here rather
+        than assumed so a future reorder has to break something visible.
+
+        Fail-soft: a failed re-calibration batch keeps its ideas' prior scores — they are still
+        re-classified, so never inconsistent, they just miss the parity evidence. Fail-soft
+        overall: changes nothing."""
         if not ideas:
             return
         try:
@@ -3201,9 +3435,17 @@ class UnifiedSolutionCrew:
                     queries = [f"{kw} software {niche_label}"[:120]]
                 for q in queries:
                     try:
+                        res = str(search_tool.run(search_query=q))
+                        # Attribution for the arm that writes `incumbent_parity` — the field
+                        # `_parity_cap` reads to cap market_fit. `counted=False`: this raw
+                        # `search_tool.run` bypasses `_ma_serper_calls`, so this spend was
+                        # invisible to the budget AND unattributable to an arm.
+                        self._record_search_arm(
+                            "parity_direct", q, res,
+                            idea=getattr(idea, "solution_name", None), counted=False)
                         snippets.append(
                             f"[for idea: {getattr(idea, 'solution_name', '?')}]\n"
-                            + str(search_tool.run(search_query=q))[:1500])
+                            + res[:1500])
                     except Exception:
                         continue
             if not snippets:
@@ -3265,6 +3507,8 @@ class UnifiedSolutionCrew:
                     note = "none found"
                     none_n += 1
                 idea.incumbent_parity = note
+                self._record_search_arm_finding(
+                    "parity_direct", getattr(idea, "solution_name", None), note)
                 parity_lines.append(f"- {getattr(idea, 'solution_name', '?')}: {note}")
                 probed_ideas.append(idea)
             if not parity_lines:
@@ -3340,10 +3584,20 @@ class UnifiedSolutionCrew:
             # rationale written against uncapped scores would contradict the persisted number).
             for idea in top:
                 self._validate_idea_caps(idea)
-            # The parity pass re-scored the set — classifier outputs written earlier (in-cell) now
-            # cite potentially stale numbers (live 2026-07-05: novelty_rationale "0.45" vs final
-            # 0.7). Clear them ALL so _classify_idea_angles re-derives angle + rationales for every
-            # idea against the final capped scores — same pass, same point, same conditions.
+            # WHY THIS CLEAR EXISTS — DO NOT DELETE IT. The parity pass just re-scored the set, so
+            # every classifier output written earlier now describes superseded numbers (live
+            # 2026-07-05: novelty_rationale said "0.45" against a final 0.7). The angle LABEL is
+            # stale too, not only the prose: `_classify_batch` feeds market_fit / novelty /
+            # seo_scalability / technical_feas / solo_dev straight into the classifier prompt, so a
+            # label derived from pre-parity scores is a judgment on numbers that no longer exist.
+            # Clearing is what makes `_classify_idea_angles` re-derive at all — it skips ideas whose
+            # winning_angle is already set.
+            #
+            # WHO RE-DERIVES: the caller. Every path that runs this probe MUST run
+            # `_classify_idea_angles` after it (the RE-DERIVATION CONTRACT in this method's
+            # docstring). If you are here because angles are arriving empty, the bug is a missing
+            # re-derivation at the call site — never a "fix" that deletes these four lines, which
+            # would only trade a silent feature outage for silently stale user-facing prose.
             # (Post-union straggler semantics apply: no idea_focus force, no re-calibrate-on-flip.)
             for idea in top:
                 for f in ("winning_angle", "angle_rationale", "novelty_rationale",
@@ -6369,7 +6623,7 @@ class UnifiedSolutionCrew:
         partly on the premise that this ranking would still surface the most faithful concept;
         S22 falsified that premise for the retention VETO and left it standing for the SELECTOR.
         Measured here on the three captured live pools for job 03d20ff6, every concept refined
-        and judged at n=3 (`scripts/seed_rank_pool_ab.py`) — see the ledger for the table.
+        and judged at n=3 (`probes/seed_rank_pool_ab.py`) — see the ledger for the table.
 
         WHAT THIS IS NOT. It is not a second gate and it cannot loosen the first one. The
         authority is unchanged: `execute_seed_pipeline` still runs
@@ -6381,7 +6635,7 @@ class UnifiedSolutionCrew:
         the behaviour is byte-identical to the old code plus one judge call.
 
         WHY NOT RANK ON THE CRITIC'S SCORES. Measured rather than assumed
-        (`scripts/seed_rank_field_probe.py`, all 12 captured 03d20ff6 concepts, both critic
+        (`probes/seed_rank_field_probe.py`, all 12 captured 03d20ff6 concepts, both critic
         tiers, 2 repeats each):
 
           * `market_fit_score` and `novelty_score` do not exist on `RawConcept`. They are
@@ -7019,7 +7273,7 @@ class UnifiedSolutionCrew:
                 #
                 # MEASURED BOTH DIRECTIONS BEFORE REMOVING IT (2026-08-15, all through the real
                 # functions; the judge and the generator are unsubstituted, refinement is not):
-                #   * OVER-FIRING, `scripts/seed_refine_floor_probe.py --honest`, the three
+                #   * OVER-FIRING, `probes/seed_refine_floor_probe.py --honest`, the three
                 #     concepts the cell's own ranking selects on live 03d20ff6, 3 runs each:
                 #     9/9 shipped a REAL SPEC (S21 measured 2/7 with this veto in place), and
                 #     5 of those 9 fall under the floor, i.e. would have been stubbed.
@@ -7029,7 +7283,7 @@ class UnifiedSolutionCrew:
                 #     8 of 9 fell under the floor — and the birth judge refused **27 of 27**
                 #     verdicts at n=3, zero flips. One of the nine CLEARED the floor (14/23), so
                 #     the veto would have shipped that substitution anyway.
-                #   * The corpus A/B at this exact site (`scripts/seed_refine_gate_ab.py`):
+                #   * The corpus A/B at this exact site (`probes/seed_refine_gate_ab.py`):
                 #     7 of 10 adversarial cases flip stub -> shipped (6 substitutions plus
                 #     `instances_named_ok`, a must_pass case whose flip is a correction), and
                 #     1 of 12 honest. `buyer_swap` and `route_swap_named` — both substitutions —
@@ -7041,7 +7295,7 @@ class UnifiedSolutionCrew:
                 #
                 # WHAT IT COSTS, STATED RATHER THAN ROUNDED OFF. On those same three live
                 # winners the birth judge accepted the OLD stub 2/3 and accepts the NEW spec
-                # 1/3 (`scripts/seed_stub_vs_spec_judge.py`, judge unsubstituted, n=3 each).
+                # 1/3 (`probes/seed_stub_vs_spec_judge.py`, judge unsubstituted, n=3 each).
                 # The accept that disappears is `GBPtoAIConsistency`, whose stub was accepted
                 # BECAUSE it is an echo — one sentence of concept copy, measured against the
                 # pitch — while its written-out spec turned out to push corrections back into
@@ -7976,6 +8230,84 @@ class UnifiedSolutionCrew:
             logger.warning(f"[OverlapNote] failed (non-fatal, no groups): {str(e)[:100]}")
             return []
 
+    def _rename_overlap_group_member(
+        self, old_name: str | None, new_name: str | None, *, origin: str,
+    ) -> int:
+        """Follow an in-place idea replacement into `self.overlap_groups` membership.
+
+        `overlap_groups` stores idea NAMES (`_group_variant_overlaps` above), and every
+        consumer resolves those names against the visible pool: SelectionWorkbench hides any
+        group with a non-visible member, so one stale name silences the whole group. A
+        red-team revision replaces its original in place under a NEW name, which left the
+        group naming an idea that no longer exists anywhere. Live: run 8500b97d's only group
+        still names "Reclaim Timeline Forensics" after "Reclaim Packet QA"
+        (`rebuild_origin='red_team_revision'`) replaced it, so the group is invisible even in
+        preview. Corpus-wide 2 of 193 groups across 320 checkpoints carry a dead member.
+
+        THE FOUR STATES, and what each does to group membership:
+          * REPLACED (`ideas[idx] = rev`) — this method. Renames the member; cardinality is
+            preserved, so a group that was showable stays showable.
+          * DROPPED (idea removed from the pool outright) — NOT handled here on purpose. A
+            genuinely gone member must stay prunable: the consumers' visibility filter is the
+            correct response, and resurrecting the name would fabricate a group.
+          * DEMOTED / ABSORBED (`candidate_status` no longer "active", idea still in the
+            pool) — no membership change. The variant-merge path relies on exactly this: it
+            marks members "absorbed" and removes the group itself.
+          * UNCHANGED — no-op (also the `old == new` early return below, which is what makes
+            calling this from a pure name-collision dedup harmless).
+
+        Returns the number of groups updated. Fail-soft: never raises."""
+        old = (old_name or "").strip()
+        new = (new_name or "").strip()
+        renamed = 0
+        try:
+            if old and new and old != new:
+                old_key, new_key = old.lower(), new.lower()
+                survivors: list[dict] = []
+                for g in (getattr(self, "overlap_groups", None) or []):
+                    members = list(g.get("idea_names") or [])
+                    if not any((m or "").strip().lower() == old_key for m in members):
+                        survivors.append(g)
+                        continue
+                    rebuilt: list[str] = []
+                    seen: set[str] = set()
+                    for m in members:
+                        name = new if (m or "").strip().lower() == old_key else m
+                        key = (name or "").strip().lower()
+                        if not key or key in seen:
+                            continue
+                        seen.add(key)
+                        rebuilt.append(name)
+                    renamed += 1
+                    if len(rebuilt) >= 2:
+                        g["idea_names"] = rebuilt
+                        survivors.append(g)
+                    else:
+                        # The rename collided with a member already in the group, so the group
+                        # no longer describes an overlap between SEPARATE visible ideas. Same
+                        # dissolution rule as the pivot-precedence resolution in
+                        # `_backfill_and_demote` (<2 members -> no group).
+                        logger.info(
+                            f"[OverlapNote] group dissolved after {origin} rename "
+                            f"'{old[:60]}' -> '{new[:60]}' (<2 distinct members left)")
+                if renamed:
+                    self.overlap_groups = survivors
+                    logger.info(
+                        f"[OverlapNote] {origin} rename '{old[:60]}' -> '{new[:60]}' "
+                        f"applied to {renamed} group(s)")
+                # Recorded for every RENAME, not only the group-affecting ones — the successor
+                # mapping is also the Step-0 measurement of how often each `rebuild_origin`
+                # renames an idea at all. (A replacement that keeps the name has no successor
+                # to map; `idea_revision_log` still logs it.)
+                succ = getattr(self, "overlap_group_successors", None)
+                if succ is None:
+                    succ = self.overlap_group_successors = {}
+                succ[old] = {"successor": new, "rebuild_origin": origin,
+                             "groups_updated": renamed}
+        except Exception as e:  # noqa: BLE001 — membership upkeep never breaks a replacement
+            logger.warning(f"[OverlapNote] rename skipped (non-fatal): {str(e)[:120]}")
+        return renamed
+
     # ── Weak-winner demotion / variant merge / backfill (post-parity deliverable-quality block) ──
 
     def _compose_ruled_out_reason(self, idea) -> tuple[str, str]:
@@ -8488,7 +8820,7 @@ class UnifiedSolutionCrew:
             #
             # MEASURED, on the real 03d20ff6 run state, with the production generator
             # (`openrouter/x-ai/grok-4.3:nitro`, unsubstituted), 3 samples × 4 concepts
-            # (`scripts/seed_prefilter_capture.py`):
+            # (`probes/seed_prefilter_capture.py`):
             #   * `is_seed_faithful` refused 11 of 12. The pitch stub replaced the whole
             #     generation in 2 of 3 samples — the live failure, reproduced.
             #   * The retention floor alone refused 11 of 12 (5-12 of 23 against a floor of 14).
@@ -8935,6 +9267,7 @@ class UnifiedSolutionCrew:
                 if self._pivot_acceptable(orig, rev):
                     idx = ideas.index(orig)
                     ideas[idx] = rev
+                    self._commit_idea_replacement(orig, rev, origin="parity_pivot")
                     accepted += 1
             except Exception as e:
                 logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
@@ -9420,6 +9753,12 @@ class UnifiedSolutionCrew:
                         )
                         idx = ideas.index(orig)
                         ideas[idx] = rev
+                        # Membership upkeep + pre-revision snapshot. The pivot-precedence
+                        # resolution above already strips every pivot candidate from every
+                        # group, so the rename is normally a no-op here — it is called anyway
+                        # so the invariant holds structurally at this site rather than by
+                        # depending on a precedence rule 100 lines away.
+                        self._commit_idea_replacement(orig, rev, origin="parity_pivot")
                         p_acc += 1
                 except Exception as e:
                     not_evaluated += 1
@@ -9989,6 +10328,7 @@ class UnifiedSolutionCrew:
         self._ma_search_lock = threading.Lock()
         self._birth_verified_names = set()
         self._route_label_counts = {}
+        self._reset_search_arm_instrumentation()
 
         def _get(attr: str):
             return seed.get(attr) if isinstance(seed, dict) else getattr(seed, attr, None)
@@ -10370,9 +10710,9 @@ class UnifiedSolutionCrew:
         #     driving both functions with a recording candidate; the previous claim came from
         #     walking `_AXIS_IDENTITY_FIELDS`, which cannot see a call. Sixth lying comment.
         # The exclusion from `_IDENTITY_FIELDS` is deliberate: `_probe_mechanism_parity` clears
-        # `differentiation_locus` (with `winning_angle` and both rationales) to None at lines
-        # 3259-3261 of this file so `_classify_idea_angles` re-derives them against the final
-        # capped scores, i.e. it changes after birth BY DESIGN on every run, and
+        # `differentiation_locus` (with `winning_angle` and both rationales) to None — see that
+        # method's RE-DERIVATION CONTRACT — so the caller's `_classify_idea_angles` re-derives
+        # them against the final capped scores, i.e. it changes after birth BY DESIGN on every run, and
         # `changed_seed_identity_fields` flags blank-fills too, so snapshotting it would refuse
         # healthy paid runs in both directions.
         #
@@ -11465,6 +11805,7 @@ class UnifiedSolutionCrew:
         # parallelization audit). Eagerly (re)created here per run; `_get_ma_search_lock`
         # lazily falls back for callers that never go through this reset (e.g. direct/test use).
         self._ma_search_lock = threading.Lock()
+        self._reset_search_arm_instrumentation()
 
         if not self.pain_point_analysis.pain_points:
             raise ValueError(
@@ -12032,10 +12373,14 @@ class UnifiedSolutionCrew:
                 except Exception as e:
                     logger.warning(f"Score calibration skipped: {e}")
 
-            # Angle-classification straggler-finisher: the in-cell classifier labels every cell winner;
-            # this finishes the leftovers — coverage re-injections, and ALL ideas on the non-tournament
-            # fallback. Runs AFTER calibration so it judges final calibrated scores, and BEFORE ranking
-            # so winning_angle is set when the scoring helpers run. Idempotent + fail-soft.
+            # Angle classification, PASS 1 of 2 (straggler-finisher): the in-cell classifier labels
+            # every cell winner; this finishes the leftovers — coverage re-injections, and ALL ideas
+            # on the non-tournament fallback. Runs AFTER calibration so it judges calibrated scores.
+            # Its OTHER job is to feed the SERP probe below, which selects `distribution_seo`
+            # candidates by `winning_angle` (`_select_serp_probe_candidates`) — that read is why this
+            # pass sits before the probe (moved here by b7d9f3a). These labels are NOT the ones that
+            # ship: the parity probe re-scores and then clears them, and pass 2 re-derives against the
+            # final capped scores. Idempotent + fail-soft.
             try:
                 self._classify_idea_angles(refined_solutions.solution_ideas)
             except Exception as e:
@@ -12058,6 +12403,23 @@ class UnifiedSolutionCrew:
                 self._probe_mechanism_parity(refined_solutions.solution_ideas)
             except Exception as e:
                 logger.warning(f"Parity probe skipped: {e}")
+
+            # Angle classification, PASS 2 of 2 (re-derivation) — THE ONE THAT SHIPS. The parity
+            # probe above re-scored every idea and then cleared winning_angle + all three rationales
+            # (see the RE-DERIVATION CONTRACT on `_probe_mechanism_parity`), so without this call the
+            # pool leaves the crew with `winning_angle is None` on every idea. That is not cosmetic:
+            # the angle drives ranking, the `distribution_seo` novelty exemption in
+            # `_validate_idea_caps` rule (a) — re-run by `_validate_idea_scores` immediately below —
+            # and the user-facing "where the edge lives" copy. This is exactly the pass that ran here
+            # before b7d9f3a split it in two; keeping only pass 1 silently disabled the feature
+            # (measured over `output/checkpoints/*/stage_5_3_refinement.json`: ideas with
+            # `winning_angle is None` went 5.0% -> 84.8% across the 2026-08-13 boundary).
+            # `_classify_idea_angles` skips already-labelled ideas, so on the (impossible-by-design,
+            # but fail-soft) path where the parity probe did not clear, this is a no-op.
+            try:
+                self._classify_idea_angles(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Angle re-classification skipped: {e}")
 
             # NOTE: the legacy late per-idea "mentor improvement loop" was removed — the per-cell
             # tournament (default path) IS that ideator↔judge loop, run once per (pain × segment) cell
@@ -12117,6 +12479,17 @@ class UnifiedSolutionCrew:
             else:
                 logger.info("  - Selection: skipped (interactive mode)")
             logger.info(f"  - Market-awareness Serper calls: {getattr(self, '_ma_serper_calls', 0)}/{settings.market_awareness_serper_budget}")
+            # True search spend per arm. The line above reports only the arms that go through
+            # the GATING counter; the parity-direct and adjacent-base arms never did, so it
+            # has always under-reported. `_save_search_debug_payload` persists the full
+            # {idea -> queries -> snippet ids -> finding} chain for after-the-fact attribution.
+            _spend = getattr(self, "search_arm_spend", None) or {}
+            if _spend:
+                logger.info(
+                    "  - Search spend by arm (observability only, does NOT gate): "
+                    + ", ".join(f"{a}={n}" for a, n in sorted(_spend.items()))
+                    + f" | total={sum(_spend.values())}")
+            self._save_search_debug_payload()
 
             return (refined_solutions, solution_selection)
 

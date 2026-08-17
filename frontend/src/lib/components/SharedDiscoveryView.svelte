@@ -15,6 +15,7 @@
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
+  import NicheReframeNote from "$lib/components/NicheReframeNote.svelte";
   import ValidationVerdict from "$lib/components/sections/ValidationVerdict.svelte";
 
   import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
@@ -257,6 +258,12 @@
         ? "Review the submitted idea's verdict, supporting evidence, and ranked alternatives from this run."
         : "Discovery is complete. Review the ranked opportunities and vote for the direction you would back."}
   />
+  <!-- Stage-1 reframe disclosure, in the header rather than in the Overview accordion
+       that renders `nicheDescription`: that accordion is collapsed by default and
+       `Section` puts a collapsed body under `aria-hidden`. A share recipient never chose
+       the words this run started from, so the substitution has to be visible without a
+       click. Fed from the same `previewReport` the description below reads. -->
+  <NicheReframeNote context={previewReport?.niche_context} />
   </div>
 
   {#if evidenceFramingWithheld}

@@ -81,6 +81,13 @@
     headingLevel = 2,
   }: Props = $props();
 
+  // The Stage-1 reframe disclosure does NOT live here. This hero has exactly one
+  // production mount — the job page's `.preview-capped` teaser — and that mount sits
+  // inside `<div aria-hidden="true" inert>` behind a blur: a disclosure rendered there
+  // is unreadable by sighted and assistive readers alike. It is mounted instead as
+  // `NicheReframeNote` on the surfaces where the derived market is actually read (job
+  // page header, completed report identity, shared discovery header).
+
   // Extract data from report
   const dashboard = $derived(report.executive_dashboard);
   const verdict = $derived(dashboard?.go_no_go_verdict);

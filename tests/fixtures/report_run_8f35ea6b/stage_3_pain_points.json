@@ -1,0 +1,1125 @@
+{
+  "niche": "Small-Batch Coffee Roasting",
+  "pain_points": [
+    {
+      "title": "Cannot approve substitute green coffee without changing the expected cup profile",
+      "parent_theme_id": "green-coffee-supply-continuity-and-lot-substitution",
+      "description": "Micro-roasters, wholesale roasters, and buying co-ops struggle to replace sold-out lots as the seasonal crop changes. They need an approved lot that preserves blend composition and the expected cup profile without buying in bulk.",
+      "short_summary": null,
+      "mention_count": 18,
+      "severity_score": 0.2,
+      "commercial_intent": 0.1,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Green Coffee Purchasing",
+        "Lot Substitution"
+      ],
+      "source_post_ids": [],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      ],
+      "evidence_segments": null,
+      "solution_approach": null,
+      "low_evidence": true,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "parent_theme_id": "green-coffee-supply-continuity-and-lot-substitution",
+      "description": "Café-based roasters and subscription businesses need dependable recurring supply, but spot coffee can become unavailable or expensive. This blocks reliable café roast schedules and recurring shipments when the same bean is no longer available.",
+      "short_summary": null,
+      "mention_count": 18,
+      "severity_score": 0.65,
+      "commercial_intent": 0.65,
+      "opportunity_level": "high",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "But because of the poor state of the spot market it’s a bad time to try to find a coffee for the gap.",
+        "Yeah I had spent a couple grand on green coffee from them over a couple years and went elsewhere after that debacle."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Supply Continuity",
+        "Café Production",
+        "Subscription Fulfillment"
+      ],
+      "source_post_ids": [
+        "1jrni73",
+        "18hrweo"
+      ],
+      "affected_segments": [
+        "Cooperative and Shared-Space Roastery Operators",
+        "Subscription-Based Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "parent_theme_id": "green-coffee-quality-defect-and-storage-control",
+      "description": "Green coffee buyers and quality-control staff struggle to identify whether bad beans, moldy sour insect damage, or defects present originated in the crop, transport, storage, or supplier selection. A lot may become unusable before roasting.",
+      "short_summary": null,
+      "mention_count": 15,
+      "severity_score": 0.55,
+      "commercial_intent": 0.35,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+        "In specialty we often have lot separation for different farms, processes or even pick dates."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Green Coffee Quality",
+        "Defect Control"
+      ],
+      "source_post_ids": [
+        "1v0s4fg",
+        "1v5irie"
+      ],
+      "affected_segments": [
+        "Cooperative and Shared-Space Roastery Operators",
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot verify storage and water activity before green coffee production",
+      "parent_theme_id": "green-coffee-quality-defect-and-storage-control",
+      "description": "Roasters cannot consistently confirm that green coffee was stored properly or that an old crop retained stable moisture. GrainPro bag condition and water activity are difficult to connect to later roast performance.",
+      "short_summary": null,
+      "mention_count": 15,
+      "severity_score": 0.55,
+      "commercial_intent": 0.35,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+        "Unfortunately the coffee supply chain is a bit of a mess right now so when really good coffees are available I suggest you get as much as you can use and store well for about a year, really good coffees last at least a year coffee that wasn't so good to begin with may have a sweet spot of a few months."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Green Coffee Storage",
+        "Moisture Control"
+      ],
+      "source_post_ids": [
+        "1v0s4fg",
+        "1uvexvg"
+      ],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot transfer roast curves from sample equipment to production machines",
+      "parent_theme_id": "roast-profile-repeatability-across-machines-and-crop-changes",
+      "description": "Roasters struggle to reproduce a target roast when moving from sample equipment to production equipment or between different machines. The same roast curves and drop temperatures do not reliably produce the same color or flavor.",
+      "short_summary": null,
+      "mention_count": 20,
+      "severity_score": 0.55,
+      "commercial_intent": 0.35,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "But recording the roast profile and entering your fan, heat, and drum speed changes make it easy to manually duplicate that BT curve given the same environmental conditions, bean choice and amount, and electrical supply consistency.",
+        "Play with it and slowly learn the ropes but you cant replicate easily what Rogue Wave has been producing or other roasters out there like Parlor Coffee or Onyx Coffe Lab."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Roast Profile Transfer",
+        "Machine Consistency"
+      ],
+      "source_post_ids": [
+        "1299w6e",
+        "1kzzlqm"
+      ],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Cooperative and Shared-Space Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot keep first crack and development time ratio stable across crop changes",
+      "parent_theme_id": "roast-profile-repeatability-across-machines-and-crop-changes",
+      "description": "Changes in green coffee moisture and density shift first crack timing and development time ratio. Operators following the same profile cannot keep production repeatable and consistent from batch to batch.",
+      "short_summary": null,
+      "mention_count": 21,
+      "severity_score": 0.2,
+      "commercial_intent": 0.1,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Roast Repeatability",
+        "Crop-Year Adaptation"
+      ],
+      "source_post_ids": [],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Café-Based Roasters Managing On-Site Production"
+      ],
+      "evidence_segments": null,
+      "solution_approach": null,
+      "low_evidence": true,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot scale sample roast settings to café production volume",
+      "parent_theme_id": "roast-profile-repeatability-across-machines-and-crop-changes",
+      "description": "Café-based and wholesale roasters struggle to scale sample roast settings to larger production batches. Different batch sizes and drop temperatures require profile changes that reduce repeatability and increase production waste.",
+      "short_summary": null,
+      "mention_count": 20,
+      "severity_score": 0.6,
+      "commercial_intent": 0.4,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Roasters sample roast and creat a profile on a small roaster (usually 1kg drum size) with a batch size of 200-1000g.",
+        "This profile is then “copied” and used on a larger batch with the goal being the same results as the sample roast."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Batch Scaling",
+        "Café Production"
+      ],
+      "source_post_ids": [
+        "1bc0e3p",
+        "1bc0e3p"
+      ],
+      "affected_segments": [
+        "Café-Based Roasters Managing On-Site Production",
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot predict café brew performance from traditional cupping",
+      "parent_theme_id": "cupping-to-brew-quality-validation-gaps",
+      "description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "short_summary": null,
+      "mention_count": 10,
+      "severity_score": 0.45,
+      "commercial_intent": 0.25,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "In my experience (as a barista for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing.",
+        "ta for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing.",
+        "When buying green coffee as a home roaster I sometimes catch myself comparing the scores but I have to remind myself that even if I roast it perfectly I'm not going to taste a quality difference between a coffee reported as 85 vs one as 88.",
+        "After years of doing monthly cuppings, they really do allow you to taste the bean's true nature, but another thing I've learned is that tasting notes aren't always accurate, and coffee roasting itself is not very consistent.",
+        "But extracting the coffee in the form you drink (espresso, filter, aeropress, etc) will inform you more accurately and will more immediately suggest things you need to change in your roast.",
+        "I don’t agree at all - this is about improving your roasts and identifying mistakes, not finding out which coffee you like.",
+        "It's not exactly normal for coffee to taste \"better\" through cupping given that the point of cupping isn't to make a good cup of coffee."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Sensory Evaluation",
+        "Brew Validation"
+      ],
+      "source_post_ids": [
+        "ef6357",
+        "ef6357",
+        "16un5lr",
+        "10ltz2d",
+        "kbmqy3",
+        "kbmqy3",
+        "gxs1df"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Cooperative and Shared-Space Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot connect green coffee purchasing decisions to customer brew outcomes",
+      "parent_theme_id": "cupping-to-brew-quality-validation-gaps",
+      "description": "Quality-control staff lack a consistent workflow connecting green coffee purchasing, same grind comparisons, roast defects, and customer brew performance. This makes it difficult to validate coffees for café and wholesale use.",
+      "short_summary": null,
+      "mention_count": 10,
+      "severity_score": 0.55,
+      "commercial_intent": 0.35,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "that I see with using SCA/Q Grading for ANYTHING other than green coffee purchasing is that once the coffee gets into the hands of the roaster the score is almost meaningless.",
+        "Communication is also part of this as green coffees were likely selected for a specific purpose and product development needs to have that context and know how to work within it."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Quality Control",
+        "Green Coffee Purchasing"
+      ],
+      "source_post_ids": [
+        "16un5lr",
+        "1fefrl3"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Café-Based Roasters Managing On-Site Production"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "parent_theme_id": "roast-to-ship-degassing-and-channel-specific-freshness",
+      "description": "Roasteries cannot use one policy for retail coffee that should ship within 24h of roast and wholesale espresso that needs degassing for 5-7 days. Café schedules, retail backstock, and subscription shipping require different production timing.",
+      "short_summary": null,
+      "mention_count": 14,
+      "severity_score": 0.65,
+      "commercial_intent": 0.45,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "I have hands on experience helping a few of our wholesale accounts and the bloom from fresh dark roasts are insane on their batch brewers, so degassing for 5-7 days seems to be a must.",
+        "It seems to be a dying business model to advertise roast to order anyway since it has become more and more well-known that resting most coffees for at least a few days, and in many cases, a week or two, makes them taste better.",
+        "We roast to order and send out within 48 hours so it is essential for us."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Freshness Planning",
+        "Channel Operations"
+      ],
+      "source_post_ids": [
+        "s000ud",
+        "18hrweo",
+        "9hb0ct"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Subscription-Based Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot align roast date with subscription shipping and wholesale delivery",
+      "parent_theme_id": "roast-to-ship-degassing-and-channel-specific-freshness",
+      "description": "Subscription partnerships and wholesale deliveries require roast date planning around shipping delays and customer use. One week par and retail backstock policies do not consistently align with when coffee is received or brewed.",
+      "short_summary": null,
+      "mention_count": 14,
+      "severity_score": 0.4,
+      "commercial_intent": 0.25,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "I run a mid-size roastery & we work on a one week par, so we're on average seven days from roast to ship (sometimes sooner, rarely later than that)."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Roast Scheduling",
+        "Subscription Fulfillment",
+        "Shipping Freshness"
+      ],
+      "source_post_ids": [
+        "s000ud"
+      ],
+      "affected_segments": [
+        "Subscription-Based Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": true,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot meet café volume without excessive roasting time",
+      "parent_theme_id": "small-batch-capacity-and-roast-loss-economics",
+      "description": "Café-based roasters and small production teams find their equipment too small for coffee-shop volume. Too many batches and handoffs consume roasting time and limit the finished inventory available for café service and wholesale commitments.",
+      "short_summary": null,
+      "mention_count": 23,
+      "severity_score": 0.75,
+      "commercial_intent": 0.4,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Also, larger roasters are built with the intent to be used for production whereas the Bullit has a disclaimer on it (at least the one I saw a long time ago) that specifies a very rigid and limited duty cycle.",
+        "I roast 12-16 consecutive batches, shut down the roaster and take a lunch break, then come back after lunch for a few more batches if necessary, or help my team with production, shipping, ordering, etc.",
+        "Start too small, and you'll never be able to produce and sell enough coffee fast enough to save up for a larger machine.",
+        "I used to get my coffee from a place called Rodak's, he would also roast by the order on a smaller machine that could do a pound at a time and the larger machine got 5 pounds at a time."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Production Capacity",
+        "Café Operations"
+      ],
+      "source_post_ids": [
+        "1bc0e3p",
+        "1nfwn9k",
+        "1t3v09u",
+        "18hrweo"
+      ],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "parent_theme_id": "small-batch-capacity-and-roast-loss-economics",
+      "description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "short_summary": null,
+      "mention_count": 22,
+      "severity_score": 0.7,
+      "commercial_intent": 0.5,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "I'm still super in the negative on the roaster, cooling tray, exhaust fan, and other supplies, but selling to friends/coworkers does pay for my coffee and gets me drinking all sorts of green.",
+        "I would seriously question how deep you get yourself invested before you’ve actually done some roasting, looked realistically at your market and after that, plan for how long you can hang it out making a loss before you have some customers…there’s a metric ton of shit to consider.",
+        "if you're roasting commercial grade coffee you pay sightly less for greens but you can't charge much for the end product.",
+        "That healthy margin doesn't take into account overhead, labor, waste, packaging etc but a multi-roaster shop is still paying all of those costs plus the profit margin when they buy wholesale.",
+        "Either you're inefficient with production or (more likely) you're not doing enough volume to get past your fixed costs.",
+        "Roasting on these small roasters is a lot of work and then you probably might break even or get some money to buy some nice green beans."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Unit Economics",
+        "Roast Loss Economics"
+      ],
+      "source_post_ids": [
+        "xj9ai3",
+        "1v0s4fg",
+        "xj9ai3",
+        "196sul0",
+        "196sul0",
+        "1v3o3td"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot calculate true cost per pound for each green coffee lot",
+      "parent_theme_id": "green-inventory-costing-and-lot-level-traceability",
+      "description": "Roasters need to connect green weight, roasted weight, roast loss, packaging, lot separation, and finished inventory to true cost per pound. Informal accounting obscures cost of goods sold and the profitability of individual coffees and blends.",
+      "short_summary": null,
+      "mention_count": 13,
+      "severity_score": 0.45,
+      "commercial_intent": 0.3,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "However, that doesn't give me great information to work with, as I might only purchase green coffee once every 2 months, and take 3 months to sell it."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "COGS Accounting",
+        "Lot-Level Costing"
+      ],
+      "source_post_ids": [
+        "ggo86o"
+      ],
+      "affected_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": true,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot reconcile lot separation with café production stock",
+      "parent_theme_id": "green-inventory-costing-and-lot-level-traceability",
+      "description": "Visual stock checks make it difficult to reconcile lot separation with stock on hand after roasting and café production. Roasters lack reliable inventory tracking for reorder timing, inventory value, and remaining green coffee.",
+      "short_summary": null,
+      "mention_count": 13,
+      "severity_score": 0.7,
+      "commercial_intent": 0.5,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Eg: you roast say 10lb of Guatemala Coban and the inventory app updates taking into account the original inventory weight, charge weight and weight loss and instantly updates.",
+        "Hey guys, I recently received a job as head roaster for a nearby coffee shop (Roasting hundreds of lbs a day.) They currently have no inventory tracking except a visual inspection."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Inventory Management",
+        "Lot Traceability"
+      ],
+      "source_post_ids": [
+        "17omxdz",
+        "9hb0ct"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot connect roast logs to green inventory and customer orders",
+      "parent_theme_id": "disconnected-roast-inventory-and-order-systems",
+      "description": "Roasteries maintain separate tools for roast logging, green inventory, café and wholesale orders, subscription fulfillment, and accounting. Not connected systems require manual processing and create duplicated records, operator errors, and unclear production requirements.",
+      "short_summary": null,
+      "mention_count": 10,
+      "severity_score": 0.65,
+      "commercial_intent": 0.55,
+      "opportunity_level": "medium",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Quick disclosure: I’m one of the people building Rostoc, a roasting app focused on connecting roast logs with green coffee inventory, roast plans, batches, cupping notes, and decisions.",
+        "Eg: you roast say 10lb of Guatemala Coban and the inventory app updates taking into account the original inventory weight, charge weight and weight loss and instantly updates.",
+        "You can log roasts, compare curves, tie batches back to green inventory, keep notes, and make sample roasting less dependent on a spreadsheet living beside your roasting software."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Systems Integration",
+        "Roastery Operations Software"
+      ],
+      "source_post_ids": [
+        "1uejzj3",
+        "17omxdz",
+        "1uejzj3"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot choose software that fits a small roastery workflow",
+      "parent_theme_id": "disconnected-roast-inventory-and-order-systems",
+      "description": "Roasteries compare Google sheets with Cropster inventory, Roaster Tools, and Artisan while trying to connect roasting, inventory, orders, and fulfillment. The lack of a clear fit makes software selection expensive and operationally uncertain.",
+      "short_summary": null,
+      "mention_count": 10,
+      "severity_score": 0.5,
+      "commercial_intent": 0.55,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "The piece that I didn’t love was things like “roasters choice” all needed to be the same coffee, so rather than having an option to say … I will roast 10x of Guatemala and 10x of Ethiopia to fulfill 8x to shop one and 8x to shop 2 … conveniently have 4X worth of roasters choice left … RoasterTools will be like ..",
+        "Sure it’ll log the amount and type of bean but if you’re roasting over a dozen kinds a day roaster tools is best for just tracking that.",
+        "I have 8 bags of different coffees, is there any inventory software that I can use to help me."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Software Selection",
+        "Workflow Integration"
+      ],
+      "source_post_ids": [
+        "19eiuiw",
+        "9hb0ct",
+        "1o69aw6"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "full"
+    },
+    {
+      "title": "Cannot train operators to translate roast data into production actions",
+      "parent_theme_id": "roaster-training-and-production-skill-transfer",
+      "description": "New operators need to connect roast data with sensory outcomes, recognize first crack and development behavior, perform cupping, and adapt profiles to café production conditions. Businesses lack a standardized progression from supervised work to independent roasting.",
+      "short_summary": null,
+      "mention_count": 11,
+      "severity_score": 0.55,
+      "commercial_intent": 0.35,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "You'll have to dedicate time to cup samples, sample roast new beans until you find the roast profile you like and be able to remain consistent across batches.",
+        "Finding washed or simple natural processed coffees that can help you train your roasting skills as well as your palate will give you the tools and experience you need to really harness some of these \"higher-tier\" coffees later (if that's a path you even want to go down), in a way that you would struggle with without extensive training/experience.",
+        "you probably have all the vocab you'll need for training and probably have a lot of theory as well - but it doesn't mean you get to skip training, and that's often what people are hiring for: someone that only needs very minimal training before they're a valuable asset.",
+        ">Because its hard to get the experience to get hired, but hard to get hired without the experience, you essentially need to plan on working proximal to a roaster (like, you're the dude moving cans and weighing out next batch, or packing bags) where you can kinda osmosis some of their experience and knowledge."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Operator Training",
+        "Production Skill Transfer"
+      ],
+      "source_post_ids": [
+        "1b82k44",
+        "1pzhpnx",
+        "4swd6p",
+        "4swd6p"
+      ],
+      "affected_segments": [
+        "Cooperative and Shared-Space Roastery Operators",
+        "Café-Based Roasters Managing On-Site Production"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot standardize training from machine operation to green sourcing",
+      "parent_theme_id": "roaster-training-and-production-skill-transfer",
+      "description": "Businesses lack a consistent progression covering hours on machine, sample roasting, cupping, green sourcing, and machine maintenance. This slows the transition from support work to independent production and green coffee decisions.",
+      "short_summary": null,
+      "mention_count": 11,
+      "severity_score": 0.5,
+      "commercial_intent": 0.3,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "The biggest challenge in sourcing green is to find something you like :) there are so many options around, and frankly you’ll just need to keep sampling, roasting and cupping consistently.",
+        "You'll have to dedicate time to cup samples, sample roast new beans until you find the roast profile you like and be able to remain consistent across batches."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Training Standards",
+        "Roastery Workforce Development"
+      ],
+      "source_post_ids": [
+        "1pzhpnx",
+        "1b82k44"
+      ],
+      "affected_segments": [
+        "Cooperative and Shared-Space Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Micro-Roasters Selling Direct-to-Consumer Online"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot distinguish green coffee potential from finished roasted quality",
+      "parent_theme_id": "cupping-score-interpretation-and-consumer-facing-claims",
+      "description": "Roasters and buyers struggle to interpret an SCA score and 100 point scale without confusing green coffee potential with finished roasted quality. Score inflation and inconsistent third-party scoring can distort purchasing decisions.",
+      "short_summary": null,
+      "mention_count": 8,
+      "severity_score": 0.45,
+      "commercial_intent": 0.25,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "When buying green coffee as a home roaster I sometimes catch myself comparing the scores but I have to remind myself that even if I roast it perfectly I'm not going to taste a quality difference between a coffee reported as 85 vs one as 88.",
+        "that I see with using SCA/Q Grading for ANYTHING other than green coffee purchasing is that once the coffee gets into the hands of the roaster the score is almost meaningless."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Cupping Score Interpretation",
+        "Quality Claims"
+      ],
+      "source_post_ids": [
+        "16un5lr",
+        "16un5lr"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Cooperative and Shared-Space Roastery Operators"
+      ],
+      "evidence_segments": [
+        "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": false,
+      "tool_addressable": "partial"
+    },
+    {
+      "title": "Cannot use quality scores without confusing coffee buyers",
+      "parent_theme_id": "cupping-score-interpretation-and-consumer-facing-claims",
+      "description": "Roasters using Q scores and quality scores in product marketing face consumer misunderstanding and score inflation. The Q grader or third-party score may become the marketing focus instead of actual cup performance.",
+      "short_summary": null,
+      "mention_count": 4,
+      "severity_score": 0.35,
+      "commercial_intent": 0.4,
+      "opportunity_level": "low",
+      "opportunity_downgrade_reason": null,
+      "representative_quotes": [
+        "Also companies that go out of their way to score all their coffee line-up generally can charge more as they can prove to the consumer that a Q Grader has scored the coffee to help the consumer make a more informed choice."
+      ],
+      "source_platforms": [
+        "Reddit"
+      ],
+      "categories": [
+        "Consumer Communication",
+        "Coffee Marketing Claims"
+      ],
+      "source_post_ids": [
+        "12h7mn1"
+      ],
+      "affected_segments": [
+        "Micro-Roasters Selling Direct-to-Consumer Online",
+        "Café-Based Roasters Managing On-Site Production"
+      ],
+      "evidence_segments": [
+        "Subscription-Based Roastery Operators"
+      ],
+      "solution_approach": null,
+      "low_evidence": true,
+      "tool_addressable": "partial"
+    }
+  ],
+  "total_mentions": 91,
+  "top_categories": [
+    "Workflow Integration",
+    "Roast Repeatability",
+    "Green Coffee Purchasing",
+    "Lot Substitution",
+    "Production Capacity",
+    "Inventory Management",
+    "Quality Control",
+    "Batch Scaling",
+    "Production Skill Transfer",
+    "Training Standards"
+  ],
+  "analysis_summary": "All 21 listed pain points were scored using only their supplied evidence quotes. The distribution is 1 high, 8 medium, and 12 low opportunity pain points; most quotes show operational relevance but limited explicit buying behavior. The strongest signals combine business impact with software addressability: recurring supply disruption, production capacity, and inventory reconciliation or integration. The top three solution-development candidates are maintaining café and subscription supply when spot coffee disappears, meeting café volume without excessive roasting time, and reconciling lot separation with production stock; roast-log, inventory, and order integration is a closely related fourth opportunity. Overall market signal strength is moderate: engagement and professional context validate recurring operational problems, but explicit paid-tool, budget, and quantified-loss evidence is sparse.",
+  "content_categorization": {
+    "executive_summary": "The discussions concentrate on operational problems unique to specialty coffee roasting: securing consistent green coffee, translating roast profiles across machines and crop changes, maintaining cupping-based quality control, managing roast-to-ship timing, and making inventory economics work at small scale. The most active segments are micro-roasters selling direct, café and wholesale production roasters, green buyers/QC staff, and new operators evaluating shared roasting or commercial expansion.",
+    "theme_categories": [
+      {
+        "category_name": "Green Coffee Supply Continuity and Lot Substitution",
+        "theme_id": "green-coffee-supply-continuity-and-lot-substitution",
+        "definition": "Roasters struggle to maintain a dependable supply of the same green coffee as lots sell out, crop years change, harvests are seasonal, and spot coffee becomes unavailable or expensive. The functional problem is finding approved substitute lots and blend components without changing the expected cup profile or locking up excessive capital in advance.",
+        "frequency": "High",
+        "mention_count": 18,
+        "severity_score": 76,
+        "primary_user_segments": [
+          "Micro-roasters selling direct-to-consumer",
+          "Wholesale roasters supplying cafés and restaurants",
+          "Green coffee buyers and quality-control staff",
+          "Subscription-based roastery businesses"
+        ],
+        "anchor_keywords": [
+          "consistent supply",
+          "buying in bulk",
+          "seasonal crop",
+          "spot coffee",
+          "replace qualities year round",
+          "blend composition",
+          "approved lot",
+          "same bean"
+        ]
+      },
+      {
+        "category_name": "Green Coffee Quality, Defect, and Storage Control",
+        "theme_id": "green-coffee-quality-defect-and-storage-control",
+        "definition": "Roasters face difficulty determining whether green coffee quality problems originate in the crop, storage, transport, or supplier selection. Mold, insect damage, excessive age, moisture changes, defect count, and poor storage can make a lot unusable before roasting, while inconsistent green quality limits what roast adjustments can repair.",
+        "frequency": "High",
+        "mention_count": 15,
+        "severity_score": 74,
+        "primary_user_segments": [
+          "Green coffee buyers and quality-control staff",
+          "Micro-roasters selling direct-to-consumer",
+          "Wholesale roasters supplying specialty cafés",
+          "Coffee roasting cooperatives and shared-space facilities"
+        ],
+        "anchor_keywords": [
+          "bad beans",
+          "moldy sour insect",
+          "old crop",
+          "stored properly",
+          "GrainPro bag",
+          "quality of the green bean",
+          "defects present",
+          "water activity"
+        ]
+      },
+      {
+        "category_name": "Roast Profile Repeatability Across Machines and Crop Changes",
+        "theme_id": "roast-profile-repeatability-across-machines-and-crop-changes",
+        "definition": "Roasters have trouble reproducing a target roast when moving from sample equipment to production equipment, changing from drum to air roasting, scaling batch size, or receiving green coffee with different moisture and density. The operational consequence is inconsistent first crack timing, development, color, and flavor even when operators follow the same recorded profile.",
+        "frequency": "High",
+        "mention_count": 21,
+        "severity_score": 82,
+        "primary_user_segments": [
+          "Café-based roasters managing on-site production",
+          "Wholesale production roasters",
+          "Micro-roasters scaling from home or sample equipment",
+          "Production roasters and head roasters"
+        ],
+        "anchor_keywords": [
+          "roast curves",
+          "profile roasting",
+          "first crack",
+          "development time ratio",
+          "batch to batch",
+          "repeatable and consistent",
+          "different machines",
+          "drop temperatures"
+        ]
+      },
+      {
+        "category_name": "Cupping-to-Brew Quality Validation Gaps",
+        "theme_id": "cupping-to-brew-quality-validation-gaps",
+        "definition": "Roasters and QC staff lack a single evaluation method that reliably predicts how a coffee will perform for customers. SCA Cupping Protocol-style evaluation is useful for comparing green coffee and identifying defects, but it may not reveal performance in espresso, pour-over, batch brew, or poorly controlled wholesale equipment.",
+        "frequency": "Medium",
+        "mention_count": 10,
+        "severity_score": 67,
+        "primary_user_segments": [
+          "Green coffee buyers and quality-control staff",
+          "Wholesale roasters supplying cafés and restaurants",
+          "Café-based roasters",
+          "Micro-roasters developing new coffees"
+        ],
+        "anchor_keywords": [
+          "comparative tasting",
+          "quality control",
+          "traditional cupping",
+          "brewed coffee",
+          "green coffee purchasing",
+          "roast defects",
+          "same grind",
+          "brew method"
+        ]
+      },
+      {
+        "category_name": "Roast-to-Ship Degassing and Channel-Specific Freshness",
+        "theme_id": "roast-to-ship-degassing-and-channel-specific-freshness",
+        "definition": "Roasteries must balance retail expectations for rapid shipment against the need for wholesale coffee to degas before use. Different roast levels, processing methods, customer brew methods, and shipping delays make a single roast-to-order or par-inventory policy unsuitable across direct-to-consumer, café, wholesale, and subscription channels.",
+        "frequency": "High",
+        "mention_count": 14,
+        "severity_score": 72,
+        "primary_user_segments": [
+          "Micro-roasters selling direct-to-consumer",
+          "Wholesale roasters supplying specialty cafés",
+          "Subscription-based roastery businesses",
+          "Café-based roasters"
+        ],
+        "anchor_keywords": [
+          "roast to order",
+          "within 24h of roast",
+          "degassing for 5-7 days",
+          "one week par",
+          "retail backstock",
+          "wholesale espresso",
+          "roast date",
+          "ship coffee"
+        ]
+      },
+      {
+        "category_name": "Small-Batch Capacity and Roast Loss Economics",
+        "theme_id": "small-batch-capacity-and-roast-loss-economics",
+        "definition": "Small operators struggle to turn green coffee into profitable finished inventory because low-capacity machines require too many batches, labor hours, and production handoffs. Roast loss, packaging, energy, shipping, fixed costs, and insufficient sales volume can eliminate the apparent margin between green coffee cost and roasted retail price.",
+        "frequency": "High",
+        "mention_count": 23,
+        "severity_score": 84,
+        "primary_user_segments": [
+          "Micro-roasters selling direct-to-consumer",
+          "New roastery founders",
+          "Café-based roasters adding in-house production",
+          "Coffee roasting cooperatives and shared-space facilities"
+        ],
+        "anchor_keywords": [
+          "time x volume",
+          "too small",
+          "profit margin",
+          "green coffee cost",
+          "weight loss",
+          "roasting time",
+          "larger roaster",
+          "fixed costs"
+        ]
+      },
+      {
+        "category_name": "Green Inventory Costing and Lot-Level Traceability",
+        "theme_id": "green-inventory-costing-and-lot-level-traceability",
+        "definition": "Roasters need to connect incoming green coffee, lot separation, crop year, roast charges, roast loss, packaging, and finished inventory to an accurate cost per bag or pound. Informal cash accounting and visual stock checks obscure true COGS, reorder timing, inventory value, and the profitability of individual coffees or blends.",
+        "frequency": "High",
+        "mention_count": 13,
+        "severity_score": 78,
+        "primary_user_segments": [
+          "Micro-roasters selling direct-to-consumer",
+          "Wholesale production roasters",
+          "Coffee accountants and roastery managers",
+          "Green coffee buyers"
+        ],
+        "anchor_keywords": [
+          "inventory tracking",
+          "stock on hand",
+          "true cost per pound",
+          "cost of goods sold",
+          "green weight",
+          "roasted weight",
+          "lot separation",
+          "inventory management"
+        ]
+      },
+      {
+        "category_name": "Disconnected Roast, Inventory, and Order Systems",
+        "theme_id": "disconnected-roast-inventory-and-order-systems",
+        "definition": "Roasteries often maintain separate tools for roast logging, green inventory, wholesale orders, e-commerce, fulfillment, and accounting. Manual re-entry and weak integrations create operator errors, duplicated records, unclear production requirements, and expensive software decisions between spreadsheets and systems such as Cropster Roast, Cropster Inventory, RoasterTools, and Artisan Roaster Scope.",
+        "frequency": "Medium",
+        "mention_count": 10,
+        "severity_score": 69,
+        "primary_user_segments": [
+          "Wholesale roasters with multiple accounts or locations",
+          "Micro-roasters using spreadsheets",
+          "Production roasters and head roasters",
+          "Coffee roasting cooperatives and shared-space facilities"
+        ],
+        "anchor_keywords": [
+          "Cropster",
+          "Cropster inventory",
+          "Roaster Tools",
+          "Artisan",
+          "Google sheets",
+          "not connected",
+          "manual processing",
+          "roast curves"
+        ]
+      },
+      {
+        "category_name": "Roaster Training and Production Skill Transfer",
+        "theme_id": "roaster-training-and-production-skill-transfer",
+        "definition": "New operators must learn more than machine operation: they need to connect roast data with sensory outcomes, recognize first crack and development behavior, maintain equipment, perform cupping, and adapt profiles to production conditions. Businesses lack a standardized progression from bagging or fulfillment work to independent roasting and green coffee quality decisions.",
+        "frequency": "Medium",
+        "mention_count": 11,
+        "severity_score": 65,
+        "primary_user_segments": [
+          "Aspiring production roasters",
+          "Newly promoted roasting assistants",
+          "Head roasters training production staff",
+          "Micro-roastery founders transitioning from home roasting"
+        ],
+        "anchor_keywords": [
+          "hours on machine",
+          "shadowing and cupping",
+          "profile roasting",
+          "translate roast data",
+          "first crack",
+          "green sourcing",
+          "sample roasting",
+          "machine maintenance"
+        ]
+      },
+      {
+        "category_name": "Cupping Score Interpretation and Consumer-Facing Claims",
+        "theme_id": "cupping-score-interpretation-and-consumer-facing-claims",
+        "definition": "Roasters and buyers debate how to use SCA-style cupping scores, Q scores, and 100-point claims without confusing green coffee potential with the quality of the finished roasted product. Score inflation, inconsistent third-party scoring, and consumer misunderstanding can distort purchasing decisions and encourage roasters to optimize marketing numbers rather than actual cup performance.",
+        "frequency": "Medium",
+        "mention_count": 8,
+        "severity_score": 61,
+        "primary_user_segments": [
+          "Green coffee buyers",
+          "Specialty roasters using cupping scores in product marketing",
+          "Quality-control and sensory professionals",
+          "Consumers evaluating specialty roasted coffee"
+        ],
+        "anchor_keywords": [
+          "SCA score",
+          "Q scores",
+          "100 point scale",
+          "score inflation",
+          "green coffee",
+          "potential",
+          "quality scores",
+          "Q grader"
+        ]
+      }
+    ],
+    "user_segments": [
+      {
+        "segment_name": "Micro-roasters selling direct-to-consumer",
+        "primary_concerns": [
+          "Low-capacity production economics",
+          "Green coffee purchasing in small quantities",
+          "Roast-to-order versus par inventory",
+          "Packaging, shipping, and customer acquisition",
+          "Inventory and COGS tracking"
+        ],
+        "mention_frequency": "High"
+      },
+      {
+        "segment_name": "Café-based roasters managing on-site production",
+        "primary_concerns": [
+          "Whether in-house roasting lowers costs",
+          "Roast scheduling against café demand",
+          "Wholesale and retail freshness windows",
+          "Space, equipment, and production capacity",
+          "Consistency across café service and retail bags"
+        ],
+        "mention_frequency": "Medium"
+      },
+      {
+        "segment_name": "Wholesale roasters supplying specialty cafés and restaurants",
+        "primary_concerns": [
+          "Contract and forward purchasing",
+          "Substitute lots for blends",
+          "Wholesale degassing and delivery timing",
+          "Production repeatability at scale",
+          "Account service and equipment support"
+        ],
+        "mention_frequency": "High"
+      },
+      {
+        "segment_name": "Subscription-based roastery businesses",
+        "primary_concerns": [
+          "Reliable recurring supply",
+          "Freshness during shipping",
+          "Packaging and fulfillment economics",
+          "Variety versus repeatable offerings",
+          "Third-party subscription margins"
+        ],
+        "mention_frequency": "Medium"
+      },
+      {
+        "segment_name": "Coffee roasting cooperatives and shared-space users",
+        "primary_concerns": [
+          "Access to commercial roaster capacity",
+          "Shared green coffee purchasing",
+          "Training and supervised machine use",
+          "Insurance and equipment liability",
+          "Reducing capital expenditure"
+        ],
+        "mention_frequency": "Medium"
+      },
+      {
+        "segment_name": "Green coffee buyers and quality-control staff",
+        "primary_concerns": [
+          "Pre-ship and arrival sample evaluation",
+          "Defect count and green quality",
+          "Crop year and lot separation",
+          "Cupping score interpretation",
+          "Blend continuity and substitute approval"
+        ],
+        "mention_frequency": "Medium"
+      },
+      {
+        "segment_name": "Aspiring and newly promoted production roasters",
+        "primary_concerns": [
+          "Entering professional roasting without prior experience",
+          "Transferring home or sample-roasting knowledge",
+          "Learning first crack and development control",
+          "Cupping and sensory calibration",
+          "Safe operation and maintenance of production equipment"
+        ],
+        "mention_frequency": "Medium"
+      }
+    ],
+    "overall_quality": "High",
+    "overall_quality_justification": "The dataset contains substantially more than five substantive discussions, with detailed first-person accounts from micro-roasters, head roasters, green buyers, accountants, café operators, and shared-space users. The strongest recurring patterns are supported by multiple independent discussions and include niche-specific vocabulary such as green coffee, lot separation, spot coffee, first crack, development time ratio, water activity, Agtron, cupping scores, Cropster, RoasterTools, and Artisan."
+  }
+}

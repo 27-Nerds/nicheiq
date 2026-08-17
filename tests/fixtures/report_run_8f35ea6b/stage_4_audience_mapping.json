@@ -1,0 +1,562 @@
+{
+  "audience_segments": [
+    {
+      "segment_name": "Micro-Roasters Selling Direct-to-Consumer Online",
+      "size_estimate": "Large",
+      "pain_point_alignment": [
+        "Balancing roast-to-order freshness against production capacity, par levels, shipping speed, and customer expectations.",
+        "Managing green inventory, roasted inventory, COGS, shrinkage, packaging, and reorder timing with spreadsheets or disconnected systems.",
+        "Maintaining viable margins when small-batch equipment, labor, packaging, shipping, and green coffee costs make direct sales difficult to scale."
+      ],
+      "motivation_drivers": [
+        "Deliver fresher coffee and a more personal customer experience than larger brands.",
+        "Increase repeat purchases, order value, subscriptions, and direct customer retention.",
+        "Build a sustainable business without losing roast quality or personal control.",
+        "Track roast profiles, cupping results, inventory, and costs more accurately.",
+        "Grow gradually from a small operation into a commercial roastery."
+      ],
+      "expertise_level": "Intermediate",
+      "budget_sensitivity": "High",
+      "discovery_channels": [
+        "Reddit r/roasting",
+        "Reddit r/coffee_roasters",
+        "Reddit r/Coffee",
+        "Google searches for inventory, margins, green coffee sourcing, and roasting software",
+        "Word of mouth and local roaster networks"
+      ],
+      "influencers_followed": [
+        "u/Degassafrass",
+        "u/PartnersCoffee",
+        "u/Bean_Deals",
+        "r/roasting",
+        "r/coffee_roasters"
+      ],
+      "payability_score": 0.15,
+      "payability_class": "personal-wallet",
+      "payability_rationale": "High budget sensitivity and the explicit mention of thin margins after overhead indicate these operators are spending personal or very small-business cash rather than drawing on an established procure"
+    },
+    {
+      "segment_name": "Café-Based Roasters Managing On-Site Production",
+      "size_estimate": "Medium",
+      "pain_point_alignment": [
+        "Coordinating café demand, wholesale orders, roast schedules, inventory levels, and freshness windows.",
+        "Maintaining consistent roast quality across repeated production batches while adapting to changing green coffee, weather, and equipment conditions.",
+        "Handling the operational burden of packaging, deliveries, barista training, machine maintenance, and production workflow."
+      ],
+      "motivation_drivers": [
+        "Control the entire chain from green coffee to customer cup.",
+        "Use café feedback to improve roast profiles and product quality.",
+        "Reduce stockouts, stale inventory, and missed wholesale deliveries.",
+        "Increase throughput without adding disproportionate labor.",
+        "Create a differentiated café experience based on freshness and quality."
+      ],
+      "expertise_level": "Advanced",
+      "budget_sensitivity": "Medium",
+      "discovery_channels": [
+        "Reddit r/roasting",
+        "Reddit r/Coffee",
+        "Reddit r/coffee_roasters",
+        "Roaster equipment and software discussions",
+        "Local café and roaster relationships"
+      ],
+      "influencers_followed": [
+        "u/Degassafrass",
+        "u/PartnersCoffee",
+        "u/Accomplished-Neat664",
+        "r/roasting",
+        "Afterglow Coffee Cooperative"
+      ],
+      "payability_score": 0.6,
+      "payability_class": "smb-budget",
+      "payability_rationale": "Cafés already pay for point-of-sale, inventory, and accounting systems out of daily business revenue, giving them both an existing wallet and precedent for SaaS spend."
+    },
+    {
+      "segment_name": "Wholesale Roasters Supplying Specialty Cafés and Restaurants",
+      "size_estimate": "Medium",
+      "pain_point_alignment": [
+        "Forecasting demand and securing enough consistent green coffee without tying up excessive capital in bulk inventory.",
+        "Protecting margins when wholesale pricing, labor, equipment, freight, and green coffee costs compress profitability.",
+        "Meeting strict delivery, freshness, consistency, and service expectations while competing against established suppliers."
+      ],
+      "motivation_drivers": [
+        "Win stable, high-volume café, hotel, restaurant, office, and grocery accounts.",
+        "Achieve repeatable blends and roast profiles across crop and supplier changes.",
+        "Improve purchasing leverage through larger orders and importer relationships.",
+        "Automate production planning and reduce manual inventory calculations.",
+        "Build defensible wholesale relationships through quality, reliability, and technical support."
+      ],
+      "expertise_level": "Advanced",
+      "budget_sensitivity": "Medium",
+      "discovery_channels": [
+        "Reddit r/roasting",
+        "Reddit r/Coffee",
+        "Reddit r/coffee_roasters",
+        "Green coffee importer discussions",
+        "Industry referrals and direct conversations with importers"
+      ],
+      "influencers_followed": [
+        "u/PartnersCoffee",
+        "u/Degassafrass",
+        "u/Accomplished-Neat664",
+        "r/coffee_roasters",
+        "r/greencoffee"
+      ],
+      "payability_score": 0.65,
+      "payability_class": "smb-budget",
+      "payability_rationale": "Wholesale operators run multi-customer fulfillment and already license inventory and accounting tools such as Unleashed or Acctivate, demonstrating both budget authority and willingness to pay for wor"
+    },
+    {
+      "segment_name": "Subscription-Based Roastery Operators",
+      "size_estimate": "Small",
+      "pain_point_alignment": [
+        "Synchronizing recurring demand with roast schedules, inventory availability, shipping cutoffs, and freshness.",
+        "Protecting margin when subscription platforms, shipping, packaging, and fulfillment partners take part of the sale.",
+        "Converting subscription exposure into profitable repeat customers owned through the roastery's direct channel."
+      ],
+      "motivation_drivers": [
+        "Create predictable recurring revenue and demand visibility.",
+        "Increase customer retention and lifetime value.",
+        "Offer curated variety, configurable frequency, and fresh delivery.",
+        "Use subscription data to improve purchasing and production planning.",
+        "Avoid unprofitable partnerships that provide exposure but little contribution margin."
+      ],
+      "expertise_level": "Intermediate",
+      "budget_sensitivity": "Medium",
+      "discovery_channels": [
+        "Reddit r/Coffee",
+        "Reddit r/pourover",
+        "Reddit r/espresso",
+        "Subscription comparison guides",
+        "Email newsletters and direct customer referrals"
+      ],
+      "influencers_followed": [
+        "u/wrelam",
+        "u/Bean_Deals",
+        "u/PartnersCoffee",
+        "r/Coffee",
+        "r/pourover"
+      ],
+      "payability_score": 0.62,
+      "payability_class": "smb-budget",
+      "payability_rationale": "Recurring subscription revenue provides predictable cash flow that these roasters already use to fund production software and packaging automation."
+    },
+    {
+      "segment_name": "Cooperative and Shared-Space Roastery Operators",
+      "size_estimate": "Small",
+      "pain_point_alignment": [
+        "Sharing expensive roasting equipment, green coffee purchases, storage, scheduling, and facility overhead.",
+        "Maintaining consistent quality and accountability when multiple businesses or worker-owners use the same space.",
+        "Scaling production without taking on the full capital burden of an independent commercial facility."
+      ],
+      "motivation_drivers": [
+        "Lower the cost of entry through shared equipment and pooled purchasing.",
+        "Access commercial-grade roasting capacity, education, and technical support.",
+        "Build a local network for cupping, knowledge exchange, and supplier relationships.",
+        "Create worker-owned or community-oriented coffee businesses.",
+        "Expand capacity while preserving independence and craft control."
+      ],
+      "expertise_level": "Intermediate",
+      "budget_sensitivity": "High",
+      "discovery_channels": [
+        "Reddit r/roasting",
+        "Reddit r/coffee_roasters",
+        "Reddit r/ottawa",
+        "Local co-roasting and shared-facility referrals",
+        "Coffee education and roasting-space communities"
+      ],
+      "influencers_followed": [
+        "u/chileseco",
+        "u/he-brews",
+        "r/coffee_roasters",
+        "Canadian Roasting Society",
+        "First Crack Coffee"
+      ],
+      "payability_score": 0.65,
+      "payability_class": "corporate-budget",
+      "payability_rationale": "Shared facilities often fall under a co-op board or facility-level budget that can approve tool purchases, yet high budget sensitivity and shared cost allocation slow individual buying decisions."
+    }
+  ],
+  "primary_target_segment": "Micro-Roasters Selling Direct-to-Consumer Online",
+  "segment_prioritization_rationale": "This is the strongest primary segment because it appears frequently across the digest, has explicit pain around green inventory, roast scheduling, freshness, spreadsheets, margins, and repeat purchases, and can be reached through clearly identified Reddit communities. It is also strongly aligned with an inventory and cupping-score management solution: these operators need a practical way to connect green lots, roast batches, cupping results, stock levels, freshness windows, and customer orders without immediately paying for complex enterprise software.",
+  "key_influencers": [
+    {
+      "name": "u/Dunder-MifflinPaper",
+      "platform": "Reddit",
+      "follower_estimate": "119.8K karma",
+      "relevance_score": 1.0,
+      "content_focus": "Discusses cupping versus everyday brewing, immersion and pour-over differences, and scientific approaches to evaluating coffee quality.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/Coffee"
+      ],
+      "top_posts": [
+        {
+          "title": "Coffee never quite tastes as good as it does during a cupping",
+          "subreddit": "Coffee",
+          "score": 264,
+          "url": "https://www.reddit.com/r/Coffee/comments/gxs1df/coffee_never_quite_tastes_as_good_as_it_does/"
+        },
+        {
+          "title": "I do have a French press and I haven’t even thought to try it with a lighter roast. In my head it...",
+          "subreddit": "Coffee",
+          "score": 45,
+          "url": "https://www.reddit.com/r/Coffee/comments/gxs1df/coffee_never_quite_tastes_as_good_as_it_does/"
+        },
+        {
+          "title": "I’m just gonna try to get super scientific and standardized about it, it’s just frustrating to wa...",
+          "subreddit": "Coffee",
+          "score": 11,
+          "url": "https://www.reddit.com/r/Coffee/comments/gxs1df/coffee_never_quite_tastes_as_good_as_it_does/"
+        }
+      ]
+    },
+    {
+      "name": "u/ThiagoSantos99",
+      "platform": "Reddit",
+      "follower_estimate": "1.8K karma",
+      "relevance_score": 0.96,
+      "content_focus": "Creates highly engaged content about grinder performance, workflow, coffee buying, and how equipment differences affect perceived cup quality.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/pourover"
+      ],
+      "top_posts": [
+        {
+          "title": "Hand grinder differences for pourover: expectation vs reality",
+          "subreddit": "pourover",
+          "score": 668,
+          "url": "https://www.reddit.com/r/pourover/comments/1q9cn2m/hand_grinder_differences_for_pourover_expectation/"
+        },
+        {
+          "title": "Completely agree. That’s actually very much in line with what I was trying to show with the chart...",
+          "subreddit": "pourover",
+          "score": 24,
+          "url": "https://www.reddit.com/r/pourover/comments/1q9cn2m/hand_grinder_differences_for_pourover_expectation/"
+        }
+      ]
+    },
+    {
+      "name": "u/chileseco",
+      "platform": "Reddit",
+      "follower_estimate": "2.5K karma",
+      "relevance_score": 0.94,
+      "content_focus": "Discusses coffee inventory management, freezer and roast-date tracking, and enthusiast methods for organizing multiple coffees.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/pourover"
+      ],
+      "top_posts": [
+        {
+          "title": "I don't have a problem, everything is completely fine, I don't know what you're talking about",
+          "subreddit": "pourover",
+          "score": 130,
+          "url": "https://www.reddit.com/r/pourover/comments/1njo7hk/lets_talk_inventory_management/"
+        },
+        {
+          "title": "Let’s talk inventory management",
+          "subreddit": "pourover",
+          "score": 118,
+          "url": "https://www.reddit.com/r/pourover/comments/1njo7hk/lets_talk_inventory_management/"
+        },
+        {
+          "title": "No disrespect but I can't tell if this is parody (it is the sort of thing I might do, though)",
+          "subreddit": "pourover",
+          "score": 22,
+          "url": "https://www.reddit.com/r/pourover/comments/1njo7hk/lets_talk_inventory_management/"
+        }
+      ]
+    },
+    {
+      "name": "u/Degassafrass",
+      "platform": "Reddit",
+      "follower_estimate": "297 karma",
+      "relevance_score": 0.9,
+      "content_focus": "Shares professional roastery workflow perspectives on roast-to-order, par levels, shipping freshness, wholesale timing, and production scheduling.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/Coffee"
+      ],
+      "top_posts": [
+        {
+          "title": "Coffee roasters! What are your standards for shipping coffee to customers?",
+          "subreddit": "Coffee",
+          "score": 144,
+          "url": "https://www.reddit.com/r/Coffee/comments/s000ud/coffee_roasters_what_are_your_standards_for/"
+        },
+        {
+          "title": "Thanks!   \n\n\nYes, this is the system I am leaning towards. I have hands on experience helping a f...",
+          "subreddit": "Coffee",
+          "score": 11,
+          "url": "https://www.reddit.com/r/Coffee/comments/s000ud/coffee_roasters_what_are_your_standards_for/"
+        },
+        {
+          "title": "Thanks for that! We’ve really been considering a 3+ day par for retail because of how fast it shi...",
+          "subreddit": "Coffee",
+          "score": 4,
+          "url": "https://www.reddit.com/r/Coffee/comments/s000ud/coffee_roasters_what_are_your_standards_for/"
+        }
+      ]
+    },
+    {
+      "name": "u/wrelam",
+      "platform": "Reddit",
+      "follower_estimate": "309 karma",
+      "relevance_score": 0.9,
+      "content_focus": "Produces comparison and guide content about coffee subscription services, variety, pricing, configuration, shipping, and customer selection criteria.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/Coffee"
+      ],
+      "top_posts": [
+        {
+          "title": "Coffee Subscription Service Guide",
+          "subreddit": "Coffee",
+          "score": 288,
+          "url": "https://www.reddit.com/r/Coffee/comments/3o96zs/coffee_subscription_service_guide/"
+        },
+        {
+          "title": "I went with Angel's Cup because I want to explore lots of different coffees quickly to find out w...",
+          "subreddit": "Coffee",
+          "score": 10,
+          "url": "https://www.reddit.com/r/Coffee/comments/3o96zs/coffee_subscription_service_guide/"
+        },
+        {
+          "title": "Thanks! I also signed up for Angel's Cup and have already found them to be incredibly nice and re...",
+          "subreddit": "Coffee",
+          "score": 2,
+          "url": "https://www.reddit.com/r/Coffee/comments/3o96zs/coffee_subscription_service_guide/"
+        }
+      ]
+    },
+    {
+      "name": "u/PartnersCoffee",
+      "platform": "Reddit",
+      "follower_estimate": "40 karma",
+      "relevance_score": 0.89,
+      "content_focus": "Discusses the operational impact of green coffee prices, tariffs, domestic inventory shortages, importer relationships, and roastery supply risk.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/Coffee"
+      ],
+      "top_posts": [
+        {
+          "title": "A Coffee Roaster's Perspective on Tariffs",
+          "subreddit": "Coffee",
+          "score": 180,
+          "url": "https://www.reddit.com/r/Coffee/comments/1jrni73/a_coffee_roasters_perspective_on_tariffs/"
+        },
+        {
+          "title": "As far as we know, the countries in Africa that we buy coffee from will be subject to the same ba...",
+          "subreddit": "Coffee",
+          "score": 6,
+          "url": "https://www.reddit.com/r/Coffee/comments/1jrni73/a_coffee_roasters_perspective_on_tariffs/"
+        },
+        {
+          "title": "We absolutely are concerned by the larger effects of tariffs. The cost of coffee isn't the only i...",
+          "subreddit": "Coffee",
+          "score": 5,
+          "url": "https://www.reddit.com/r/Coffee/comments/1jrni73/a_coffee_roasters_perspective_on_tariffs/"
+        }
+      ]
+    },
+    {
+      "name": "u/Accomplished-Neat664",
+      "platform": "Reddit",
+      "follower_estimate": "104 karma",
+      "relevance_score": 0.87,
+      "content_focus": "Explains green coffee scoring, Q-grader methodology, score inflation, CoffeeReview skepticism, and the difference between green potential and roasted-cup outcomes.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/Coffee"
+      ],
+      "top_posts": [
+        {
+          "title": "A Word to the Wise About Coffee Scoring",
+          "subreddit": "Coffee",
+          "score": 206,
+          "url": "https://www.reddit.com/r/Coffee/comments/16un5lr/a_word_to_the_wise_about_coffee_scoring/"
+        },
+        {
+          "title": "I'm not sure on specifics to Europe, though the Q-cert program is international so I'd think the ...",
+          "subreddit": "Coffee",
+          "score": 3,
+          "url": "https://www.reddit.com/r/Coffee/comments/16un5lr/a_word_to_the_wise_about_coffee_scoring/"
+        },
+        {
+          "title": "100%. In my time working for an importer, I've seen less than 10 coffees come across our cupping ...",
+          "subreddit": "Coffee",
+          "score": 3,
+          "url": "https://www.reddit.com/r/Coffee/comments/16un5lr/a_word_to_the_wise_about_coffee_scoring/"
+        }
+      ]
+    },
+    {
+      "name": "u/he-brews",
+      "platform": "Reddit",
+      "follower_estimate": "11.9K karma",
+      "relevance_score": 0.86,
+      "content_focus": "Discusses roaster origins, producing-country coffee scenes, regional roasting styles, and comparisons between global specialty coffee markets.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/pourover",
+        "r/CoffeePH"
+      ],
+      "top_posts": [
+        {
+          "title": "I’ll start.\n\n1. I’ve been to a couple of countries (Asia and Europe) because of work, and I must ...",
+          "subreddit": "pourover",
+          "score": 35,
+          "url": "https://www.reddit.com/r/pourover/comments/1bi73r7/which_citycountry_do_you_think_has_the_best/"
+        },
+        {
+          "title": "Which city/country do you think has the best roasters?",
+          "subreddit": "pourover",
+          "score": 32,
+          "url": "https://www.reddit.com/r/pourover/comments/1bi73r7/which_citycountry_do_you_think_has_the_best/"
+        },
+        {
+          "title": "Today I tasted a Nespresso brew for the first time and I think it’s not bad",
+          "subreddit": "CoffeePH",
+          "score": 19,
+          "url": "https://www.reddit.com/r/CoffeePH/comments/18xjxc3/today_i_tasted_a_nespresso_brew_for_the_first/"
+        }
+      ]
+    },
+    {
+      "name": "u/camilorv1",
+      "platform": "Reddit",
+      "follower_estimate": "5.4K karma",
+      "relevance_score": 0.85,
+      "content_focus": "Discusses origin-country roasters, farm-to-roaster relationships, shipping complexity, freshness, and access to producing-country coffees.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/pourover"
+      ],
+      "top_posts": [
+        {
+          "title": "Why don’t we talk more about origin-country roasters? Who else here is from a producing country?",
+          "subreddit": "pourover",
+          "score": 74,
+          "url": "https://www.reddit.com/r/pourover/comments/1k4rpo7/why_dont_we_talk_more_about_origincountry/"
+        },
+        {
+          "title": "Hola hermano! Yo soy ecuatoriano pero viajo mucho a Colombia, hasta ahora he probado estos, aunqu...",
+          "subreddit": "pourover",
+          "score": 13,
+          "url": "https://www.reddit.com/r/pourover/comments/1k4rpo7/why_dont_we_talk_more_about_origincountry/"
+        },
+        {
+          "title": "It’s so true what you say about coffee being more affordable in producing countries. I’m from Ecu...",
+          "subreddit": "pourover",
+          "score": 12,
+          "url": "https://www.reddit.com/r/pourover/comments/1k4rpo7/why_dont_we_talk_more_about_origincountry/"
+        }
+      ]
+    },
+    {
+      "name": "u/Bean_Deals",
+      "platform": "Reddit",
+      "follower_estimate": "721 karma",
+      "relevance_score": 0.84,
+      "content_focus": "Builds and promotes coffee deal discovery, tracks specialty roaster offers, and has engaged users asking for green coffee deal functionality.",
+      "engagement_level": "High",
+      "outreach_priority": "High",
+      "top_subreddits": [
+        "r/espresso"
+      ],
+      "top_posts": [
+        {
+          "title": "Announcing BeanDeals.com - we track 1,500+ specialty coffee roasters - FREE!",
+          "subreddit": "espresso",
+          "score": 81,
+          "url": "https://www.reddit.com/r/espresso/comments/1nso3ea/announcing_beandealscom_we_track_1500_specialty/"
+        },
+        {
+          "title": "It's interesting to me that you are the second person to mention this in just a few minutes.  I a...",
+          "subreddit": "espresso",
+          "score": 8,
+          "url": "https://www.reddit.com/r/espresso/comments/1nso3ea/announcing_beandealscom_we_track_1500_specialty/"
+        },
+        {
+          "title": "We are focused on USA only right now but if this idea gets traction I hope to expand it to other ...",
+          "subreddit": "espresso",
+          "score": 3,
+          "url": "https://www.reddit.com/r/espresso/comments/1nso3ea/announcing_beandealscom_we_track_1500_specialty/"
+        }
+      ]
+    }
+  ],
+  "community_hubs": [
+    "r/roasting",
+    "r/Coffee",
+    "r/pourover",
+    "r/coffee_roasters",
+    "r/greencoffee",
+    "r/CoffeeRoasting",
+    "r/InventoryManagement",
+    "r/ottawa",
+    "Canadian Roasting Society",
+    "First Crack Coffee"
+  ],
+  "common_vocabulary": [
+    "green coffee inventory",
+    "roast to order",
+    "cupping",
+    "rest times",
+    "freezer stock",
+    "when to order more",
+    "spreadsheet",
+    "Google Sheets",
+    "roast curves",
+    "quality control",
+    "green sourcing",
+    "COGS",
+    "weight loss",
+    "roast profiles",
+    "consistent supply"
+  ],
+  "content_preferences": "The audience responds most strongly to practical troubleshooting, workflow tutorials, comparisons between spreadsheets and dedicated software, real roastery case studies, margin and inventory examples, and detailed discussions of roast consistency. Content should show actual workflows using green lots, charge weight, roast loss, cupping results, reorder points, freshness windows, and wholesale or direct-to-consumer production schedules rather than generic productivity claims.",
+  "messaging_frameworks": [
+    "Replace spreadsheet guesswork with a roast-to-inventory workflow: connect green lot, charge weight, roast loss, finished stock, and reorder needs in one place.",
+    "Protect freshness without overproducing: use sales history, roast schedules, par levels, rest periods, and shipping cutoffs to decide what to roast and when.",
+    "Make cupping data operational: link tasting notes, scores, defects, roast profiles, and batch history so quality decisions are repeatable rather than trapped in paper notes or memory.",
+    "Scale without enterprise complexity: give small roasteries the practical inventory and production visibility they need before they are ready for expensive, overbuilt software.",
+    "Turn better records into better margins: understand true COGS, shrinkage, packaging, labor, and stock aging before committing to a green coffee purchase or wholesale price."
+  ],
+  "tools_currently_used": [
+    "Excel",
+    "Google Sheets",
+    "Cropster",
+    "Artisan",
+    "RoastLog",
+    "Roaster Tools",
+    "Typica",
+    "Beanconqueror",
+    "Notion",
+    "QuickBooks"
+  ],
+  "frustrations_with_existing": [
+    "Spreadsheets become unwieldy, clunky, manual, and difficult to maintain as orders, coffees, batches, and sales channels increase.",
+    "Dedicated systems can be expensive, overbuilt, difficult to integrate, and intimidating to train staff on; one discussion explicitly described integration, training, and bug-fixing as daunting.",
+    "Inventory tools often do not connect green coffee purchasing, roast weight loss, roasted stock, cupping records, orders, and reorder projections in one workflow.",
+    "Disconnected software creates manual processing between roasting, inventory, fulfillment, ecommerce, retail, and accounting systems.",
+    "Operators lack confidence in freshness and demand decisions, including how much to roast, when to rest or ship coffee, and when to reorder scarce seasonal lots."
+  ],
+  "recommended_channels": [
+    "Reddit r/roasting and r/coffee_roasters: participate in inventory, green sourcing, cupping, software, production, and margin discussions with non-promotional workflow advice.",
+    "Reddit r/Coffee and r/pourover: publish freshness, cupping, roast-date, subscription, and customer-experience content that connects enthusiast concerns to roastery operations.",
+    "Green coffee and shared-roastery communities named in the digest, especially r/greencoffee, Canadian Roasting Society, and First Crack Coffee.",
+    "Search-driven content targeting practical questions such as coffee roaster inventory software, Excel versus Cropster, roast loss tracking, green coffee reorder points, and roast-to-order workflows.",
+    "Direct partnerships and referral programs with small roasters, shared facilities, and operators who already discuss tools such as Artisan, Google Sheets, Cropster, and Roaster Tools."
+  ],
+  "early_adopter_tactics": "Recruit 10-20 roasters from r/roasting, r/coffee_roasters, and shared-space communities for a structured pilot. Offer a free inventory-import service for existing Excel or Google Sheets data, then provide templates for green-lot tracking, roast loss, cupping records, rest periods, reorder points, and roast-day production planning. Publish anonymized before-and-after case studies showing fewer manual calculations, better visibility into stock, and more confident purchasing decisions; ask pilot users to demonstrate the workflow in community discussions rather than relying on generic testimonials."
+}

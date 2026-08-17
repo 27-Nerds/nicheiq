@@ -61,8 +61,8 @@
     {
       "key": "space_occupied",
       "state": "none_found",
-      "answer": "No direct equivalent",
-      "detail": "No direct competitor turned up. On this evidence that more often means nobody is paying for this yet than that the lane is open."
+      "answer": "No equivalent surfaced",
+      "detail": "Our searches did not surface a direct competitor. They run on this idea's own wording, so a rival that describes itself differently can be missed \u2014 read this as not yet found, not as a proven empty lane. If the lane really is empty, that more often means nobody is paying for this yet than that it is open."
     },
     {
       "key": "demand",

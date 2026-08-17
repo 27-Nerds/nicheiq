@@ -1,0 +1,21 @@
+{
+  "solution_name": "OriginSafetyClearanceIndex",
+  "seo_scalability_score_refined": 0.4,
+  "estimated_cac_organic_refined": "N/A",
+  "programmatic_seo_opportunity_refined": "**Refined Assessment (Based on Keyword Research):**\n\nThis solution can generate approximately **35 indexable pages** in Year 1, comprising:\n\n- **8 Tier 1 landing pages** targeting quick-win keywords\n- **7 category pages** for vertical segmentation\n- **20 content pieces** across 5 topic clusters\n\n**Total Estimated Year 1 SEO Footprint:** 35 pages\n\n**Original Architectural Analysis:**\nN/A",
+  "estimated_indexable_pages": 35,
+  "seo_refinement_metadata": {
+    "baseline_volume_used": 50000,
+    "volume_multiplier": 1.2,
+    "tier1_multiplier": 1.08,
+    "competition_modifier": 0.896,
+    "base_cac": null,
+    "difficulty_multiplier": null,
+    "volume_discount": null,
+    "estimated_year1_pages": 35,
+    "keyword_evidence_floor": 0.232,
+    "floor_applied": false,
+    "floor_reason": null,
+    "min_competition_modifier_applied": false
+  }
+}

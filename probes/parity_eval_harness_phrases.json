@@ -1,0 +1,78 @@
+{
+ "checkpoint__probe-fidelity_20260807_145431": {
+  "Menu Continuity Ledger": "green coffee inventory allocation"
+ },
+ "checkpoint_a_chrome_extension_that_drafts_reddit_replies_for_5144763b-7715-4d47-a6c3-d8bcdcef36a1_20260807_204755": {
+  "RageQuit Radar \u2014 Stack Exchange Rescue Queue": "unanswered stack exchange questions",
+  "CoverageGap Archive": "app review archive search"
+ },
+ "checkpoint_a_slack_bot_for_freelance_bookkeepers_that_automat_ecd9fcd8-45ca-4dec-82a0-ee79a161e2b3_20260808_011656": {
+  "ISO20022ReconSpec": "ISO 20022 reconciliation software"
+ },
+ "checkpoint_a_web_app_for_small_landlords_that_reads_utility_b_16606c57-b8e1-4145-aae0-936a251731f0_20260808_180547": {
+  "FloodLedger": "flood insurance expense reconciliation"
+ },
+ "checkpoint_ai_visibility_for_local_businesses_in_london_find_03d20ff6-3973-48b6-b414-42a71883225d_20260815_153709": {
+  "GEO Change Ledger": "geo change tracking archive"
+ },
+ "checkpoint_ai_visibility_for_local_businesses_in_london_find_8580c179-5fcb-441f-8fee-5e14fd0eaf43_20260815_132458": {
+  "Citation Fingerprints": "AI citation tracking tool",
+  "EntityAnchor Baseline": "entity SEO visibility baseline"
+ },
+ "checkpoint_ai_visibility_for_local_businesses_in_london_find_bab9f696-ee87-4290-8c02-0dafa121a887_20260813_135609": {
+  "EntityGraphComparer": "location entity reconciliation software"
+ },
+ "checkpoint_engineers_and_hobbyists_self_hosting_large_languag_e2266acc-bccf-44b7-97cc-dba2921c577e_20260710_114220": {
+  "LayerOffloadProfiler": "GGUF VRAM calculator"
+ },
+ "checkpoint_etsy_sellers_doing_high_order_volume_who_handle_pr_403167a6-00a1-43fa-9de1-690002854ae4_20260710_141255": {
+  "StockGuard": "multi-channel safety stock calculator"
+ },
+ "checkpoint_freelance_bookkeepers_and_solo_accounting_practice_af798c66-675d-4a92-b3c7-0d9f7652af8d_20260710_134203": {
+  "GrantCrosswalk": "grant expense duplicate detection"
+ },
+ "checkpoint_freelance_bookkeepers_managing_month_end_close_acr_c02420e2-ca3f-431f-8cda-02af9e4ccd19_20260728_165142": {
+  "RecDiffHunter": "bank ledger reconciliation software",
+  "GroupConsolidate & Intercompany Eliminator": "multi-entity consolidation software",
+  "ConsoliClose Hub (CoA Harmonization + Intercompany + 50-Entity Consolidation)": "multi-entity consolidation software"
+ },
+ "checkpoint_freelance_video_editors_managing_client_revision_r_c67ed337-bf95-44d7-84c6-635feff5d626_20260728_001252": {
+  "StakeholderSignalMerge": "feedback conflict merge software",
+  "ScopeShield Post Kit": "revision round tracker software",
+  "PrepperBazaar": "feedback to timeline markers outsourcing"
+ },
+ "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_un_5ac3f4f1-63cf-4921-9865-4873a65f1c61_20260710_112046": {
+  "CrumbKey": "baking troubleshooting decision tree"
+ },
+ "checkpoint_home_bakers_selling_cakes_and_cookies_from_home_un_e0bc46d8-ff13-4a5f-8ef5-43252e16861a_20260710_111313": {
+  "SafeBatchProof": "allergen batch photo verification"
+ },
+ "checkpoint_independent_appliance_repair_companies_coordinatin_58f7f62a-a1ba-4331-bc6e-2bc4be333b82_20260802_012058": {
+  "WarrantyAuthLedger": "warranty authorization tracking software"
+ },
+ "checkpoint_independent_freight_dispatchers_and_small_trucking_d61cf491-99cd-4a43-a45b-4a4c74389912_20260710_165433": {
+  "BrokerPay Shield (Broker Risk + Invoice-to-Bond-Claim Workflow)": "broker payment risk software"
+ },
+ "checkpoint_independent_live_music_venues_coordinating_artist_8ef396eb-c63d-4641-889e-1db6dfc9dfde_20260802_182518": {
+  "NutLedger Guard": "pre-show settlement checklist",
+  "ShowClose Settlement Desk": "venue settlement reconciliation"
+ },
+ "checkpoint_independent_property_and_casualty_insurance_agents_4dd67ef2-4574-482e-833d-8a9dfe4c5f40_20260711_013155": {
+  "AppointmentReady": "carrier appointment document automation"
+ },
+ "checkpoint_independent_property_and_casualty_insurance_agents_7672e73d-05a6-4d0d-8bac-012015dccdcd_20260711_112730": {
+  "AggregatorAccessMatcher": "aggregator acceptance data platform"
+ },
+ "checkpoint_independent_veterinary_clinics_managing_medication_51a491dc-c095-4e21-befb-5cadf540629a_20260801_104107": {
+  "Reconcilio Vet": "controlled substance reconciliation software"
+ },
+ "checkpoint_peptides_supplements_16197018-8f01-4f7b-aa5e-7441bd881a24_20260726_114855": {
+  "VendorShowdown": "vendor trust comparison tool"
+ },
+ "checkpoint_short_term_rental_co_hosts_and_small_airbnb_proper_b8a401c1-cda8-4fe4-bef1-a5b017158cce_20260731_010146": {
+  "NeighborWatchList": "short term rental neighbor hotline"
+ },
+ "checkpoint_wedding_photographers_running_their_own_studio_bus_3bf3c64c-672e-4fe7-a10c-26631d580c1d_20260710_113845": {
+  "BookFlow Radar (Market + Inquiry Operating System)": "wedding photographer demand forecasting"
+ }
+}

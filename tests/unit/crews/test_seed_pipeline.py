@@ -1182,7 +1182,7 @@ class TestRunSeedCell:
 
         These four concepts are real output of the production generator
         (`openrouter/x-ai/grok-4.3:nitro`) on job 03d20ff6's own pitch and run state, captured by
-        `scripts/seed_prefilter_capture.py`. Every one of them falls under the retention floor —
+        `probes/seed_prefilter_capture.py`. Every one of them falls under the retention floor —
         5-9 of 23 stemmed tokens against a floor of 14 — because a `RawConcept` carries only
         5-6 of the twenty-five fields `_candidate_identity_text` reads (re-derived 2026-08-15,
         S22 — the previous "four" was wrong: `data_access_model` and `data_acquisition_notes`

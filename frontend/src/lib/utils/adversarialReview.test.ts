@@ -8,6 +8,7 @@ import {
   incumbentParityPhrase,
   isPremiseUnproven,
   noDirectIncumbentFound,
+  NONE_SURFACED_PHRASE,
   recommendationSplitNote,
   resolveAdversarialReviewPrimaryFinding,
 } from "./adversarialReview";
@@ -498,6 +499,49 @@ describe("premise-unproven helpers", () => {
   });
 });
 
+/**
+ * THE PROPERTY, in place of a prose pin.
+ *
+ * `incumbent_parity: "none found"` records that OUR QUERIES returned nothing. Those queries are
+ * built out of each idea's own vocabulary (`crews/unified_solution_crew.py`), so the wording of
+ * the pitch decides the verdict — a live run shipped "none found" for a #1 recommendation while
+ * a same-pain sibling carried "partial by Synup", and ~90% of the 591 "none"-stamped ideas on
+ * disk sit in a run that already names an incumbent elsewhere. Anything rendered from that stamp
+ * must therefore say whose search it was, must not stand as a finding of absence, and must carry
+ * the reason a miss is possible.
+ */
+const ABSENCE_STATED_AS_FACT = [
+  /\bno (?:competing|competitor|competition|incumbent|rival|equivalent|direct|one|body)\b/i,
+  /\bnone found\b/i,
+  /\bnothing (?:ships|exists|is (?:shipping|out there))\b/i,
+  /\b(?:open|empty|unserved|untapped|uncontested) (?:lane|market|space|field|category)\b/i,
+  /\bfirst[- ]mover\b/i,
+  /\bwhite ?space\b/i,
+];
+
+function expectRetrievalScoped(phrase: string): void {
+  expect(phrase.trim()).not.toBe("");
+  // Attributed to the retrieval that produced it, not to the market.
+  expect(phrase).toMatch(/\bour\b/i);
+  expect(phrase).toMatch(/\bsearch(?:es)?\b/i);
+  // Does not OPEN as a bare finding of absence ("No competing product found", "None found").
+  expect(phrase).not.toMatch(/^\s*(?:no|none|nothing)\b/i);
+  // States the limit that makes a miss possible, so the reader can weigh the result.
+  expect(phrase).toMatch(/\bmiss(?:ed)?\b/i);
+  for (const claim of ABSENCE_STATED_AS_FACT) {
+    expect(phrase).not.toMatch(claim);
+  }
+}
+
+describe("NONE_SURFACED_PHRASE", () => {
+  // Two components render the constant directly rather than through the helper
+  // (SolutionDetailContent's "Direct incumbent check" row and AlternativesSection's
+  // "Incumbent check (web-verified)" card), so the property is asserted on the constant too.
+  it("claims a retrieval result and not an empty market", () => {
+    expectRetrievalScoped(NONE_SURFACED_PHRASE);
+  });
+});
+
 describe("incumbentParityPhrase", () => {
   // These strings are duplicated in backend/src/utils/selectionVocabulary.ts on purpose:
   // the analyst and the UI describe the same stored finding, and must not drift.
@@ -532,11 +576,23 @@ describe("incumbentParityPhrase", () => {
     }
   });
 
-  it("reads 'none found' as a sentence, and passes free prose through untouched", () => {
-    expect(incumbentParityPhrase("none found")).toBe("No competing product found");
+  it("renders a 'none' stamp as a search result, never as a proven empty market", () => {
+    // BEHAVIOURAL, not a literal pin. This assertion used to read
+    // `.toBe("No competing product found")` — prose inside an expectation, so the suite
+    // fought the copy instead of guarding it, and the claim it pinned was the defect: the
+    // parity probe builds its queries from each idea's OWN vocabulary, so a "none" stamp is
+    // the outcome of a search and not a fact about the market. What is asserted here is the
+    // property. The wording may improve again without touching this test.
+    for (const raw of ["none found", "None found", "none", "NONE FOUND: nothing surfaced"]) {
+      expectRetrievalScoped(incumbentParityPhrase(raw));
+    }
+  });
+
+  it("passes free prose through untouched and renders nothing for an absent value", () => {
     const prose = "Two vendors cover adjacent workflows but neither ships this mechanism.";
     expect(incumbentParityPhrase(prose)).toBe(prose);
     expect(incumbentParityPhrase(null)).toBe("");
+    expect(incumbentParityPhrase("")).toBe("");
   });
 });
 
