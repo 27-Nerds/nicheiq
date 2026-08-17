@@ -219,18 +219,41 @@ CORPUS = json.loads(
 )["runs"]
 
 
+def _speakable(requested, primary, source_segments) -> bool:
+    """The three conditions `detect_audience_drift` itself short-circuits on.
+
+    One predicate, applied to both the vendored projection and the live checkpoint objects.
+    The live measurement at the bottom of this file used to filter on `requested + primary`
+    only, while `_eligible` also required a recommendation. Both yielded 16, so the divergence
+    was invisible — but a run whose recommended ideas all carried a blank `source_segment`
+    would have entered one denominator and not the other.
+    """
+    return bool((requested or "").strip() and (primary or "").strip() and source_segments)
+
+
+def _source_segments(candidates):
+    """The buyer phrases the detector will actually read out of a recommendation."""
+    return [
+        segment for segment in dict.fromkeys(
+            (candidate.get("source_segment") or "").strip() for candidate in candidates
+        ) if segment
+    ]
+
+
 def _eligible(rows):
     """Rows the detector can actually speak about: BOTH sides stated, plus a recommendation.
 
-    21 of the 36 captured runs carry no `user_target_audience` at all, so the detector
+    21 of the 37 captured runs carry no `user_target_audience` at all, so the detector
     short-circuits before reading a single axis. Counting them as "silent" measured nothing
-    and inflated the denominator by 2.4x.
+    and inflated the denominator by 2.3x.
     """
     return [
         row for row in rows
-        if (row["requested_audience"] or "").strip()
-        and (row["primary_segment"] or "").strip()
-        and row["recommended_source_segments"]
+        if _speakable(
+            row["requested_audience"],
+            row["primary_segment"],
+            row["recommended_source_segments"],
+        )
     ]
 
 
@@ -239,14 +262,17 @@ def _candidates(row):
 
 
 def test_the_typed_comparator_is_quiet_where_the_wording_comparator_is_not():
-    """Both directions, over the 15 runs the detector can speak about.
+    """Both directions, over the 16 runs the detector can speak about.
 
     Measured 2026-08-10 over 35 runs: typed fires on 3 of 14 (21%), the wording comparator on
-    12 of 14 (86%). Re-measured 2026-08-17 after the `winning_angle` repair run (job 8500b97d,
-    2026-08-16) added a 36th run: typed 3 of 15 (20%), wording 13 of 15 (87%). The new run is
-    itself the cleanest instance of the gap — "local businesses in London" against "Independent
-    London Tradespeople and Home-Service Contractors" is the same buyer in different words, and
-    only the wording comparator objects.
+    12 of 14 (86%). Re-measured 2026-08-17 after two `ai_visibility_for_local_businesses_in_london`
+    runs landed — job 8500b97d (2026-08-16) as the 36th and job 7fc84c71 (2026-08-17) as the
+    37th: typed 3 of 16 (19%), wording 14 of 16 (88%). Both new runs are the cleanest instances
+    of the gap: the request "local businesses in London" against "Independent London Tradespeople
+    and Home-Service Contractors" and against "Local Service Providers Managing AI-Curated
+    Reputation and Multi-Area Visibility" is the same buyer in different words both times, and
+    only the wording comparator objects. Every run added since the original measurement has moved
+    the wording comparator's rate and left the typed one alone.
 
     The three typed fires are unchanged: the two veterinary runs whose research narrowed a
     multi-location request to single-location general practice before recommending specialty
@@ -256,8 +282,8 @@ def test_the_typed_comparator_is_quiet_where_the_wording_comparator_is_not():
     from nicheiq.utils.niche_difficulty import detect_recommendation_audience_drift
 
     runs = _eligible(CORPUS)
-    assert len(CORPUS) == 36
-    assert len(runs) == 15, "re-measure both rates before trusting the bounds below"
+    assert len(CORPUS) == 37
+    assert len(runs) == 16, "re-measure both rates before trusting the bounds below"
 
     typed = [
         row["run"] for row in runs
@@ -277,7 +303,7 @@ def test_the_typed_comparator_is_quiet_where_the_wording_comparator_is_not():
     assert sum("music_teachers" in name for name in typed) == 1
     # The comparison that motivated the replacement. If this ever stops holding, the typed
     # comparator has drifted back toward measuring wording.
-    assert len(lexical) == 13
+    assert len(lexical) == 14
 
 
 def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
@@ -286,17 +312,18 @@ def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
     Run-level counts hide the vocabulary bugs: one genuine axis conflict makes a whole run
     "correct" no matter how many spurious ones came with it. This measures every (left, right)
     pair the detector actually reads — request vs research, request vs each named segment, and
-    research vs each named segment, over all 36 captured runs.
+    research vs each named segment, over all 37 captured runs.
 
     Measured 2026-08-10: 13 fires / 210 pairs, 0 false. Before the vocabulary fixes it was
     22 / 210 with 9 false — six readings of "Direct-to-Consumer" as a consumer audience, two of
     "Student-Union" as a student, and one of "Professionals" as a provider.
 
-    Re-measured 2026-08-17, after the `winning_angle` repair run (job 8500b97d, 2026-08-16)
-    added an 11-pair 36th run: 13 fires / 221 pairs, 0 false. The fire COUNT is unchanged, which
-    is the load-bearing part — all 11 new pairs are London trade/retail/dental/hospitality
-    segments against "local businesses in London", and the comparator stayed silent on every one
-    while the wording comparator gained a run-level false alarm on the same run.
+    Re-measured 2026-08-17, after two `ai_visibility_for_local_businesses_in_london` runs added
+    an 11-pair 36th run (job 8500b97d) and a 9-pair 37th (job 7fc84c71): 13 fires / 230 pairs,
+    0 false. The fire COUNT is unchanged across both, which is the load-bearing part — all 20 new
+    pairs are London trade/retail/dental/hospitality/professional-services segments against
+    "local businesses in London", and the comparator stayed silent on every one while the wording
+    comparator gained a run-level false alarm on each run.
     """
     pairs = []
     for row in CORPUS:
@@ -310,7 +337,7 @@ def test_no_pair_the_detector_samples_warns_about_a_buyer_that_never_changed():
             if primary:
                 pairs.append((primary, segment))
 
-    assert len(pairs) == 221
+    assert len(pairs) == 230
     fired = [(left, right, conflicting_axes(left, right)) for left, right in pairs]
     fired = [row for row in fired if row[2]]
 
@@ -349,7 +376,7 @@ def test_the_vendored_corpus_still_matches_the_runs_on_disk():
                     (idea.get("source_segment") or "").strip() for idea in recommended
                 ) if segment
             ],
-            # `all_segment_names` drives the 210-pair false-alarm denominator and was the one
+            # `all_segment_names` drives the 230-pair false-alarm denominator and was the one
             # vendored key this freshness check did not compare — so the measurement everything
             # else in this file rests on could have gone stale without turning anything red.
             "all_segment_names": all_segments,
@@ -475,7 +502,7 @@ def test_the_reality_check_challenge_is_the_typed_notice_not_a_second_comparator
 
 
 def test_the_reality_check_stays_silent_where_only_the_wording_comparator_objects():
-    """The 12-of-14 case. Wording drift alone must not put a buyer warning in front of anyone."""
+    """The 14-of-16 case. Wording drift alone must not put a buyer warning in front of anyone."""
     from nicheiq.utils.niche_difficulty import (
         assess_niche_difficulty,
         detect_recommendation_audience_drift,
@@ -625,19 +652,43 @@ def test_the_measurement_holds_against_the_live_checkpoint_objects():
     The vendored corpus is a projection. This re-runs the detector over the actual candidate
     objects on disk, so a change in how a recommendation is resolved out of a checkpoint cannot
     pass by leaving the projection untouched.
+
+    Scoped to the runs the fixture pins. `output/checkpoints` grows every time the product runs,
+    and an unscoped `len(fired) == 3` reddened for two indistinguishable reasons: a new run
+    landed and drifted, or the detector changed its verdict on a run already pinned. Measured
+    2026-08-17 by doctoring a copy of the corpus, the two failures were the same shape — a list
+    of four run names — and telling them apart meant diffing that list against the fixture by
+    hand. The count below is still a hard pin; it just no longer moves because somebody ran the
+    product. New runs are the freshness test's business, and its message already says what to do.
     """
     if not _disk_recommendations():
         pytest.skip("no captured runs on this machine")
+    vendored = {row["run"] for row in CORPUS}
     runs = [
         (name, requested, primary, recommended)
         for name, requested, primary, recommended, _all_segments in _disk_recommendations()
-        if (requested or "").strip() and (primary or "").strip()
+        if _speakable(requested, primary, _source_segments(recommended))
     ]
+    # A pinned run can also leave the measurement WITHOUT the detector changing its mind — its
+    # recommended ideas losing their `source_segment` drops it from both sides of the comparison.
+    # Read as a verdict change that would send the reader into the detector for no reason.
+    assert {name for name, *_rest in runs if name in vendored} == {
+        row["run"] for row in _eligible(CORPUS)
+    }, (
+        "the live objects and the vendored projection disagree about which pinned runs the "
+        "detector can speak about at all — regenerate the fixture before reading anything "
+        "into the counts below"
+    )
     fired = [
         name for name, requested, primary, recommended in runs
         if detect_audience_drift(requested, primary, recommended) is not None
     ]
-    assert len(fired) == 3, "\n".join(fired)
-    assert sum("veterinary" in name for name in fired) == 2, (
+    # Runs the vendored corpus has never seen belong to the freshness test, not this one:
+    # a new run that drifts is news, but it is not evidence the detector broke.
+    known = [name for name in fired if name in vendored]
+    assert len(known) == 3, (
+        "the detector changed its verdict on a run the corpus already pins:\n" + "\n".join(known)
+    )
+    assert sum("veterinary" in name for name in known) == 2, (
         "the exemplar drift stopped being detected on the real run that motivated it"
     )

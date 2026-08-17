@@ -1,5 +1,5 @@
 {
- "_note": "Captured 2026-08-10 from output/checkpoints, refreshed 2026-08-17 after the winning_angle repair run (job 8500b97d) landed a 36th run. One row per run whose recommendation resolves. Regenerate with tests/unit/utils/test_audience_axes.py::test_the_vendored_corpus_still_matches_the_runs_on_disk.",
+ "_note": "Captured 2026-08-10 from output/checkpoints, refreshed 2026-08-17 after two ai_visibility_for_local_businesses_in_london runs (jobs 8500b97d and 7fc84c71) landed the 36th and 37th runs. One row per run whose recommendation resolves. Regenerate with tests/unit/utils/test_audience_axes.py::test_the_vendored_corpus_still_matches_the_runs_on_disk.",
  "runs": [
   {
    "run": "checkpoint__ab-angle-seo2_20260630_111945",
@@ -114,6 +114,22 @@
     "High-Intent London Dental and Small Professional Practices",
     "London High-Street Retailers Seeking Physical Foot Traffic",
     "Boutique Fitness and Wellness Studio Operators"
+   ]
+  },
+  {
+   "run": "checkpoint_ai_visibility_for_local_businesses_in_london_find_7fc84c71-7faa-4a80-a2ab-211281cd614b_20260817_095231",
+   "requested_audience": "local businesses in London",
+   "primary_segment": "Local Service Providers Managing AI-Curated Reputation and Multi-Area Visibility",
+   "recommended_source_segments": [
+    "E-commerce and Retail Brands Optimizing AI Shopping Discovery",
+    "Local Service Providers Managing AI-Curated Reputation and Multi-Area Visibility",
+    "B2B and Professional Services Firms Building Authority in AI Answers"
+   ],
+   "all_segment_names": [
+    "Local Service Providers Managing AI-Curated Reputation and Multi-Area Visibility",
+    "E-commerce and Retail Brands Optimizing AI Shopping Discovery",
+    "B2B and Professional Services Firms Building Authority in AI Answers",
+    "Hospitality and Experience Businesses Managing AI-Curated Recommendations"
    ]
   },
   {
