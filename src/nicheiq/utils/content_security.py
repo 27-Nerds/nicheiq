@@ -31,6 +31,41 @@ _INJECTION_PATTERNS = re.compile(
 _FENCE_DELIM = re.compile(r"={6,}")
 
 
+# Runaway backstop for model-authored fields rendered into a prompt.
+#
+# MEASURED 2026-08-18 over 3,626 checkpoint JSONs: this bound binds on 0.00% of
+# technical_approach / value_proposition / why_it_works / description and 0.07% of
+# content_generation_model (one pathological 5,283-char generation). It exists ONLY to stop a
+# runaway generation from flooding a prompt.
+#
+# It is NOT a context-window budget. Every prompt these fields feed is a few KB against
+# models with >=256K context, so a limit that trims a normal value is a semantic edit wearing
+# a length limit's clothes. Before lowering this, re-run the bind-rate measurement: cutting
+# technical_approach (median 522 chars) at 200 silently removed the mechanism from 94.9% of
+# stamped ideas -- 95.9% of DISTINCT ones -- at the exact moment the calibration critic
+# scored them. Quote the denominator with any such rate: the checkpoint corpus is ~47%
+# regenerate/fork duplicates, so all-values and distinct-values figures differ by ~1pp and
+# a bare percentage here is ambiguous.
+PROMPT_FIELD_MAX = 2000
+
+
+def prompt_field(value: object, limit: int = PROMPT_FIELD_MAX) -> str:
+    """Render a model-authored field for a prompt, bounded only by a runaway backstop.
+
+    When the backstop fires the result carries a visible marker. A silent mid-word cut hands
+    the receiving model a garbled token and no signal that anything is missing -- it cannot
+    distinguish "the mechanism does not cover this" from "the sentence saying so was cut".
+
+    Does NOT sanitize: callers that need the injection scrub wrap the value in
+    ``sanitize_social_content`` themselves, and adding it here would silently change the text
+    at call sites that deliberately render trusted, model-authored content.
+    """
+    text = "" if value is None else str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + " …[truncated]"
+
+
 def sanitize_social_content(text: str) -> str:
     """Strip control characters, fence-forgery delimiters, and known injection patterns."""
     if not text:

@@ -30,6 +30,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..tools import CachedSerperDevTool
+from ..utils.content_security import prompt_field
 from ..utils.llm_service import build_crew_llm, build_llm
 from ..models.landing_page import (
     AnimatedHTMLResult,
@@ -502,7 +503,7 @@ class LandingPageCrew:
             ps = report.pricing_strategy
             pricing_summary = f"Starter: {ps.recommended_starter_price} | Pro: {ps.recommended_pro_price}"
             if ps.pricing_rationale:
-                pricing_summary += f"\n{ps.pricing_rationale[:200]}"
+                pricing_summary += f"\n{prompt_field(ps.pricing_rationale)}"
 
         # Extract quotes for social proof (from detailed_pain_points)
         quotes = "Not available"
@@ -558,7 +559,7 @@ class LandingPageCrew:
         # MVP features for roadmap section
         mvp_features = ""
         if report.mvp_scope_definition:
-            mvp_features = report.mvp_scope_definition[:300]
+            mvp_features = prompt_field(report.mvp_scope_definition)
 
         # ========== NEW: Audience Intelligence Fields (Part C) ==========
 
@@ -603,13 +604,13 @@ class LandingPageCrew:
             "solution_type": solution_type,
             "project_type": project_type,
             "target_personas": target_personas or "SaaS users looking for this solution",
-            "value_proposition": value_proposition or report.executive_summary[:200],
+            "value_proposition": value_proposition or prompt_field(report.executive_summary),
             "pain_points": "\n".join(f"- {pp.title}" for pp in report.detailed_pain_points[:5]) if report.detailed_pain_points else "",
-            "pain_points_summary": report.pain_points_summary[:500] if report.pain_points_summary else "",
+            "pain_points_summary": prompt_field(report.pain_points_summary),
             "features": features or "Core product features",
             "user_journey": user_journey,
             "pricing_summary": pricing_summary,
-            "competitive_summary": report.competitive_summary[:500] if report.competitive_summary else "",
+            "competitive_summary": prompt_field(report.competitive_summary),
             "quotes": quotes,
             # NEW: 10 uniqueness-driving fields (V3)
             "niche": niche,

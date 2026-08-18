@@ -230,12 +230,12 @@
    {
     "idea_id": "idea_4ef7d949431b58dbca9d65083140317e",
     "name": "FieldChangeAlert",
-    "one_liner": "FieldChangeAlert turns authoritative venue-calendar changes into timely, family-ready notifications without waiting for a coach to discover and re-enter the upd"
+    "one_liner": "FieldChangeAlert turns authoritative venue-calendar changes into timely, family-ready notifications without waiting for a coach to discover and re-enter the update."
    },
    {
     "idea_id": "idea_bbd3666858fa9462ac878237d858d51a",
     "name": "DraftRuleLedger",
-    "one_liner": "Give youth-sports directors a defensible, consistent way to explain every roster placement without exposing sensitive player information or reconstructing decis"
+    "one_liner": "Give youth-sports directors a defensible, consistent way to explain every roster placement without exposing sensitive player information or reconstructing decisions from scattered spreadsheets."
    },
    {
     "idea_id": "idea_71cee1da39cfe18e7d20d36007bcfa5a",
@@ -250,7 +250,7 @@
    {
     "idea_id": "idea_c5185b53242ebe9b633c59d319da6199",
     "name": "Saturday Scan",
-    "one_liner": "Give club directors one ranked Saturday view of cancellation risk across every field, then synchronize decisions and roster confirmations in batches instead of "
+    "one_liner": "Give club directors one ranked Saturday view of cancellation risk across every field, then synchronize decisions and roster confirmations in batches instead of managing weather game by game."
    }
   ]
  },

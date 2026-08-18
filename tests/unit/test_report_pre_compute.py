@@ -75,15 +75,49 @@ class TestFormatPainPointWithScores:
         assert "WTP: 6.0/10" in result
         assert "Mentions: 42" in result
 
-    def test_long_description_truncated(self):
-        pp = MagicMock()
-        pp.title = "Test"
-        pp.description = "x" * 300
-        pp.severity_score = 0.5
-        pp.commercial_intent = 0.5
-        pp.mention_count = 10
+    def test_long_description_is_not_cut_at_a_guessed_width(self):
+        """WAS: `assert "..." in result`, which pinned the `description[:200]` cut.
+
+        That was a prose pin on a truncation artifact. This is a prompt input to the
+        pain->solution mapping call and pain descriptions run a median well past 200, so the
+        cut was deleting the mechanism the mapper is asked to reason about. The behaviour
+        worth pinning is that the description arrives whole and the line stays parseable.
+        Real PainPoint, not MagicMock: a mock would accept any field and hide a schema drift.
+        """
+        from nicheiq.models.pain_point import OpportunityLevel, PainPoint
+
+        description = "Operators reconcile the closed period by hand. " * 8  # ~370 chars
+        pp = PainPoint(
+            title="Test",
+            description=description,
+            severity_score=0.5,
+            commercial_intent=0.5,
+            mention_count=10,
+            opportunity_level=OpportunityLevel.MEDIUM,
+            representative_quotes=["we caught it three weeks later"],
+        )
         result = format_pain_point_with_scores(pp)
-        assert "..." in result
+        assert description in result
+        assert "…[truncated]" not in result
+        assert result.split("- ", 1)[1].split(":", 1)[0] == "Test"
+
+    def test_runaway_description_is_still_bounded_and_marked(self):
+        """Removing the guessed limit does not remove the ceiling."""
+        from nicheiq.models.pain_point import OpportunityLevel, PainPoint
+        from nicheiq.utils.content_security import PROMPT_FIELD_MAX
+
+        pp = PainPoint(
+            title="Test",
+            description="x" * (PROMPT_FIELD_MAX + 5_000),
+            severity_score=0.5,
+            commercial_intent=0.5,
+            mention_count=10,
+            opportunity_level=OpportunityLevel.MEDIUM,
+            representative_quotes=["q"],
+        )
+        result = format_pain_point_with_scores(pp)
+        assert "…[truncated]" in result
+        assert len(result) < PROMPT_FIELD_MAX + 500
 
     def test_title_is_first_element(self):
         """Title must be between '- ' and ':' for JSON key extraction."""

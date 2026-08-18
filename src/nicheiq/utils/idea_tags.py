@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Optional, get_args
 
+from nicheiq.utils.content_security import prompt_field
 from nicheiq.models.solution_idea import (
     DataAccessTag,
     GrowthChannelTag,
@@ -185,7 +186,9 @@ def derive_tag_facets(
 
     rationale = (llm.get("rationale") or "").strip() or None
     if rationale:
-        rationale = rationale[:200]
+        # "Why these tags" prose, stored for display. Runaway backstop only -- the old 200
+        # cut a one-sentence justification mid-word with no marker.
+        rationale = prompt_field(rationale)
 
     # data_access is the one facet copied verbatim from an idea field rather than from the LLM
     # tagging call, so a label that lost the closed vocab upstream lands here and is dropped

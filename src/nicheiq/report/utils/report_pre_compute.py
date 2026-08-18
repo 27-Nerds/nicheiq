@@ -6,6 +6,8 @@ Used by: ReportGenerator._generate_budget_estimate(), _generate_first_30_days_pl
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from ...utils.content_security import prompt_field
+
 if TYPE_CHECKING:
     from ...models.pain_point import PainPoint
 
@@ -110,7 +112,9 @@ def format_pain_point_with_scores(pp: PainPoint) -> str:
     in prompt_formatters.py and state_accessors.py.
     Metadata placed in brackets AFTER description to preserve title extraction.
     """
-    desc = pp.description[:200] + "..." if len(pp.description) > 200 else pp.description
+    # Prompt input to the pain->solution mapping call. The 200-char cut removed the mechanism
+    # from the description the mapper is asked to reason about; runaway backstop only.
+    desc = prompt_field(pp.description)
     return (
         f"- {pp.title}: {desc} "
         f"[Severity: {pp.severity_score * 10:.1f}/10, "

@@ -250,18 +250,19 @@ def llm_confirm_known_route(matches: list[tuple[str, str]], *, context: str = ""
     from pydantic import BaseModel, Field
 
     from ..config.settings import settings
+    from .content_security import prompt_field
     from .llm_service import LLMService
 
     class _RouteConfirm(BaseModel):
         confirmed: bool = False
         note: str = Field("", description="One line: which pair fails and why, or 'all match'.")
 
-    lines = "\n".join(f'- claimed: "{p[:160]}" -> matched source: {n}' for p, n in matches)
+    lines = "\n".join(f'- claimed: "{prompt_field(p)}" -> matched source: {n}' for p, n in matches)
     prompt = (
         "An idea's data-route claims were each name-matched to a KNOWN free/public data "
         "source. Confirm the matches are REAL, not superficial.\n\n"
         f"CLAIM -> MATCHED SOURCE PAIRS:\n{lines}\n\n"
-        + (f"IDEA CONTEXT: {context[:400]}\n\n" if context else "")
+        + (f"IDEA CONTEXT: {prompt_field(context)}\n\n" if context else "")
         + "confirmed=true ONLY if EVERY claimed part (a) actually refers to its matched "
           "source — not a different product with a similar name — (b) needs the kind of "
           "data that source PUBLICLY provides, and (c) if the claim or idea context implies "

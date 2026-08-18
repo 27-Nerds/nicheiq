@@ -41,7 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..config.settings import settings
 from ..utils.llm_service import LLMService, LLMSystemicError, build_crew_llm
-from ..utils.content_security import fence_content, sanitize_social_content
+from ..utils.content_security import fence_content, prompt_field, sanitize_social_content
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.delivery_format import (
     infer_delivery_format,
@@ -487,7 +487,9 @@ def _format_one_pain(pain, n_quotes: int = 5) -> str:
     for q in quotes:
         qt = " ".join(str(q).split())
         if qt:
-            lines.append(f'  - "{qt[:200]}"')
+            # Already bounded to n_quotes above; the [:200] was a second cut that severed
+            # 20.3% of buyer quotes mid-word inside the evidence block generation reads.
+            lines.append(f'  - "{prompt_field(qt)}"')
     return "\n".join(lines)
 
 
@@ -2662,9 +2664,10 @@ class UnifiedSolutionCrew:
 
             rows = "\n\n".join(
                 f"### {(getattr(i, 'solution_name', '') or '?').strip()}\n"
-                f"- value_prop: {sanitize_social_content(getattr(i, 'value_proposition', '') or '')[:200]}\n"
-                f"- what it does: {sanitize_social_content(getattr(i, 'technical_approach', '') or '')[:200]}\n"
-                f"- features: {sanitize_social_content('; '.join((getattr(i, 'core_features', None) or [])[:3]))[:220]}"
+                f"- value_prop: {prompt_field(sanitize_social_content(getattr(i, 'value_proposition', '') or ''))}\n"
+                f"- what it does: {prompt_field(sanitize_social_content(getattr(i, 'technical_approach', '') or ''))}\n"
+                # list slice [:3] already bounds this; the [:220] was a second, stacked cut.
+                f"- features: {prompt_field(sanitize_social_content('; '.join((getattr(i, 'core_features', None) or [])[:3])))}"
                 for i in todo)
             r, usage = LLMService.invoke_structured(
                 prompt=("For EACH idea below, write the 3-6 word phrase a BUYER would type into "
@@ -3064,8 +3067,8 @@ class UnifiedSolutionCrew:
                     f"### family_key: {key}\n"
                     f"- mechanism: {sanitize_social_content(getattr(rep, 'mechanism_tag', '') or 'n/a')}"
                     f" | data: {sanitize_social_content(getattr(rep, 'data_source_tag', '') or 'n/a')}\n"
-                    f"- value_prop: {sanitize_social_content((getattr(rep, 'value_proposition', '') or ''))[:220]}\n"
-                    f"- technical: {sanitize_social_content((getattr(rep, 'technical_approach', '') or ''))[:220]}")
+                    f"- value_prop: {prompt_field(sanitize_social_content((getattr(rep, 'value_proposition', '') or '')))}\n"
+                    f"- technical: {prompt_field(sanitize_social_content((getattr(rep, 'technical_approach', '') or '')))}")
             r, usage = LLMService.invoke_structured(
                 prompt=("For each mechanism family below, IGNORE the stated audience. Name 1-3 "
                         "commercial software categories this mechanism/data ALREADY belongs to — "
@@ -3180,10 +3183,20 @@ class UnifiedSolutionCrew:
 
             fam_by_key_pre = dict(fam_items)
 
+            # The prompt tells this judge that "an idea whose value prop OR MECHANISM differs
+            # is NOT covered", and covered_idea_names is spec'd as "whose value prop + mechanism
+            # the niche finding actually covers" -- so both have to be on the page. Until
+            # 2026-08-18 only the value prop was, making the not-covered escape hatch
+            # unreachable: an idea could only look different if its POSITIONING differed.
+            # Fixed with the sibling judge in _probe_mechanism_parity; see that comment for the
+            # cap exposure this feeds.
             def _member_lines(members) -> str:
+                def _f(m, attr):
+                    return prompt_field(sanitize_social_content(getattr(m, attr, "") or ""))
                 return "\n".join(
-                    f"  - {sanitize_social_content(getattr(m, 'solution_name', '') or '?')}: "
-                    f"{sanitize_social_content((getattr(m, 'value_proposition', '') or ''))[:140]}"
+                    f"  - {sanitize_social_content(getattr(m, 'solution_name', '') or '?')}:"
+                    f"\n      value prop: {_f(m, 'value_proposition')}"
+                    f"\n      mechanism: {_f(m, 'technical_approach') or 'n/a'}"
                     for m in members[:6])
 
             judge_rows = "\n\n".join(
@@ -3410,7 +3423,7 @@ class UnifiedSolutionCrew:
 
             idea_lines = "\n".join(
                 f"- {getattr(i, 'solution_name', '?')}: "
-                f"{(getattr(i, 'value_proposition', '') or '')[:160]}"
+                f"{prompt_field(getattr(i, 'value_proposition', '') or '')}"
                 for i in top if (getattr(i, "solution_name", "") or "").strip() in idea_kw)
             if not idea_lines:
                 return [], 0
@@ -3807,9 +3820,18 @@ class UnifiedSolutionCrew:
             class _ParityFindings(BaseModel):
                 findings: list[_ParityFinding] = _F(default_factory=list)
 
+            # The prompt below asks whether an incumbent "already SHIPS the idea's core
+            # MECHANISM", so the mechanism has to be on the page. Until 2026-08-18 only the
+            # value proposition was rendered, and the judge answered a mechanism question from
+            # positioning alone -- two ideas with similar promises and different mechanisms
+            # were indistinguishable to it. Its verdict drives _parity_cap, a HARD cap on
+            # market_fit (shipped 0.45 / substitute 0.5 / partial 0.55), and 40.4% of stamped
+            # ideas carry one, 99.2% of them holding a technical_approach the judge never saw.
             idea_lines = "\n".join(
-                f"- {getattr(i, 'solution_name', '?')}: "
-                f"{(getattr(i, 'value_proposition', '') or '')[:160]}" for i in top)
+                f"- {getattr(i, 'solution_name', '?')}:"
+                f"\n    value prop: {prompt_field(getattr(i, 'value_proposition', '') or '')}"
+                f"\n    mechanism: {prompt_field(getattr(i, 'technical_approach', '') or '') or 'n/a'}"
+                for i in top)
             r, usage = LLMService.invoke_structured(
                 prompt=(f"Niche: {niche}\n\nIDEAS under evaluation:\n{idea_lines}\n\n"
                         f"Known incumbents: {', '.join(x['name'] for x in incumbents) or 'none'}\n\n"
@@ -4507,9 +4529,11 @@ class UnifiedSolutionCrew:
             "Return keep = the numbers of ONLY the pains this product's MECHANISM directly solves or "
             "materially helps with. EXCLUDE any pain that merely affects the same audience but is NOT "
             "addressed by THIS specific mechanism — be strict, not generous.\n\n"
-            f"PRODUCT: {sanitize_social_content(getattr(idea, 'value_proposition', '') or '')[:300]}\n"
-            f"HOW IT WORKS: {sanitize_social_content(getattr(idea, 'technical_approach', '') or '')[:300]}\n"
-            f"FEATURES: {sanitize_social_content(feats)[:300]}\n\n"
+            f"PRODUCT: {prompt_field(sanitize_social_content(getattr(idea, 'value_proposition', '') or ''))}\n"
+            # The instruction above turns on THIS product's MECHANISM; the old [:300] hid most
+            # of a median 527-char technical_approach from the judgment.
+            f"HOW IT WORKS: {prompt_field(sanitize_social_content(getattr(idea, 'technical_approach', '') or ''))}\n"
+            f"FEATURES: {prompt_field(sanitize_social_content(feats))}\n\n"
             f"CANDIDATE PAINS:\n{listing}\n"
         )
         r, usage = LLMService.invoke_structured(
@@ -5200,7 +5224,9 @@ class UnifiedSolutionCrew:
         lines = ["ANCHOR PAINS (ground every concept in at least one of these):"]
         for t in titles:
             p = pains_by_title.get(t)
-            desc = (getattr(p, "description", "") or "")[:140] if p is not None else ""
+            # Whole description: the old [:140] cut 98.0% of pain descriptions (median 233)
+            # mid-word, and this block is the evidence every concept is grounded in.
+            desc = prompt_field(getattr(p, "description", "") or "") if p is not None else ""
             lines.append(f"- {t}: {desc}" if desc else f"- {t}")
         return "\n".join(lines)
 
@@ -5406,7 +5432,8 @@ class UnifiedSolutionCrew:
             return
         try:
             frustrations = getattr(am, "frustrations_with_existing", None) or []
-            frustration_txt = "; ".join(str(f) for f in frustrations[:8])[:600]
+            # list slice [:8] already bounds this; the [:600] re-cut 12.0% of the joins.
+            frustration_txt = prompt_field("; ".join(str(f) for f in frustrations[:8]))
             mentions = (self._format_competitor_mentions() or "")[:2500]
             prompt = (
                 "For each TOOL below, write a terse capability line (<=12 words) describing what the "
@@ -5479,9 +5506,12 @@ class UnifiedSolutionCrew:
             # Fenced, sanitized concept block — treated as untrusted data by the critic.
             listing = "\n".join(
                 f"- {sanitize_social_content(c.concept_name or '')}: "
-                f"{sanitize_social_content(c.one_liner or '')[:160]}"
-                + (f" [data hint: {sanitize_social_content(getattr(c, 'data_source_hint', '') or 'n/a')[:80]}"
-                   f"; claimed bulk route: {sanitize_social_content(getattr(c, 'data_route', '') or 'unstated')[:80]}]"
+                # one_liner @160 cut 88.4% of them; the two [:80] "tag" cuts were not tags at
+                # all — data_source_hint (71.0%) and data_route (46.3%) are prose, and this
+                # critic writes the `critic_no_route` drop-mark off exactly that text.
+                f"{prompt_field(sanitize_social_content(c.one_liner or ''))}"
+                + (f" [data hint: {prompt_field(sanitize_social_content(getattr(c, 'data_source_hint', '') or 'n/a'))}"
+                   f"; claimed bulk route: {prompt_field(sanitize_social_content(getattr(c, 'data_route', '') or 'unstated'))}]"
                    if feas_on else "")
                 for c in batch
             )
@@ -5653,7 +5683,7 @@ class UnifiedSolutionCrew:
                                 _label = "unverified"
                             c.data_access_model = _label
                         if v.data_notes:
-                            c.data_acquisition_notes = v.data_notes[:120]
+                            c.data_acquisition_notes = prompt_field(v.data_notes)
                         # bulk_route gate: a source with no nameable bulk route is UNVERIFIED ->
                         # 'restricted' regardless of the model's own label (a named source is a claim,
                         # not a fact). 'not-data-dependent' / a real route pass through. Reconcile the
@@ -5661,10 +5691,14 @@ class UnifiedSolutionCrew:
                         _route = (getattr(v, "bulk_route", "") or "").strip().lower()
                         if _route in ("", "no-bulk", "none", "n/a"):
                             c.data_access_model = "restricted"
-                            c.data_acquisition_notes = (
-                                (c.data_acquisition_notes or "")[:80]
+                            # The old (notes[:80] + 52-char suffix)[:120] cut the SUFFIX itself:
+                            # any note >=68 chars (the median is 114) ended at
+                            # "…per-ID/unver", destroying the provenance warning this line
+                            # exists to attach. Both cuts are now the runaway backstop only.
+                            c.data_acquisition_notes = prompt_field(
+                                (c.data_acquisition_notes or "")
                                 + " — no bulk route confirmed; per-ID/unverified access"
-                            )[:120]
+                            )
                         # Deterministic feasibility caps. The critic is the feasibility AUTHORITY; the
                         # downstream diversity-filter / refiner LLMs re-emit their own (uncapped)
                         # feasibility, so _finalize_feasibility re-asserts these capped values on the
@@ -5935,8 +5969,13 @@ class UnifiedSolutionCrew:
                         sev = max(sevs)
                 sev_s = f"{sev:.2f}" if isinstance(sev, (int, float)) else "n/a"
 
-                def _g(attr, n=240):
-                    return sanitize_social_content(str(getattr(i, attr, "") or ""))[:n]
+                # Every field the critic scores on is rendered WHOLE (runaway backstop only).
+                # The old `n=240` default cut conventional_approach / innovation_angle /
+                # why_it_works mid-word with no ellipsis — measured over 5,350 artifact JSONs
+                # it removed text from 91.6% of why_it_works and 45.2% of innovation_angle
+                # values, at the exact moment this critic REPLACES the ideas' self-scores.
+                def _g(attr):
+                    return prompt_field(sanitize_social_content(str(getattr(i, attr, "") or "")))
 
                 angle_line = ""
                 if settings.enable_direction_aware_eval:
@@ -5947,19 +5986,19 @@ class UnifiedSolutionCrew:
                 rows.append(
                     f"### {nm}\n"
                     f"{angle_line}"
-                    f"- value_prop: {_g('value_proposition', 180)}\n"
-                    f"- addressed pains: {sanitize_social_content(pains)[:200]} "
+                    f"- value_prop: {_g('value_proposition')}\n"
+                    f"- addressed pains: {prompt_field(sanitize_social_content(pains))} "
                     f"(source pain severity: {sev_s})\n"
                     f"- conventional_approach: {_g('conventional_approach')}\n"
                     f"- innovation_angle: {_g('innovation_angle')}\n"
                     f"- why_it_works: {_g('why_it_works')}\n"
-                    f"- technical_approach: {_g('technical_approach', 200)} "
+                    f"- technical_approach: {_g('technical_approach')} "
                     f"(needs data aggregation: {bool(getattr(i, 'requires_data_aggregation', False))}; "
                     f"data access: {getattr(i, 'data_access_model', None) or 'n/a'}; "
                     f"build_feas: {getattr(i, 'build_feasibility_score', None)}; "
                     f"data_feas: {getattr(i, 'data_feasibility_score', None)})\n"
-                    f"- SEO content model: {_g('programmatic_seo_opportunity', 160)} / "
-                    f"{_g('content_generation_model', 160)}"
+                    f"- SEO content model: {_g('programmatic_seo_opportunity')} / "
+                    f"{_g('content_generation_model')}"
                 )
             return fence_content("\n\n".join(rows), source="generated-ideas", label="UNTRUSTED IDEAS")
 
@@ -6176,18 +6215,21 @@ class UnifiedSolutionCrew:
                 sev = sev_by_pain.get(sp.lower())
                 sev_s = f"{sev:.2f}" if isinstance(sev, (int, float)) else "n/a"
 
-                def _g(attr, n=240):
-                    return sanitize_social_content(str(getattr(i, attr, "") or ""))[:n]
+                # Whole fields (runaway backstop only) — this classifier decides WHERE an
+                # idea's edge lives, and the old cuts removed the mechanism from 96% of
+                # technical_approach values before it read them.
+                def _g(attr):
+                    return prompt_field(sanitize_social_content(str(getattr(i, attr, "") or "")))
 
                 rows.append(
                     f"### {nm}\n"
                     f"- project_type: {getattr(i, 'project_type', None) or 'n/a'}\n"
-                    f"- source pain: {sanitize_social_content(sp)[:200]} (severity: {sev_s})\n"
-                    f"- value_prop: {_g('value_proposition', 180)}\n"
+                    f"- source pain: {prompt_field(sanitize_social_content(sp))} (severity: {sev_s})\n"
+                    f"- value_prop: {_g('value_proposition')}\n"
                     f"- conventional_approach: {_g('conventional_approach')}\n"
                     f"- innovation_angle: {_g('innovation_angle')}\n"
-                    f"- technical_approach: {_g('technical_approach', 200)}\n"
-                    f"- SEO opportunity: {_g('programmatic_seo_opportunity', 180)}\n"
+                    f"- technical_approach: {_g('technical_approach')}\n"
+                    f"- SEO opportunity: {_g('programmatic_seo_opportunity')}\n"
                     f"- scores → market_fit: {getattr(i, 'market_fit_score', None)}; "
                     f"novelty: {getattr(i, 'novelty_score', None)}; "
                     f"seo_scalability: {getattr(i, 'seo_scalability_score', None)}; "
@@ -6226,15 +6268,24 @@ class UnifiedSolutionCrew:
             # quoted decimal goes stale the moment caps/re-calibration move the score
             # (live 2026-07-05: "0.45" cited against a final 0.7).
             from ..utils.calibration_notes import humanize_score_mentions as _hsm
+            # WRITE truncation: these are STORED on the idea, so a cut here is inherited by
+            # every downstream reader and no read-side fix can recover it. The old 600/300/300
+            # constants severed 10.0% of angle_rationale and 23.7% of differentiation_locus
+            # mid-word with no marker (measured over the checkpoint corpus). Neither field has a
+            # length contract — the prompt asks for "1-3 sentences" / "1 sentence" — and both
+            # reach a reader that must tell a finished thought from a severed one:
+            # differentiation_locus is rendered into `{angle_brief}` for the Stage-2 SEO crew
+            # (utils/angle_brief.py) and angle_rationale is printed raw to the buyer. So the
+            # bound is the runaway backstop only, and it announces itself when it fires.
             ar = (v.angle_rationale or "").strip()
             if ar:
-                idea.angle_rationale = _hsm(ar)[:600]
+                idea.angle_rationale = prompt_field(_hsm(ar))
             nr = (v.novelty_rationale or "").strip()
             if nr:
-                idea.novelty_rationale = _hsm(nr)[:300]
+                idea.novelty_rationale = prompt_field(_hsm(nr))
             dl = (v.differentiation_locus or "").strip()
             if dl:
-                idea.differentiation_locus = _hsm(dl)[:300]  # research signal for Stage-2 deep research
+                idea.differentiation_locus = prompt_field(_hsm(dl))  # research signal for Stage-2 deep research
             applied += 1
         return (applied, usage)
 
@@ -6581,7 +6632,9 @@ class UnifiedSolutionCrew:
                     lines.append(f"  - {t}")
                     continue
                 quote = next(iter((getattr(p, "representative_quotes", None) or [])[:1]), "")
-                desc = (getattr(p, "description", "") or "")[:160]
+                # The non-frame branch below renders pain.description whole; this one cut it at
+                # 160 (92.7% bind, median 233) for the same pain-evidence block.
+                desc = prompt_field(getattr(p, "description", "") or "")
                 tail = f' — "{quote}"' if quote else ""
                 lines.append(f"  - {t}: {desc}{tail}" if desc else f"  - {t}{tail}")
             evidence = "\n".join(lines) or "  n/a"
@@ -6718,20 +6771,22 @@ class UnifiedSolutionCrew:
             "so dramatically that if it were resubmitted, partners would fight over who gets to "
             "interview this founder.\n\n"
             "HARD CONSTRAINTS (do not change):\n"
-            f"- Same validated pain: {sanitize_social_content(getattr(idea, 'source_pain', '') or '')[:160]}\n"
+            f"- Same validated pain: {prompt_field(sanitize_social_content(getattr(idea, 'source_pain', '') or ''))}\n"
             f"- Same data route / access: {getattr(idea, 'data_access_model', None) or 'n/a'} "
-            f"({sanitize_social_content(getattr(idea, 'data_acquisition_notes', '') or '')[:160]}). Do NOT "
+            f"({prompt_field(sanitize_social_content(getattr(idea, 'data_acquisition_notes', '') or ''))}). Do NOT "
             "invent a data source needing different access; the mechanism must run on the same obtainable data.\n"
             "- Still solo-buildable (no custom-trained models, no multi-sided marketplace, no enterprise sales).\n\n"
             f"WHY THE CRITIC CALLED IT OBVIOUS: "
-            f"{sanitize_social_content(getattr(idea, 'calibration_notes', '') or 'cached-shape solution')[:300]}\n\n"
+            # calibration_notes is the whole reason this rewrite is happening; the old [:300]
+            # withheld part of the critic's verdict from 96.2% of them (median 951 chars).
+            f"{prompt_field(sanitize_social_content(getattr(idea, 'calibration_notes', '') or 'cached-shape solution'))}\n\n"
             "CURRENT IDEA:\n"
             f"- name: {sanitize_social_content(getattr(idea, 'solution_name', '') or '')}\n"
-            f"- value_prop: {sanitize_social_content(getattr(idea, 'value_proposition', '') or '')[:300]}\n"
-            f"- conventional_approach: {sanitize_social_content(getattr(idea, 'conventional_approach', '') or '')[:300]}\n"
-            f"- innovation_angle: {sanitize_social_content(getattr(idea, 'innovation_angle', '') or '')[:300]}\n"
-            f"- why_it_works: {sanitize_social_content(getattr(idea, 'why_it_works', '') or '')[:300]}\n"
-            f"- technical_approach: {sanitize_social_content(getattr(idea, 'technical_approach', '') or '')[:400]}\n\n"
+            f"- value_prop: {prompt_field(sanitize_social_content(getattr(idea, 'value_proposition', '') or ''))}\n"
+            f"- conventional_approach: {prompt_field(sanitize_social_content(getattr(idea, 'conventional_approach', '') or ''))}\n"
+            f"- innovation_angle: {prompt_field(sanitize_social_content(getattr(idea, 'innovation_angle', '') or ''))}\n"
+            f"- why_it_works: {prompt_field(sanitize_social_content(getattr(idea, 'why_it_works', '') or ''))}\n"
+            f"- technical_approach: {prompt_field(sanitize_social_content(getattr(idea, 'technical_approach', '') or ''))}\n\n"
             "Change the mechanism so fundamentally that nobody would say 'oh, another [category] tool.' "
             "If the original is a CRM, the new one should NOT be a CRM at all — it should be a "
             "conversation recovery engine, a deal autopsy tool, a decision accelerator, etc. Same for "
@@ -7779,12 +7834,27 @@ class UnifiedSolutionCrew:
 
     @staticmethod
     def _derive_why_short(idea) -> None:
-        """Deterministic why_it_works_short from why_it_works (<=120 chars, mirrors the loop's
-        short_description derivation) — the zero-cost path for the most common single blank."""
-        if not (getattr(idea, "why_it_works_short", "") or "").strip():
-            w = (getattr(idea, "why_it_works", "") or "").strip()
-            if w:
-                idea.why_it_works_short = w[:117].rstrip() + ("…" if len(w) > 117 else "")
+        """Sole owner of why_it_works_short's 120-char slot: DERIVE it from why_it_works when
+        blank, and CLAMP an over-long one — both through the same visible cut.
+
+        120 is a real slot contract, not a guessed bound: the field's own generation prompt
+        (`unified_solution_tasks.yaml`: "1 sentence, max 120 chars (card summary…)") and the
+        blank-repair directive both state it, and it renders in a card. So the bound stays. What
+        changed is that the cut is now announced and lands on a word boundary — `_repair_blank_
+        idea_fields` used to apply a SECOND, silent, mid-word `[:120]` to the same field, which
+        both severed text (5 of the 11 distinct exactly-120 values in the checkpoint corpus end
+        mid-word) and re-cut values this method had already marked with "…"."""
+        cur = (getattr(idea, "why_it_works_short", "") or "").strip()
+        text = cur or (getattr(idea, "why_it_works", "") or "").strip()
+        if not text:
+            return
+        if len(text) <= 120:
+            if not cur:
+                idea.why_it_works_short = text
+            return
+        head = text[:117].rstrip()
+        word_cut = head.rsplit(" ", 1)[0].rstrip(" ,;:—-") if " " in head else ""
+        idea.why_it_works_short = (word_cut or head) + "…"
 
     def _pain_wtp_label(self, idea) -> str | None:
         """This idea's source pain's commercial intent as `n/10`, for pricing repair.
@@ -7849,12 +7919,14 @@ class UnifiedSolutionCrew:
                 f"NICHE: {niche}\n"
                 f"PRODUCT NAME (keep VERBATIM): {getattr(idea, 'solution_name', '') or ''}\n"
                 f"PROJECT TYPE: {getattr(idea, 'project_type', None) or 'saas'}\n"
+                # "keep VERBATIM" over a value the prompt itself had already cut at 800 chars —
+                # 65.3% of idea descriptions are longer than that (median 870).
                 f"DESCRIPTION (ground truth for how it works — keep VERBATIM): "
-                f"{(getattr(idea, 'description', '') or '')[:800]}\n"
-                f"VALUE PROPOSITION: {(getattr(idea, 'value_proposition', '') or '')[:400]}\n"
-                f"TECHNICAL APPROACH: {(getattr(idea, 'technical_approach', '') or '')[:400]}\n"
+                f"{prompt_field(getattr(idea, 'description', '') or '')}\n"
+                f"VALUE PROPOSITION: {prompt_field(getattr(idea, 'value_proposition', '') or '')}\n"
+                f"TECHNICAL APPROACH: {prompt_field(getattr(idea, 'technical_approach', '') or '')}\n"
                 f"DATA ROUTE: {getattr(idea, 'data_access_model', None) or 'n/a'} — "
-                f"{(getattr(idea, 'data_acquisition_notes', '') or '')[:200]}\n"
+                f"{prompt_field(getattr(idea, 'data_acquisition_notes', '') or '')}\n"
                 + (
                     # Without this the model prices to project type and defaults to a $/mo
                     # subscription regardless of willingness to pay — the same failure the
@@ -7868,7 +7940,7 @@ class UnifiedSolutionCrew:
                     else ""
                 )
                 + (
-                    f"INCUMBENT THIS PRODUCT WAS REPOSITIONED TO ESCAPE: {escaped_parity[:300]}\n"
+                    f"INCUMBENT THIS PRODUCT WAS REPOSITIONED TO ESCAPE: {prompt_field(escaped_parity)}\n"
                     "Differentiation must say how THIS product differs from that incumbent — "
                     "not generic product virtues.\n"
                     if escaped_parity and "differentiation_factors" in blanks
@@ -7898,9 +7970,10 @@ class UnifiedSolutionCrew:
                 elif (v or "").strip():
                     setattr(idea, f, v.strip())
                     filled.append(f)
-            if (getattr(idea, "why_it_works_short", "") or "").strip():
-                idea.why_it_works_short = idea.why_it_works_short[:120]
-            self._derive_why_short(idea)  # LLM may fill why_it_works but skip the short form
+            # Fills the short form when the LLM skipped it AND clamps an over-long one to its
+            # 120-char slot — one marked, word-boundary cut instead of the silent `[:120]` that
+            # used to run here and re-cut what _derive_why_short had already marked.
+            self._derive_why_short(idea)
             if filled:
                 logger.info(f"[REPAIR] '{getattr(idea, 'solution_name', '?')}': "
                             f"filled {sorted(filled)}")
@@ -7960,11 +8033,14 @@ class UnifiedSolutionCrew:
             personas = "; ".join((getattr(idea, "target_personas", None) or [])[:2])
             lines.append(
                 f"\n[{i}] solution_name: {idea.solution_name}\n"
-                f"  what: {(getattr(idea, 'description', '') or '')[:600]}\n"
-                f"  value: {(getattr(idea, 'value_proposition', '') or '')[:200]}\n"
-                f"  features: {feats[:300]}\n"
-                f"  users: {personas[:300]}\n"
-                f"  pricing: {(getattr(idea, 'pricing_strategy', '') or '')[:300]}\n"
+                f"  what: {prompt_field(getattr(idea, 'description', '') or '')}\n"
+                f"  value: {prompt_field(getattr(idea, 'value_proposition', '') or '')}\n"
+                # `feats`/`personas` are already bounded by the list slices above; the extra
+                # [:300] was a second, stacked cut on the joined string (it re-cut 50%+ of
+                # four-feature joins after the list slice had already bounded them).
+                f"  features: {prompt_field(feats)}\n"
+                f"  users: {prompt_field(personas)}\n"
+                f"  pricing: {prompt_field(getattr(idea, 'pricing_strategy', '') or '')}\n"
                 f"  data_access: {getattr(idea, 'data_access_model', '') or 'n/a'}"
             )
         lines.append(
@@ -8102,7 +8178,7 @@ class UnifiedSolutionCrew:
                 for p in pains[:12])
             winner_lines = "\n".join(
                 f"- {getattr(w, 'solution_name', '')}: "
-                f"{(getattr(w, 'value_proposition', '') or '')[:120]}" for w in winners)
+                f"{prompt_field(getattr(w, 'value_proposition', '') or '')}" for w in winners)
             data_menu = getattr(self, "_data_menu_text", None) or ""
             menu_block = (f"\nVERIFIED DATA ROUTES (mechanisms must run on these):\n{data_menu}\n"
                           if data_menu else "")
@@ -8221,11 +8297,13 @@ class UnifiedSolutionCrew:
             f"PRODUCT NAME (keep VERBATIM): {bundle.solution_name}\n"
             f"PROJECT TYPE: {getattr(bundle, 'project_type', None) or 'saas'}\n"
             f"PAIN POINTS ADDRESSED (keep EXACTLY these titles): {pains}\n"
-            f"VALUE PROPOSITION: {(bundle.value_proposition or '')[:400]}\n"
-            f"WHY IT WORKS: {(getattr(bundle, 'why_it_works', None) or '')[:300]}\n"
-            f"TECHNICAL APPROACH: {(getattr(bundle, 'technical_approach', None) or '')[:400]}\n"
+            f"VALUE PROPOSITION: {prompt_field(bundle.value_proposition or '')}\n"
+            # The instruction above is "keep the mechanism exactly as designed"; a cut
+            # technical_approach makes that instruction unfollowable.
+            f"WHY IT WORKS: {prompt_field(getattr(bundle, 'why_it_works', None) or '')}\n"
+            f"TECHNICAL APPROACH: {prompt_field(getattr(bundle, 'technical_approach', None) or '')}\n"
             f"DATA ROUTE: {getattr(bundle, 'data_access_model', None) or 'n/a'} — "
-            f"{(getattr(bundle, 'data_acquisition_notes', None) or '')[:200]}\n"
+            f"{prompt_field(getattr(bundle, 'data_acquisition_notes', None) or '')}\n"
             f"ESTIMATED INDEXABLE PAGES: {getattr(bundle, 'estimated_indexable_pages', None)}\n"
         )
         try:
@@ -8584,7 +8662,9 @@ class UnifiedSolutionCrew:
 
             lines = "\n".join(
                 f"- {getattr(i, 'solution_name', '?')}: "
-                f"{(getattr(i, 'value_proposition', '') or '')[:150]}" for i in ideas)
+                # Whole value prop: this grouping decides merge/absorb — i.e. IDEA DELETION —
+                # and the old [:150] hid ~80% of each prop's text from that judgment.
+                f"{prompt_field(getattr(i, 'value_proposition', '') or '')}" for i in ideas)
             r, usage = LLMService.invoke_structured(
                 prompt=(f"Final product ideas for one niche:\n{lines}\n\n"
                         "Group ideas a BUYER would see as variants of the SAME product — same job, "
@@ -9493,10 +9573,13 @@ class UnifiedSolutionCrew:
             niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
             variant_lines = "\n\n".join(
                 f"### {getattr(v, 'solution_name', '?')}\n"
-                f"- value_prop: {(getattr(v, 'value_proposition', '') or '')[:200]}\n"
-                f"- mechanism: {(getattr(v, 'technical_approach', '') or '')[:250]}\n"
+                # The prompt below asks the merger to "take the strongest mechanism"; the old
+                # [:250] showed it under half a median technical_approach (527 chars) to judge
+                # strength from.
+                f"- value_prop: {prompt_field(getattr(v, 'value_proposition', '') or '')}\n"
+                f"- mechanism: {prompt_field(getattr(v, 'technical_approach', '') or '')}\n"
                 f"- features: {'; '.join((getattr(v, 'core_features', None) or [])[:5])}\n"
-                f"- innovation: {(getattr(v, 'innovation_angle', '') or '')[:200]}"
+                f"- innovation: {prompt_field(getattr(v, 'innovation_angle', '') or '')}"
                 for v in variants)
             r, usage = LLMService.invoke_structured(
                 prompt=(
@@ -9697,7 +9780,10 @@ class UnifiedSolutionCrew:
             parsed = parse_stamp_vendor(finding)
             inc_name = parsed[1] if parsed else ""
             gap = gaps_by_name.get(inc_name.lower(), "")
-            dissat = (getattr(self, "_dissatisfaction_text", None) or "")[:600]
+            # Already bounded to <=6 signals upstream, and rendered whole by its two other
+            # consumers; the [:600] here was a stacked second cut that hid most of the
+            # complaint evidence this pivot is supposed to attack.
+            dissat = prompt_field(getattr(self, "_dissatisfaction_text", None) or "")
 
             from pydantic import BaseModel, Field as _F
 
@@ -9729,8 +9815,8 @@ class UnifiedSolutionCrew:
                     f"USER DISSATISFACTION SIGNALS: {dissat or 'none recorded'}\n\n"
                     f"THE IDEA (validated pain — keep it):\n"
                     f"- name: {getattr(orig, 'solution_name', '')}\n"
-                    f"- value_prop: {(getattr(orig, 'value_proposition', '') or '')[:250]}\n"
-                    f"- mechanism: {(getattr(orig, 'technical_approach', '') or '')[:300]}\n\n"
+                    f"- value_prop: {prompt_field(getattr(orig, 'value_proposition', '') or '')}\n"
+                    f"- mechanism: {prompt_field(getattr(orig, 'technical_approach', '') or '')}\n\n"
                     "PIVOT THE WEDGE: keep the validated pain, but move the product to attack "
                     "the incumbent's gap or the segment it ignores — a position the finding "
                     "does NOT cover. This is a repositioning of an EXISTING design, not an "
@@ -11487,11 +11573,14 @@ class UnifiedSolutionCrew:
                 "of this product. Decompose the build, reason about the binding constraint, THEN give "
                 "the number.\n\n"
                 f"PRODUCT: {getattr(idea, 'solution_name', '')}\n"
-                f"WHAT IT DOES: {(getattr(idea, 'value_proposition', '') or getattr(idea, 'description', '') or '')[:300]}\n"
+                f"WHAT IT DOES: {prompt_field(getattr(idea, 'value_proposition', '') or getattr(idea, 'description', '') or '')}\n"
                 f"CORE FEATURES: {feats}\n"
-                f"TECHNICAL APPROACH: {(getattr(idea, 'technical_approach', '') or '')[:300]}\n"
+                # The rubric below rules a step STANDARD when the technical approach names the
+                # library. A median technical_approach is 527 chars, so the old [:300] could
+                # drop the library mention and inflate the estimate by a whole band.
+                f"TECHNICAL APPROACH: {prompt_field(getattr(idea, 'technical_approach', '') or '')}\n"
                 f"DATA ROUTE: {getattr(idea, 'data_access_model', '') or 'n/a'} — "
-                f"{(getattr(idea, 'data_acquisition_notes', '') or '')[:160]}\n"
+                f"{prompt_field(getattr(idea, 'data_acquisition_notes', '') or '')}\n"
                 f"INDEPENDENT BUILD-FEASIBILITY (0-1, higher = easier to build): "
                 f"{getattr(idea, 'build_feasibility_score', '?')}\n"
                 f"DATA-FEASIBILITY (0-1, higher = data easier to obtain): "
@@ -11550,11 +11639,19 @@ class UnifiedSolutionCrew:
                         logger.info(f"[DEV-TIME] '{getattr(idea, 'solution_name', '?')}' estimate "
                                     f"'{(getattr(r, 'estimate', '') or '').strip()[:20]}' outside its "
                                     f"own component band -> '{est}'")
-                    idea.estimated_development_time = est[:40]
+                    from ..utils.calibration_notes import truncate_at_word
+
+                    # Slot bound, not a context bound: this renders as a short band chip and
+                    # _DEV_TIME_BANDS' longest canonical value is 11 chars. But
+                    # _reconcile_dev_time returns the model's RAW estimate untouched when
+                    # components are absent or already in-band, so free prose can reach here
+                    # ("3-6 weeks assuming the Stripe work is straightforward" = 53 chars).
+                    # 0 of 3,943 stored values sit at exactly 40, so this has never bound --
+                    # it is a latent guess. Keep the slot; make any cut visible, matching
+                    # _derive_why_short rather than severing mid-word in silence.
+                    idea.estimated_development_time = truncate_at_word(est, 40)
                     rat = (getattr(r, "rationale", "") or "").strip()
                     if rat:
-                        from ..utils.calibration_notes import truncate_at_word
-
                         idea.dev_time_rationale = truncate_at_word(rat, 200)
                 return usage
             except Exception as e:
@@ -11760,15 +11857,22 @@ class UnifiedSolutionCrew:
             if dam in ("paywalled", "restricted", "blocked", "unverified"):
                 matches = retrieve_known_sources(getattr(idea, "data_sources", None))
                 names = llm_confirm_known_route(
-                    matches, context=(getattr(idea, "technical_approach", "") or "")[:400],
+                    # Uncut: `llm_confirm_known_route` renders `context` through
+                    # `prompt_field` itself, and the old [:400] here (71.3% bind, median 527)
+                    # hid the mechanism from the call that decides whether the claimed route
+                    # is real. Matches the sibling caller in idea_improvement_loop_v4.
+                    matches, context=getattr(idea, "technical_approach", "") or "",
                 ) if matches else None
                 if names:
                     logger.info(f"[PoolContract] data_access_model '{dam}' -> 'public' "
                                 f"(well-known source: {names}; "
                                 f"{getattr(idea, 'solution_name', '?')})")
                     idea.data_access_model = "public"
-                    idea.data_acquisition_notes = (
-                        f"Known public data source: {names} (allowlist-verified)")[:160]
+                    # The [:160] wrapped the WHOLE composed string, so a long `names` list
+                    # severed the "(allowlist-verified)" provenance marker this note exists
+                    # to carry — the same self-truncating-suffix bug as the bulk-route note.
+                    idea.data_acquisition_notes = prompt_field(
+                        f"Known public data source: {names} (allowlist-verified)")
                     clamped += 1
         if clamped:
             logger.info(f"[PoolContract] normalized {clamped} field(s)")

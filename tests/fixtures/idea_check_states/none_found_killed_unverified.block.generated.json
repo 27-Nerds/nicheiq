@@ -209,7 +209,7 @@
    {
     "idea_id": "idea_ebb1c66e60be0fac6052cc917544fdb0",
     "name": "SocialSpecLibrary",
-    "one_liner": "Give social teams one current, source-linked truth layer for platform requirements so scheduled content keeps its channel-specific format instead of failing sil"
+    "one_liner": "Give social teams one current, source-linked truth layer for platform requirements so scheduled content keeps its channel-specific format instead of failing silently."
    },
    {
     "idea_id": "idea_c4ba00b44591d2c967a9aa8c0fcc6b91",
@@ -219,17 +219,17 @@
    {
     "idea_id": "idea_941f6ef6c7459b36855e4f4fd21d17a6",
     "name": "BotSpamRegistry",
-    "one_liner": "Give moderators a shared, evidence-linked way to recognize recurring bot accounts and reply fingerprints before automated spam makes community discussions unusa"
+    "one_liner": "Give moderators a shared, evidence-linked way to recognize recurring bot accounts and reply fingerprints before automated spam makes community discussions unusable."
    },
    {
     "idea_id": "idea_ddf258d98ce69fade9d50772613811ba",
     "name": "CoverageGap Archive",
-    "one_liner": "Give app support and review teams an API-independent audit showing which public app conversations their live monitoring failed to capture when APIs, rate limits"
+    "one_liner": "Give app support and review teams an API-independent audit showing which public app conversations their live monitoring failed to capture when APIs, rate limits, or channel support changed."
    },
    {
     "idea_id": "idea_e72b76f88c97407823c78f9624367bd9",
     "name": "ReplySieve",
-    "one_liner": "Give community managers a human-approved queue that separates likely bot-generated replies from valuable conversation, with evidence and downloadable moderation"
+    "one_liner": "Give community managers a human-approved queue that separates likely bot-generated replies from valuable conversation, with evidence and downloadable moderation records."
    }
   ]
  },

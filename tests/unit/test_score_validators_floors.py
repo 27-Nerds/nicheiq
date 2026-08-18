@@ -187,11 +187,35 @@ class TestRedTeamFloor:
             red_team_caveats=["caveat"])
         assert c == "existing concern"
 
-    def test_caveat_truncated_to_200_chars(self):
+    def test_caveat_reaches_the_rendered_context_whole(self):
+        """WAS: `assert "z"*200 in ctx and "z"*201 not in ctx`, pinning the caveat cut at 200.
+
+        Measured before rewriting, because a cut used for MATCHING would be load-bearing and
+        the pin would be right: `first` has exactly one consumer, the `red_team_context`
+        string, which report_generator logs, may assign to `downgrade_note`, and appends
+        verbatim to the go/no-go rationale. The single comparison downstream
+        (`red_team_context != downgrade_note`) tests identity against a value assigned FROM
+        this same string, so its branch cannot turn on the caveat's length. Nothing hashes,
+        dedupes, or substring-matches it, and every other consumer of `red_team_caveats`
+        reads the original list. So the 200 was a display cut, landing mid-word with no
+        ellipsis in the report's most prominent prose.
+        """
+        caveat = "Named incumbent already ships this workflow. " * 8  # ~360 chars
         _v, _r, _c, ctx = self._t().apply_red_team_downgrade(
             "Go", "Low", None, red_team_verdict="weakened",
-            red_team_caveats=["z" * 500])
-        assert ctx and "z" * 200 in ctx and "z" * 201 not in ctx
+            red_team_caveats=[caveat])
+        assert ctx and caveat.strip() in ctx
+        assert "…[truncated]" not in ctx
+
+    def test_runaway_caveat_is_still_bounded_and_marked(self):
+        """Removing the guessed limit does not make the rendered context unbounded."""
+        from nicheiq.utils.content_security import PROMPT_FIELD_MAX
+
+        _v, _r, _c, ctx = self._t().apply_red_team_downgrade(
+            "Go", "Low", None, red_team_verdict="weakened",
+            red_team_caveats=["z" * (PROMPT_FIELD_MAX + 5_000)])
+        assert ctx and "…[truncated]" in ctx
+        assert len(ctx) < PROMPT_FIELD_MAX + 500
 
     def test_red_team_context_field_on_verdict_model(self):
         from nicheiq.models.executive_summary import GoNoGoVerdict

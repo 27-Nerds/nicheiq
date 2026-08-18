@@ -236,12 +236,12 @@
    {
     "idea_id": "idea_1dff9d66bf7ab498d34567d14533fe29",
     "name": "VetAuditMatch",
-    "one_liner": "VetAuditMatch helps veterinary clinics recover billable work by pairing them with trained remote technicians who independently reconcile estimates with final in"
+    "one_liner": "VetAuditMatch helps veterinary clinics recover billable work by pairing them with trained remote technicians who independently reconcile estimates with final invoices before revenue is lost."
    },
    {
     "idea_id": "idea_6435a9c57127d2e0bd7fdd902d72db5c",
     "name": "OpenSlotLedger \u2014 Team-Wide Cancellation Capacity Ledger",
-    "one_liner": "Give every role in an independent veterinary clinic a shared, auditable view of cancellations, no-shows, and recovered same-day capacity\u2014without per-user seat f"
+    "one_liner": "Give every role in an independent veterinary clinic a shared, auditable view of cancellations, no-shows, and recovered same-day capacity\u2014without per-user seat fees or blind overbooking."
    },
    {
     "idea_id": "idea_e55134e1b4b349042509be857a77f30c",
@@ -256,7 +256,7 @@
    {
     "idea_id": "idea_1cfba52f08205e107dfe8004d0247644",
     "name": "VetLot Reconcile",
-    "one_liner": "Turn a suspicious veterinary inventory export into an evidence-linked reconciliation report that explains which count discrepancies may be caused by FDA actions"
+    "one_liner": "Turn a suspicious veterinary inventory export into an evidence-linked reconciliation report that explains which count discrepancies may be caused by FDA actions on specific lots."
    }
   ]
  },

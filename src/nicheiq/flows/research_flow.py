@@ -32,6 +32,7 @@ from ..report.utils.state_accessors import build_user_adjustments_summary
 from ..tools.cached_serper_dev_tool import CachedSerperDevTool
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
+from ..utils.content_security import prompt_field
 from ..utils.helpers import find_solution_by_name
 from ..utils.commercial_route import (
     CommercialLane,
@@ -1942,7 +1943,10 @@ say so — an honest empty landscape is correct, a foreign one is not.
                             continue
 
                         quote_dict = {
-                            "text": q_text[:300],  # cap length for safety
+                            # The quote is the evidence: a silent 300-char cut removed the half of
+                            # a testimonial that carried the complaint, with no marker telling the
+                            # reader anything was missing. Runaway backstop only.
+                            "text": prompt_field(q_text),
                             "post_id": post_id,
                             "source_url": url,
                             "upvotes": upvotes,
@@ -2123,7 +2127,10 @@ say so — an honest empty landscape is correct, a foreign one is not.
                         "top_subreddits": inf.top_subreddits[:3] if inf.top_subreddits else [],
                         "top_posts": [
                             {
-                                "title": tp.title[:120],
+                                # Rendered as an influencer's post title in AudienceSection, which
+                                # already ellipsizes in CSS. A producer-side char cut here landed
+                                # mid-word with no marker; prompt_field is a runaway backstop only.
+                                "title": prompt_field(tp.title),
                                 "subreddit": tp.subreddit,
                                 "score": tp.score,
                                 "url": tp.url,
@@ -2138,7 +2145,14 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 all_sample_posts = []
                 for p in state.social_content.reddit_posts:
                     sample = {
-                        "title": p.title[:200],
+                        # Rendered verbatim as the post title in DiscoveryEvidence, whose
+                        # .source-title WRAPS (text-wrap: pretty; overflow-wrap: anywhere) --
+                        # it does NOT ellipsize, so nothing downstream hid a bad cut. The old
+                        # [:200] severed a Reddit title mid-word with no marker, and the
+                        # reader saw the severed form. (AudienceSection's
+                        # .influencer-post-title is the one that ellipsizes; do not
+                        # generalize its clamp to this surface.)
+                        "title": prompt_field(p.title),
                         "subreddit": p.subreddit,
                         "score": p.score,
                         "num_comments": p.num_comments,
@@ -2151,7 +2165,14 @@ say so — an honest empty landscape is correct, a foreign one is not.
                 for p in discovery_generic_posts:
                     container = _platform_labels.get(p.platform, p.platform)
                     sample = {
-                        "title": p.title[:200],
+                        # Rendered verbatim as the post title in DiscoveryEvidence, whose
+                        # .source-title WRAPS (text-wrap: pretty; overflow-wrap: anywhere) --
+                        # it does NOT ellipsize, so nothing downstream hid a bad cut. The old
+                        # [:200] severed a Reddit title mid-word with no marker, and the
+                        # reader saw the severed form. (AudienceSection's
+                        # .influencer-post-title is the one that ellipsizes; do not
+                        # generalize its clamp to this surface.)
+                        "title": prompt_field(p.title),
                         "subreddit": container,
                         "score": p.score,
                         "num_comments": p.num_responses,
@@ -2586,7 +2607,7 @@ say so — an honest empty landscape is correct, a foreign one is not.
                                 score = getattr(post, "score", 0) if post else 0
 
                                 quotes_with_sources.append({
-                                    "quote": quote_text[:300],
+                                    "quote": prompt_field(quote_text),
                                     "post_id": post_id or "unknown",
                                     "subreddit": subreddit,
                                     "score": str(score),
@@ -5154,7 +5175,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             nm = getattr(it, "solution_name", "") or ""
             seg = getattr(it, "source_segment", "") or ""
             persona = (getattr(it, "target_personas", None) or [""])[0] or ""
-            digest.append(f"- {nm} (segment: {seg}; serves: {persona[:160]})")
+            # The persona IS the evidence this prompt judges ("judge by WHO it serves"), so a
+            # 160-char cut removed the qualifier that decides the call.
+            digest.append(f"- {nm} (segment: {seg}; serves: {prompt_field(persona)})")
         prompt = (
             f'The user is building products FOR this target audience: "{audience}".\n\n'
             "For EACH idea below, decide whether it primarily serves THAT audience or a close "
@@ -6193,7 +6216,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         self.state.solution_selection.selection_rationale = (
                             f"[AUTO-FALLBACK] LLM selection failed with '{selected_name}'. "
                             f"Auto-selected highest market_fit_score ({fallback_score}). "
-                            f"Original response: {original_rationale[:200]}..."
+                            f"Original response: {prompt_field(original_rationale)}"
                         )
 
                         # Update recommended_focus for fallback solution

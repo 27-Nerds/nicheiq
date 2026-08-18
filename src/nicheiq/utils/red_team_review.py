@@ -167,6 +167,7 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
     from ..config.settings import settings
     from ..models.solution_idea import BaseSolutionIdea
     from ..utils.score_helpers import _composite_for_angle
+    from .content_security import fence_content, prompt_field
     from .llm_service import LLMService
 
     def _comp(i):
@@ -204,11 +205,20 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
             f"RED-TEAM VERDICT: {result.verdict}\n"
             f"CAVEATS: {' | '.join(caveats) or 'none'}\n"
             f"UPLIFT NOTE: {result.uplift or 'none'}\n"
-            f"SEARCH EVIDENCE:\n{(evidence or '')[:1500]}\n\n"
+            # The reviser sees the SAME evidence the killer did. `_evidence_block` already
+            # caps each search RESULT at 1500 (a bulk-scrape bound) and joins up to
+            # `red_team_searches_per_idea` of them; re-cutting the joined block at 1500 here
+            # left only the first query's evidence, so the reviser was asked to escape
+            # findings it could not see the evidence for. Fenced like the kill prompt —
+            # this is scraped web text, and it is now arriving at full length.
+            "SEARCH EVIDENCE:\n"
+            + fence_content(evidence or "", source="web-search",
+                            label="UNTRUSTED WEB RESULTS")
+            + "\n\n"
             "THE IDEA (validated pain — keep it):\n"
             f"- name: {getattr(orig, 'solution_name', '')}\n"
-            f"- value_prop: {(getattr(orig, 'value_proposition', '') or '')[:250]}\n"
-            f"- mechanism: {(getattr(orig, 'technical_approach', '') or '')[:300]}\n\n"
+            f"- value_prop: {prompt_field(getattr(orig, 'value_proposition', None))}\n"
+            f"- mechanism: {prompt_field(getattr(orig, 'technical_approach', None))}\n\n"
             "Revise this idea to ESCAPE these specific findings while staying on the SAME "
             "anchor pains: drop or de-emphasize any capability the evidence shows is free/"
             "bundled/commoditized, re-target the wedge to the unserved part, make the "
@@ -325,7 +335,7 @@ def run_red_team_review(crew, refined_solutions) -> None:
     `_attempt_red_team_revision`. Fail-soft per idea; never raises."""
     from ..config.settings import settings
     from ..models.solution_idea import visible_ideas
-    from ..utils.content_security import fence_content
+    from ..utils.content_security import fence_content, prompt_field
     from .llm_service import LLMService
 
     top_k = settings.red_team_top_k
@@ -484,8 +494,14 @@ def run_red_team_review(crew, refined_solutions) -> None:
                 f"Niche: {niche or 'n/a'}\n\n"
                 "IDEA under evaluation:\n"
                 f"- name: {name}\n"
-                f"- value_proposition: {(getattr(idea, 'value_proposition', '') or '')[:220]}\n"
-                f"- mechanism: {(getattr(idea, 'technical_approach', '') or '')[:220]}\n\n"
+                # Question (3) below judges whether the mechanism handles the MODAL case of
+                # the pain. The old [:220] cut discarded the tail of 93.9% of stamped
+                # technical_approach values -- 94.6% of DISTINCT ones, the corpus being
+                # ~47% regenerate/fork duplicates (median 522 chars, 3,626 checkpoints),
+                # mid-word and unmarked, so the attacker was asked to rule on coverage it
+                # could not see — and this prompt's verdict is what kills an idea.
+                f"- value_proposition: {prompt_field(getattr(idea, 'value_proposition', None))}\n"
+                f"- mechanism: {prompt_field(getattr(idea, 'technical_approach', None))}\n\n"
                 + run_data_block
                 + "Search evidence:\n"
                 + fence_content(evidence, source="web-search", label="UNTRUSTED WEB RESULTS")

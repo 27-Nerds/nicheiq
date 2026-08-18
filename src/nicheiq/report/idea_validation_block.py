@@ -25,6 +25,7 @@ from ..models.solution_idea import (
     has_affirmative_red_team_findings,
 )
 from ..utils.calibration_notes import extract_criterion_reason, truncate_for_display
+from ..utils.content_security import prompt_field
 from ..utils.seed_fidelity import content_tokens, seed_clause_drift
 
 # ── fixed copy (asserted by tests; the frontend renders these verbatim) ──
@@ -1281,7 +1282,12 @@ def _alternatives(ideas: list) -> dict:
         top.append({
             "idea_id": getattr(idea, "idea_id", None),
             "name": getattr(idea, "solution_name", None),
-            "one_liner": (getattr(idea, "value_proposition", None)
-                          or getattr(idea, "description", "") or "")[:160],
+            # NOT [:160]. value_proposition runs a median 159 chars, so that bound cut roughly
+            # half of all values mid-word with no marker. `top` has no frontend reader, so there
+            # is no layout to bound for; when one exists the bound belongs there (the display
+            # sites in this file use `truncate_for_display`, which cuts on a word boundary and
+            # marks the cut). Runaway backstop only here.
+            "one_liner": prompt_field(getattr(idea, "value_proposition", None)
+                                      or getattr(idea, "description", "") or ""),
         })
     return {"count": len(pool), "named_buyer_count": named_buyer, "top": top}

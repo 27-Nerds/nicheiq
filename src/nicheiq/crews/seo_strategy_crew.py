@@ -50,6 +50,7 @@ from ..models.seo_strategy import (
 # PageTypeImplementationLight, SchemaMarkupStrategy, SyncFinalOutputs,
 # UniversalSEOElements, UniversalSEOElementsLight (Task 5/6 deleted)
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
+from ..utils.content_security import prompt_field
 from ..utils.generation import KeywordSeedGenerator
 from ..utils.intent_volume_bands import compute_intent_volume_bands
 from ..utils.validation import (
@@ -316,14 +317,12 @@ def _hydrate_remaining_keywords(
         4: "TIER_4_CATEGORY",
     }
 
-    # Truncate strategy to 150 chars for Python-assigned keywords
+    # The same two `*_strategy_notes` fields reach the group-level sites below, where they
+    # were cut at 150 with no ellipsis at all. One rule for one string: runaway backstop only,
+    # and any layout bound belongs to whatever renders `tier_rationale`.
     strategy_prefix = "[Auto-tiered] "
     if tier_strategy:
-        # Take first 150 chars of tier strategy, add ellipsis if truncated
-        truncated_strategy = tier_strategy[:150].strip()
-        if len(tier_strategy) > 150:
-            truncated_strategy += "..."
-        strategy_text = f"{strategy_prefix}{truncated_strategy}"
+        strategy_text = f"{strategy_prefix}{prompt_field(tier_strategy).strip()}"
     else:
         strategy_text = f"{strategy_prefix}Applied tier-level strategy programmatically"
 
@@ -3114,7 +3113,7 @@ class SEOStrategyCrew:
                         region_name="Python-Hydrated Geographic",
                         total_volume=sum(kw.search_volume or 0 for kw in tier_3_hydrated_remaining),
                         keywords=remaining_entries,
-                        strategy_notes="[Auto-tiered] " + (task_1c_output.geographic_strategy_notes or "Applied tier-level strategy programmatically")[:150],
+                        strategy_notes="[Auto-tiered] " + prompt_field(task_1c_output.geographic_strategy_notes or "Applied tier-level strategy programmatically"),
                         competition_level="MEDIUM",
                     )
                     if tier_3_groups is None:
@@ -3156,7 +3155,7 @@ class SEOStrategyCrew:
                         category_name="Python-Hydrated Category",
                         total_volume=sum(kw.search_volume or 0 for kw in tier_4_hydrated_remaining),
                         keywords=remaining_entries,
-                        strategy_recommendation="[Auto-tiered] " + (task_1d_output.category_strategy_notes or "Applied tier-level strategy programmatically")[:150],
+                        strategy_recommendation="[Auto-tiered] " + prompt_field(task_1d_output.category_strategy_notes or "Applied tier-level strategy programmatically"),
                     )
                     if tier_4_groups is None:
                         tier_4_groups = []

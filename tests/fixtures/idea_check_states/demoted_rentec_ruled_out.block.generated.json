@@ -223,7 +223,7 @@
    {
     "idea_id": "idea_e3a81394f671fdbf50bbe24c3c95d846",
     "name": "AuditFlowPM",
-    "one_liner": "Give property owners a passive, evidence-backed way to detect questionable manager payouts and maintenance charges without repeatedly logging into operational s"
+    "one_liner": "Give property owners a passive, evidence-backed way to detect questionable manager payouts and maintenance charges without repeatedly logging into operational software or manually reconciling records."
    },
    {
     "idea_id": "idea_23f7525fb2666b0fa86e1af051d7a2e4",
@@ -233,17 +233,17 @@
    {
     "idea_id": "idea_02d1108848060bd893b980a5fc4b0ee0",
     "name": "LedgerProof",
-    "one_liner": "LedgerProof gives remote owners a monthly, evidence-backed reconciliation of actual rent deposits against tenant-ledger entries without requiring a platform swi"
+    "one_liner": "LedgerProof gives remote owners a monthly, evidence-backed reconciliation of actual rent deposits against tenant-ledger entries without requiring a platform switch."
    },
    {
     "idea_id": "idea_7a9087843f9c7dd4da21ae057640f0d8",
     "name": "ChaseLoop",
-    "one_liner": "Chase every assigned maintenance job automatically from handoff to closeout, so managers only intervene when a vendor misses a commitment or submits incomplete "
+    "one_liner": "Chase every assigned maintenance job automatically from handoff to closeout, so managers only intervene when a vendor misses a commitment or submits incomplete proof."
    },
    {
     "idea_id": "idea_ba7f75331f0f711be0b9a472edc58128",
     "name": "RepairVsCapEx",
-    "one_liner": "Turn ambiguous rental expenses into documented, property-tagged journal entries that small landlords can paste straight into their existing ledger and tax-prep "
+    "one_liner": "Turn ambiguous rental expenses into documented, property-tagged journal entries that small landlords can paste straight into their existing ledger and tax-prep workflow."
    }
   ]
  },

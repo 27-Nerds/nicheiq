@@ -26,6 +26,8 @@ import hashlib
 import logging
 from dataclasses import dataclass, field
 
+from .calibration_notes import truncate_at_word
+from .content_security import prompt_field
 from .slugify import slugify
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,25 @@ def content_id(label: str, member_pain_ids) -> str:
         "\n".join(sorted((p or "").strip() for p in member_pain_ids or [])).encode("utf-8")
     ).hexdigest()[:10]
     return f"job-{digest}"
+
+
+
+_LABEL_SLOT_WIDTH = 70
+
+
+def _label_slot(pain_title: str) -> str:
+    """A pain title reduced to a family's label slot, MARKED when it does not fit.
+
+    `display_label` is a label, not content: the labeler's contract is "<=6 words" and the
+    frontend renders it as a bare <strong> chip, so the width is a slot bound and stays here
+    rather than moving to the reader. What was wrong was the silence -- a raw `[:70]` cut a
+    title mid-word, and that cut string is shown to the user. It also travels as
+    `family_labels`, but that path is TELEMETRY, not a prompt: _build_cell_allocation_telemetry
+    -> cell_allocation_telemetry -> state.idea_cell_allocation -> checkpoint metadata and
+    build_idea_theses' _uncovered_reason. No LLM prompt reads it. The full title is never
+    lost: it is `member_pain_ids`.
+    """
+    return truncate_at_word(pain_title or "", _LABEL_SLOT_WIDTH)
 
 
 def pain_id(pain) -> str:
@@ -160,7 +181,7 @@ def theme_fallback_partition(pains: list, *, reason: str | None = None) -> Buyer
         fid = content_id(themes.get(key) or "", members)
         families.append(BuyerJobFamily(
             family_id=fid, buyer="", triggering_job="", economic_outcome="",
-            member_pain_ids=members, display_label=members[0][:70], inferred=True))
+            member_pain_ids=members, display_label=_label_slot(members[0]), inferred=True))
         for pid in members:
             by_pain[pid] = fid
     return BuyerJobPartition(
@@ -209,7 +230,7 @@ def _validate_partition(raw_families: list[dict], pains: list) -> tuple[list[Buy
             triggering_job=(raw.get("triggering_job") or "").strip(),
             economic_outcome=(raw.get("economic_outcome") or "").strip(),
             member_pain_ids=tuple(members),
-            display_label=label or members[0][:70],
+            display_label=label or _label_slot(members[0]),
         ))
 
     repairs = {"labeler_families": len(families), "unassigned_pains": 0, "overflow_merged": 0}
@@ -225,7 +246,7 @@ def _validate_partition(raw_families: list[dict], pains: list) -> tuple[list[Buy
         used_slugs.add(fid)
         families.append(BuyerJobFamily(
             family_id=fid, buyer="", triggering_job="", economic_outcome="",
-            member_pain_ids=(pid,), display_label=pid[:70], inferred=True))
+            member_pain_ids=(pid,), display_label=_label_slot(pid), inferred=True))
     repairs["unassigned_pains"] = len(leftovers)
 
     if len(families) > MAX_FAMILIES:
@@ -280,7 +301,7 @@ def partition_from_dict(data) -> BuyerJobPartition | None:
             triggering_job=raw.get("triggering_job") or "",
             economic_outcome=raw.get("economic_outcome") or "",
             member_pain_ids=members,
-            display_label=raw.get("display_label") or members[0][:70],
+            display_label=raw.get("display_label") or _label_slot(members[0]),
             inferred=bool(raw.get("inferred")),
         ))
     if not families:
@@ -311,7 +332,7 @@ def extend_partition(partition: BuyerJobPartition, pains: list) -> BuyerJobParti
         used.add(fid)
         added.append(BuyerJobFamily(
             family_id=fid, buyer="", triggering_job="", economic_outcome="",
-            member_pain_ids=(pid,), display_label=pid[:70], inferred=True))
+            member_pain_ids=(pid,), display_label=_label_slot(pid), inferred=True))
     if not added:
         return partition
     logger.info(f"[BuyerJobs] extended persisted partition with {len(added)} new-pain families")
@@ -379,7 +400,7 @@ def classify_buyer_job_families(
             families: list[_Family] = _F(default_factory=list)
 
         lines = "\n".join(
-            f"- id: {pain_id(p)}\n  detail: {(getattr(p, 'description', '') or '')[:180]}"
+            f"- id: {pain_id(p)}\n  detail: {prompt_field(getattr(p, 'description', ''))}"
             for p in usable
         )
         theme_block = ""
@@ -389,7 +410,7 @@ def classify_buyer_job_families(
                 "\nThe research themes these pains were extracted under (context only — themes "
                 "are NOT buyer jobs; several themes often describe one buyer doing one job):\n"
                 + "\n".join(f"- {getattr(t, 'category_name', '')}: "
-                            f"{(getattr(t, 'definition', '') or '')[:120]}" for t in themes[:12])
+                            f"{prompt_field(getattr(t, 'definition', ''))}" for t in themes[:12])
             )
         prompt = (
             _PROMPT_HEAD

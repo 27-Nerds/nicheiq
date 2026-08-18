@@ -15,6 +15,7 @@ from loguru import logger
 import re
 
 from ..config.settings import settings
+from ..utils.content_security import prompt_field
 from ..utils.llm_service import build_crew_llm
 from ..models.research_state import TrafficMonetizationResult, TrafficUnitValueEvidence
 from ..models.competitor import VerifiedPricingProvenance
@@ -641,7 +642,9 @@ class TrafficMonetizationCrew:
 
                     # Add description if available
                     if comp.description:
-                        desc = comp.description[:100] + "..." if len(comp.description) > 100 else comp.description
+                        # Prompt input: at 100 chars the competitor's actual monetization shape
+                        # was gone before the model that must differentiate from it ever saw it.
+                        desc = prompt_field(comp.description)
                         lines.append(f"    Description: {desc}")
 
                 # Add pricing insights from landscape

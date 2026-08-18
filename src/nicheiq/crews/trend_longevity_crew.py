@@ -21,6 +21,7 @@ from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import TrendLongevityResult, TrendNarrativeOutput
 from ..models.social_content import SocialContentCollection
+from ..utils.content_security import prompt_field
 from ..utils.llm_service import build_crew_llm
 from ..utils.token_monitor import ContentTokenMonitor
 from ..utils.validation.crew_guardrails import validate_trend_narrative
@@ -433,7 +434,9 @@ class TrendLongevityCrew:
             )
 
             for post in sorted_posts[:5]:
-                title = getattr(post, 'title', 'Untitled')[:60]
+                # `discussion_signals` is a prompt input (analyze() -> inputs), not a log line:
+                # a 60-char cut left the trend model half a sentence to reason about.
+                title = prompt_field(getattr(post, 'title', 'Untitled'))
                 created = getattr(post, 'created_utc', None)
                 n_comments = len(post.comments) if post.comments else 0
 

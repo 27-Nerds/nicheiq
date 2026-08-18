@@ -238,17 +238,17 @@
    {
     "idea_id": "idea_b9fd4b75841a64394c5cc94b90b51df3",
     "name": "Answer Recovery Lab",
-    "one_liner": "Turn unstable AI visibility into a testable engineering problem: show the exact journey by which an answer disappears, identify the smallest structural repair, "
+    "one_liner": "Turn unstable AI visibility into a testable engineering problem: show the exact journey by which an answer disappears, identify the smallest structural repair, and continuously prove that the repair remains recoverable using only publicly obtainable page data."
    },
    {
     "idea_id": "idea_7e9629d5dbd9f4f06332030078ffeda4",
     "name": "Citation Gap Triage",
-    "one_liner": "Give brand reputation teams a prompt-level verdict that explains whether an AI recommendation omission is caused by missing third-party evidence or model sampli"
+    "one_liner": "Give brand reputation teams a prompt-level verdict that explains whether an AI recommendation omission is caused by missing third-party evidence or model sampling noise, with an actionable source-building brief."
    },
    {
     "idea_id": "idea_1122c413caac91f994bd2acc99d90b27",
     "name": "ContextCut Test",
-    "one_liner": "Show London service providers which page passages remain accurate, identifiable, and understandable when extracted alone\u2014and exactly how to rewrite the passages"
+    "one_liner": "Show London service providers which page passages remain accurate, identifiable, and understandable when extracted alone\u2014and exactly how to rewrite the passages that fail."
    },
    {
     "idea_id": "idea_13e60f46f6b028f69caf28f7df1646fc",

@@ -227,22 +227,22 @@
    {
     "idea_id": "idea_558fa7fa28d5cf16f1c6d3736e7ed37b",
     "name": "EntityResolutionLedger",
-    "one_liner": "Give multi-entity bookkeepers a defensible, repeatable way to identify vendor ownership and route shared transactions without relying on memory or ad hoc judgme"
+    "one_liner": "Give multi-entity bookkeepers a defensible, repeatable way to identify vendor ownership and route shared transactions without relying on memory or ad hoc judgment."
    },
    {
     "idea_id": "idea_d809e19e11310d5d69ff549a2614505e",
     "name": "StagingPipelineCleaner",
-    "one_liner": "Convert inconsistent financial exports into repeatable, audit-trailed QBO/Xero import files locally, eliminating manual staging without sacrificing accounting c"
+    "one_liner": "Convert inconsistent financial exports into repeatable, audit-trailed QBO/Xero import files locally, eliminating manual staging without sacrificing accounting control or data privacy."
    },
    {
     "idea_id": "idea_04a0ddd3ea0341de5f41d6612f5d1e95",
     "name": "ISO20022ReconSpec",
-    "one_liner": "Give accounting teams deterministic, inspectable reconciliation logic derived from ISO 20022 standards so every bank-feed match can be tested, explained, and au"
+    "one_liner": "Give accounting teams deterministic, inspectable reconciliation logic derived from ISO 20022 standards so every bank-feed match can be tested, explained, and audited."
    },
    {
     "idea_id": "idea_262c3ba59fd0c0a0b2174ce7084523eb",
     "name": "PayoutClarity",
-    "one_liner": "PayoutClarity helps ecommerce bookkeepers identify platform deposits and split available settlement data into gross sales, refunds, fees, tax, and clearing-acco"
+    "one_liner": "PayoutClarity helps ecommerce bookkeepers identify platform deposits and split available settlement data into gross sales, refunds, fees, tax, and clearing-account entries before posting."
    },
    {
     "idea_id": "idea_c02f32962ddc2ab913ba85687ce2a860",

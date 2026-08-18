@@ -70,6 +70,7 @@ from ..utils.crew_helpers.traffic_pre_compute import (
     compute_intent_breakdown,
     match_niche_to_cpm,
 )
+from ..utils.content_security import prompt_field
 from ..utils.helpers import find_solution_by_name
 from ..utils.idea_tags import refresh_tag_facets
 from ..utils.prompts import safe_format
@@ -1436,7 +1437,7 @@ class ReportGenerator:
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
             project_type=(details.project_type if details else None) or 'SaaS',
-            core_features=', '.join((details.core_features if details else None) or [])[:200] or 'N/A',
+            core_features=prompt_field(', '.join((details.core_features if details else None) or [])) or 'N/A',
             top_pain_points=(
                 ', '.join(pain_point_titles)
                 or 'No validated pain point matched the selected solution.'
@@ -2739,7 +2740,9 @@ It differentiates through {diff_text}.
                     platform="twitter", score=likes, num_responses=replies, raw_engagement={}))
                 candidates.append((eng, TopRedditThread(
                     post_id=thread.thread_id,
-                    title=(getattr(thread.original_tweet, "text", "") or thread.thread_id)[:120],
+                    title=prompt_field(
+                        getattr(thread.original_tweet, "text", "") or thread.thread_id
+                    ),
                     subreddit="Twitter", platform="twitter", score=likes, num_comments=replies,
                     url=thread.original_tweet.url, created_utc=getattr(thread.original_tweet, "created_at", None),
                     key_insight=f"High-engagement discussion on Twitter ({likes} likes)")))
@@ -5007,7 +5010,9 @@ Return valid JSON with this structure:
                 data_sources=solution.data_sources or [],
                 estimated_indexable_pages=solution.estimated_indexable_pages or 50,
                 content_generation_model=solution.content_generation_model or "Manual content",
-                value_proposition=solution.value_proposition or solution.description[:200] if solution.description else "",
+                # `A or B[:200] if C else ""` parsed as `(A or B[:200]) if C else ""`, so a solution
+                # with a value_proposition but no description handed the blueprint crew "".
+                value_proposition=solution.value_proposition or prompt_field(solution.description),
                 organic_discovery_queries=solution.organic_discovery_queries or [],
                 pricing_strategy=solution.pricing_strategy or "Freemium model",
             )

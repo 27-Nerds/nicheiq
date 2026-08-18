@@ -20,6 +20,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from ...config.settings import settings
+from ..content_security import prompt_field
 from ..llm_service import LLMService
 
 
@@ -107,8 +108,8 @@ class KeywordIntentRelevanceValidator:
     def _grade_batch(self, ctx: IdeaContext, batch: list[str]) -> dict[str, int]:
         kw_list = "\n".join(f"{i}: {batch[i]}" for i in range(len(batch)))
         prompt = _PROMPT.format(
-            value_prop=(ctx.value_proposition or "")[:400], pains="; ".join(ctx.pains) or "(none listed)",
-            angle=ctx.angle or "(unspecified)", niche=(ctx.niche or "")[:200], kw_list=kw_list, n=len(batch),
+            value_prop=prompt_field(ctx.value_proposition), pains="; ".join(ctx.pains) or "(none listed)",
+            angle=ctx.angle or "(unspecified)", niche=prompt_field(ctx.niche), kw_list=kw_list, n=len(batch),
         )
         resp, _ = LLMService.invoke_structured(
             prompt=prompt, output_model=_BatchKwGrades, temperature=0.0,

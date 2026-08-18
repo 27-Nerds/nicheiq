@@ -26,6 +26,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .content_security import prompt_field
+
 logger = logging.getLogger(__name__)
 
 # Closed wallet-class vocabulary + priors. The prior anchors the blended score: classes are
@@ -165,7 +167,16 @@ def score_segment_payability(segments, pain_points, incumbent_rows, niche_descri
             item.payability_score = blend_payability(
                 item.payability_score, item.payability_class,
                 getattr(seg, "budget_sensitivity", None))
-            item.rationale = (item.rationale or "").strip()[:200]
+            # WRITE truncation: this value is STORED (-> AudienceSegment.payability_rationale,
+            # persisted through model_dump / checkpoint round-trip and re-read by
+            # `_payability_map_from_segments`), so a cut here is inherited by every downstream
+            # reader and no read-side fix can recover it. The old 200 constant severed 71 of 221
+            # distinct values — 32.1%, sitting EXACTLY at 200 — mid-word and with no marker
+            # (measured over the checkpoint corpus). The field has no length contract: the prompt
+            # asks for "one evidence-grounded sentence" and the model field documents it as a
+            # user-facing reason, and no renderer imposes a slot width. So the bound is the
+            # runaway backstop only, and it announces itself when it fires.
+            item.rationale = prompt_field((item.rationale or "").strip())
             out[key] = item
         if out:
             logger.info("[Payability] scored %d/%d segment(s): %s", len(out), len(segments),

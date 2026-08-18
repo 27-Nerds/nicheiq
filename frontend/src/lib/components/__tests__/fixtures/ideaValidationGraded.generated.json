@@ -240,22 +240,22 @@
       {
         "idea_id": "idea_ef193f0bde10705d09e4d0dea67d8d64",
         "name": "ChurnSignal Triage",
-        "one_liner": "ChurnSignal Triage converts unanswered community questions into a transparent retention-risk queue, helping small teams intervene first where silence is most li"
+        "one_liner": "ChurnSignal Triage converts unanswered community questions into a transparent retention-risk queue, helping small teams intervene first where silence is most likely to precede cancellation."
       },
       {
         "idea_id": "idea_35bead5140fb41c80d1fcafcdd6a5796",
         "name": "GroundTruth Reply Check",
-        "one_liner": "GroundTruth Reply Check compares every factual claim in an AI-drafted community reply with the company\u2019s own documentation, showing exactly where the draft conf"
+        "one_liner": "GroundTruth Reply Check compares every factual claim in an AI-drafted community reply with the company\u2019s own documentation, showing exactly where the draft conflicts, lacks support, or matches."
       },
       {
         "idea_id": "idea_faaae41ea9019640dc740e0dbaad2a69",
         "name": "ActivityBridge Router",
-        "one_liner": "Give agencies one self-hosted, unlimited-seat queue for mainstream social inquiries by translating authorized platform activity into an ActivityPub workflow wit"
+        "one_liner": "Give agencies one self-hosted, unlimited-seat queue for mainstream social inquiries by translating authorized platform activity into an ActivityPub workflow with accountable ownership and human-approved responses."
       },
       {
         "idea_id": "idea_f7830a379dbcf73f29071c94174309c5",
         "name": "GapSignal",
-        "one_liner": "Give small brands and nonprofits one daily Coverage Gap Score that reveals when news and social chatter diverge, so they can investigate overlooked risks and op"
+        "one_liner": "Give small brands and nonprofits one daily Coverage Gap Score that reveals when news and social chatter diverge, so they can investigate overlooked risks and opportunities before responding."
       }
     ]
   },

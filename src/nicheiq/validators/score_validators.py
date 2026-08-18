@@ -9,6 +9,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from ..utils.content_security import prompt_field
 from ..models.solution_idea import (
     effective_red_team_state,
     has_affirmative_red_team_findings,
@@ -767,12 +768,18 @@ class VerdictValidator:
             typed_findings is not None
             and not has_affirmative_red_team_findings(typed_findings)
         )
+        # `first` is DISPLAY ONLY: it is interpolated into `red_team_context`, which the
+        # report generator appends verbatim to the go/no-go rationale. It is never a match
+        # or dedupe key -- the one comparison downstream (`red_team_context != downgrade_note`)
+        # tests identity against a value assigned FROM this same string, so its length cannot
+        # change which branch fires. A 200-char slice therefore only cut the finding mid-word
+        # in the report's most prominent prose. Runaway backstop only.
         if typed_findings is None:
-            first = caveats[0].strip()[:200] if caveats else ""
+            first = prompt_field(caveats[0].strip()) if caveats else ""
         elif rt == "killed" and affirmative:
-            first = affirmative[0].claim[:200]
+            first = prompt_field(affirmative[0].claim)
         else:
-            first = typed_findings[0].claim[:200] if typed_findings else ""
+            first = prompt_field(typed_findings[0].claim) if typed_findings else ""
         cited = f" — {first}" if first else ""
         # The verdict enum must NOT be interpolated into the sentence. This read
         # "an adversarial evidence probe killed this idea" in the go/no-go block — the most

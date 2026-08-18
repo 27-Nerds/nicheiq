@@ -13,6 +13,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.technical_blueprint import SiteStructure, UserFlowsSection
+from ..utils.content_security import prompt_field
 from ..utils.llm_service import build_crew_llm
 from ..utils.validation.crew_guardrails import validate_site_structure, validate_user_flows
 
@@ -157,16 +158,16 @@ class TechnicalBlueprintCrew:
         # Format inputs for crew
         inputs = {
             "solution_name": solution_name,
-            "description": description[:500] if description else "",
+            "description": prompt_field(description),
             "project_type": project_type or "saas",
             "core_features": "\n".join(f"- {f}" for f in (core_features or [])[:8]),
             "target_personas": "\n".join(f"- {p}" for p in (target_personas or [])[:4]),
             "data_sources": ", ".join(data_sources) if data_sources else "None",
             "estimated_indexable_pages": estimated_indexable_pages or 50,
             "content_generation_model": content_generation_model or "Manual content",
-            "value_proposition": (value_proposition or description or "")[:300],
+            "value_proposition": prompt_field(value_proposition or description),
             "organic_discovery_queries": ", ".join((organic_discovery_queries or [])[:5]),
-            "pricing_strategy": (pricing_strategy or "Freemium model")[:300],
+            "pricing_strategy": prompt_field(pricing_strategy or "Freemium model"),
         }
 
         try:

@@ -13,6 +13,7 @@ from crewai.project import CrewBase, agent, crew, task
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.content_security import prompt_field
 from ..utils.llm_service import build_crew_llm
 from ..utils.market_brief import parse_market_wallet_line
 from ..utils.niche_difficulty import (
@@ -176,7 +177,7 @@ class PricingStrategyCrew:
                 f"({wallet_evidence!r}). The paragraph is rendered to the reader directly under "
                 "the pricing model, so it contradicts the report's own evidence just as the "
                 "field would. Justify the priced model against those verified prices instead: "
-                f"{rationale[:200]!r}"
+                f"{prompt_field(rationale)!r}"
             )
         return None
 
@@ -237,7 +238,7 @@ class PricingStrategyCrew:
 
             # Add description
             if competitor.description:
-                pricing_str += f" ({competitor.description[:50]}...)" if len(competitor.description) > 50 else f" ({competitor.description})"
+                pricing_str += f" ({prompt_field(competitor.description)})"
 
             # Add pricing if available
             if competitor.pricing_model:

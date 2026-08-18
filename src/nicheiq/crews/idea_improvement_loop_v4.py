@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from ..config.settings import settings
 from ..models.solution_idea import BaseSolutionIdea
+from ..utils.content_security import prompt_field
 from ..utils.data_access import DATA_ACCESS_VOCAB
 from ..utils.llm_service import LLMService
 from ..utils.public_data_sources import (
@@ -363,7 +364,12 @@ def _improve(crit, thread, prior, *, invoke, model, effort):
                 "Your previous tool payload violated the BaseSolutionIdea schema. Return one "
                 "complete BaseSolutionIdea payload with every required field present, including "
                 "a non-empty `core_features` list. Do not omit fields to save tokens. Correct "
-                f"this validation error: {str(error)[:500]}"
+                # The repair turn's ONLY job is to fix the fields this error names, so every
+                # named field has to survive into the prompt. A real BaseSolutionIdea
+                # ValidationError runs 872-988 chars (6 missing fields -> 988); the old [:500]
+                # hid 1-3 of the field names, so the model repaired what it could see, resubmitted,
+                # and failed again on the ones the cut hid -- a repair loop that cannot converge.
+                f"this validation error: {prompt_field(error)}"
             ),
         })
         idea, usage = invoke(
@@ -434,11 +440,21 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
     # re-split of the joined string) then an LLM CONFIRM over the retrieved entries (a name
     # hit alone is too broad). Reject/error at either step falls through to the web verifier.
     matches = retrieve_known_sources(flags or getattr(idea, "data_sources", None))
-    names = llm_confirm_known_route(matches, context=claim[:400]) if matches else None
+    names = llm_confirm_known_route(matches, context=claim) if matches else None
     if names:
         idea.data_access_model = "public"
         if prior != "public":
-            idea.data_acquisition_notes = f"Known public data source: {names} (allowlist-verified)"[:160]
+            # Bound only the VARIABLE part. The old `f"...{names} (allowlist-verified)"[:160]`
+            # wrapped the composed string INCLUDING its own suffix, so any `names` longer than
+            # 113 chars (160 - 26 prefix - 21 suffix) severed the very provenance marker the
+            # line exists to attach — and the trailing source name with it. Not hypothetical:
+            # `retrieve_known_sources` joins up to 6 canonical names PER claimed part and
+            # `llm_confirm_known_route` joins those per-part strings, so three ordinary
+            # data_sources entries (package registries + federal datasets + GitHub) already
+            # produce a 138-char `names`. Slicing the interpolation keeps prefix and suffix
+            # structurally unreachable by the cut, and prompt_field marks a runaway when it fires.
+            idea.data_acquisition_notes = (
+                f"Known public data source: {prompt_field(names)} (allowlist-verified)")
         logger.info(f"[v4-verify] '{getattr(idea, 'solution_name', '?')}' route -> public "
                     f"(well-known source: {names}; LLM-confirmed, web search skipped)")
         return DataRouteVerdict(self_sourced=False, verdict="supported", access_model="official",
@@ -533,15 +549,18 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
             if isinstance(df, (int, float)) and df > 0.2:  # re-cap stale data score (cap ran pre-loop)
                 idea.data_feasibility_score = 0.2
             if (verdict.note or "").strip():
-                idea.data_acquisition_notes = verdict.note.strip()[:160]
+                idea.data_acquisition_notes = prompt_field(verdict.note.strip())
         elif canonical == "unverified":
             # Calibrated abstention: no score penalty — flag the uncertainty honestly instead.
-            note = (verdict.note or "").strip()
+            # The backstop applies to the MODEL's note alone. Bounding the concatenation
+            # instead let the ~135-char fixed prefix eat the budget, leaving the verifier's
+            # actual finding ~65 chars of a 200-char cap.
+            note = prompt_field((verdict.note or "").strip())
             idea.data_acquisition_notes = (
                 "Data route UNVERIFIED — could not confirm or refute a public source; verify "
-                "obtainability before building." + (f" {note}" if note else ""))[:200]
+                "obtainability before building." + (f" {note}" if note else ""))
         elif canonical != prior and (verdict.note or "").strip():
-            idea.data_acquisition_notes = verdict.note.strip()[:120]
+            idea.data_acquisition_notes = prompt_field(verdict.note.strip())
         logger.info(f"[v4-verify] '{getattr(idea,'solution_name','?')}' route -> {canonical} "
                     f"(verdict={v3}, access={verdict.access_model})")
         return verdict
