@@ -5779,8 +5779,19 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 # _pivot_acceptable compared) — deliberately NOT the workbench's
                 # displayCompositeScore; do not repoint these at the UI score.
                 record["rejected_name"] = getattr(rev, "solution_name", None)
+                # NO CHARACTER SLICE HERE — deliberate, do not re-add (2026-08).
+                # This used to store `value_proposition[:160]`, which shipped
+                # "…so practices stuck on Eaglesoft or D" into the report: a mid-word
+                # cut with no ellipsis, which readers report as corrupted data rather
+                # than as an abbreviation. Nothing required the bound — `rejected_pitch`
+                # has no backend column (0 hits in backend/src), no pydantic
+                # max_length, no LLM consumer, and its own sibling `rejected_name`
+                # (76 chars in the reported artifact) was never truncated. The full
+                # string is stored; PRESENTATION LIMITS BELONG IN THE RENDERER, where
+                # ValidationVerdict.svelte line-clamps `.iv-pivot-rejected` — a real
+                # ellipsis, viewport-relative, and the whole text still in the DOM.
                 record["rejected_pitch"] = (
-                    (getattr(rev, "value_proposition", None) or "")[:160]) or None
+                    getattr(rev, "value_proposition", None) or "") or None
                 record["rejected_composite"] = round(rev_comp * 100)
                 record["original_composite"] = round(orig_comp * 100)
                 return None
@@ -5793,8 +5804,17 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             record["keeps"] = "; ".join(
                 seed_personas[:2]
                 + list(getattr(seed, "pain_points_addressed", None) or [])[:1]) or None
-            record["changes"] = ((getattr(rev, "innovation_angle", None)
-                                  or getattr(rev, "value_proposition", "") or "")[:200]) or None
+            # NO CHARACTER SLICE HERE either — deliberate, do not re-add (2026-08).
+            # This was `[:200]` on the same source field that `rejected_pitch` above cut
+            # at `[:160]`: two different guessed magnitudes for one string inside one
+            # record, neither backed by any constraint. Clamped by the renderer instead
+            # (`.iv-echo-row dd.iv-clamp-3` in ValidationVerdict.svelte).
+            # The `elif record["changes"]:` test below is a TRUTHINESS check and is
+            # unaffected: a non-empty value proposition is truthy sliced or whole, and
+            # the trailing `or None` still maps empty→None. Asserted in
+            # tests/unit/flows/test_validate_idea_stage5.py.
+            record["changes"] = (getattr(rev, "innovation_angle", None)
+                                 or getattr(rev, "value_proposition", "") or "") or None
             if seed_personas and rev_personas and seed_personas[0] != rev_personas[0]:
                 record["ries_label"] = "customer-segment"
             elif record["changes"]:

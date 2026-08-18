@@ -24,7 +24,13 @@ from unittest.mock import patch
 import pytest
 
 from nicheiq.config.settings import settings
-from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+from nicheiq.crews.unified_solution_crew import (
+    _NICHE_LABEL_CATEGORY_NOUNS,
+    _NICHE_LABEL_DETERMINERS,
+    UnifiedSolutionCrew,
+    _capability_discovery_query,
+    _niche_query_label,
+)
 from nicheiq.models.solution_idea import BaseSolutionIdea
 
 CREW_SRC = Path(UnifiedSolutionCrew.__module__.replace(".", "/") + ".py")
@@ -833,3 +839,289 @@ class TestRoutingIntoTheGatingCounterWouldChangeBehaviour:
         assert crew._ma_serper_calls == 4
         out = crew._ma_search_batch([f"q{i}" for i in range(6)])
         assert sum(1 for v in out.values() if v == "") == 4
+
+
+# ---------------------------------------------------------------------------
+# The two arms the ledger could not see (2026-08-17). Run 4bc9c406's persisted ledger
+# recorded parity_direct 44 / adjacent_niche_frame 30 / adjacent_base 20 / toolbelt 17 and
+# NOTHING for `_probe_incumbents` or `_probe_seed_brief_parity`. The incumbent probe is the
+# arm every other parity query anchors on — each name-anchored query is
+# f'"{incumbent}" {kw}' — so the queries behind a demonstrably wrong incumbent map were
+# unrecoverable after the run.
+# ---------------------------------------------------------------------------
+
+class TestIncumbentProbeIsAttributed:
+    def _crew(self, run_return="Acme is a tool", **extra):
+        crew = _crew(search_tool=SimpleNamespace(run=lambda search_query: run_return),
+                     niche_context=SimpleNamespace(niche_description="wedding photography"),
+                     audience_mapping=None, competitor_mentions_text="", **extra)
+        crew._ma_search = lambda q: None
+        return crew
+
+    def _run(self, crew):
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(SimpleNamespace(incumbents=[]), None)):
+            crew._probe_incumbents()
+
+    def test_all_three_discovery_queries_land_in_the_ledger(self):
+        crew = self._crew()
+        self._run(crew)
+        rows = [r for r in crew.search_arm_log if r["arm"] == "incumbent_probe"]
+        assert crew.search_arm_spend["incumbent_probe"] == 3
+        assert [r["query"] for r in rows] == [
+            "best software tools for wedding photography",
+            "wedding photography app pricing per month",
+            "best apps and tools for wedding photography",
+        ]
+
+    def test_rows_are_marked_uncounted_and_the_gating_counter_is_untouched(self):
+        """`counted` means "`_ma_serper_calls` already saw this". These are raw
+        `search_tool.run` calls, so marking them counted would inflate `gated_spend` past
+        `ma_serper_calls` and corrupt the diagnostic."""
+        crew = self._crew(_ma_serper_calls=7)
+        self._run(crew)
+        rows = [r for r in crew.search_arm_log if r["arm"] == "incumbent_probe"]
+        assert all(r["counted"] is False for r in rows)
+        assert crew._ma_serper_calls == 7
+        payload = crew.search_debug_payload()
+        assert payload["gated_spend"] == 0
+        assert payload["gated_spend"] <= payload["ma_serper_calls"]
+
+    def test_snippet_identity_is_recorded_so_a_bad_map_is_traceable(self):
+        crew = self._crew(run_return="Acme ($29/mo) does scheduling")
+        self._run(crew)
+        row = next(r for r in crew.search_arm_log if r["arm"] == "incumbent_probe")
+        assert row["empty"] is False
+        assert "Acme" in row["snippet"]["excerpt"]
+
+    def test_a_failing_search_is_not_recorded_as_an_issued_query(self):
+        calls = {"n": 0}
+
+        def _run(search_query):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("serper 500")
+            return "Acme is a tool"
+
+        crew = self._crew()
+        crew.search_tool = SimpleNamespace(run=_run)
+        self._run(crew)
+        assert crew.search_arm_spend["incumbent_probe"] == 2
+
+    def test_the_verify_query_is_attributed_when_it_returns_a_result(self):
+        crew = self._crew(run_return="no tool names here")
+        crew.audience_mapping = SimpleNamespace(tools_currently_used=["PhotoPills"])
+        crew._ma_search = lambda q: "PhotoPills costs $10"
+        self._run(crew)
+        queries = [r["query"] for r in crew.search_arm_log
+                   if r["arm"] == "incumbent_probe"]
+        assert "PhotoPills pricing" in queries
+        assert crew.search_arm_spend["incumbent_probe"] == 4
+
+    def test_a_budget_refused_verify_query_is_not_recorded_as_spend(self):
+        """`_ma_search` returns None when the market-awareness budget refused the call.
+        `search_arm_spend` means "queries ISSUED" — logging that would invent spend."""
+        crew = self._crew(run_return="no tool names here")
+        crew.audience_mapping = SimpleNamespace(tools_currently_used=["PhotoPills"])
+        crew._ma_search = lambda q: None
+        self._run(crew)
+        assert crew.search_arm_spend["incumbent_probe"] == 3
+
+
+class TestSeedBriefParityIsAttributed:
+    def _crew(self):
+        crew = _crew(search_tool=SimpleNamespace(run=lambda search_query: "SERP: Okara"),
+                     niche_context=SimpleNamespace(
+                         niche_description="Community-management tooling for B2B SaaS teams"))
+        return crew
+
+    def _run(self, crew):
+        finding = SimpleNamespace(parity="shipped", covered_by="Okara",
+                                  evidence="reply automation agents")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(finding, None)):
+            return crew._probe_seed_brief_parity(
+                SimpleNamespace(solution_name="PitchedIdea"), ["drafts Reddit replies"])
+
+    def test_all_three_query_angles_land_in_the_ledger_against_the_seed(self):
+        crew = self._crew()
+        note, calls = self._run(crew)
+        rows = [r for r in crew.search_arm_log if r["arm"] == "seed_brief_parity"]
+        assert note == "shipped by Okara: reply automation agents"
+        assert crew.search_arm_spend["seed_brief_parity"] == calls == 3
+        assert {r["idea"] for r in rows} == {"PitchedIdea"}
+        assert rows[0]["query"] == "drafts Reddit replies tool"
+        assert rows[1]["query"] == "best drafts Reddit replies tools"
+
+    def test_rows_are_uncounted_and_never_reach_the_gating_counter(self):
+        crew = self._crew()
+        crew._ma_serper_calls = 3
+        self._run(crew)
+        rows = [r for r in crew.search_arm_log if r["arm"] == "seed_brief_parity"]
+        assert all(r["counted"] is False for r in rows)
+        assert crew._ma_serper_calls == 3
+        payload = crew.search_debug_payload()
+        assert payload["gated_spend"] <= payload["ma_serper_calls"]
+
+    def test_the_ledger_survives_a_probe_that_fails_soft(self):
+        """Display-only probe: a total search failure still returns None, and the ledger
+        must record nothing rather than invent rows."""
+        def _boom(search_query):
+            raise RuntimeError("serper down")
+
+        crew = self._crew()
+        crew.search_tool = SimpleNamespace(run=_boom)
+        note, calls = self._run(crew)
+        assert note is None and calls == 3
+        assert "seed_brief_parity" not in (getattr(crew, "search_arm_spend", None) or {})
+
+
+# ---------------------------------------------------------------------------
+# The malformed vendor-free discovery query (2026-08-17). Run 4bc9c406's persisted ledger
+# recorded this query verbatim, 10 times:
+#   "NPI taxonomy reconciliation software software The dental revenue cycle management market"
+# "software" twice (the capability phrase already ended in it) and a niche label that is the
+# first 6 words of the niche DESCRIPTION — prose, not a search term. Many ideas get ONLY this
+# query, so a malformed one means a parity finding built on evidence no buyer would ever see.
+# ---------------------------------------------------------------------------
+
+# The real Stage-1 description from run 4bc9c406 (stage_1_niche_context.json), verbatim.
+DENTAL_NICHE_DESCRIPTION = (
+    "The dental revenue cycle management market encompasses the software, services, and "
+    "workflows used by dental offices to manage patient billing, insurance claims "
+    "processing, and reimbursement recovery."
+)
+
+
+def _all_niche_descriptions():
+    """Every distinct Stage-1 niche description persisted under output/checkpoints.
+
+    Real data, never a hand-written fixture: the defect is a property of how the Stage-1
+    LLM writes descriptions, so the rule has to hold over the ones it actually wrote.
+    """
+    import json
+
+    root = Path(__file__).resolve().parents[3] / "output" / "checkpoints"
+    out = set()
+    for path in sorted(root.glob("*/stage_1_niche_context.json")):
+        try:
+            desc = (json.loads(path.read_text()).get("niche_description") or "").strip()
+        except Exception:
+            continue
+        if desc:
+            out.add(desc)
+    return sorted(out)
+
+
+class TestNicheQueryLabel:
+    """Property over the REAL corpus of niche descriptions, not a pinned example."""
+
+    def test_the_live_malformed_query_is_no_longer_producible(self):
+        q = _capability_discovery_query(
+            "NPI taxonomy reconciliation software",
+            _niche_query_label(DENTAL_NICHE_DESCRIPTION))
+        assert q == "NPI taxonomy reconciliation software dental revenue cycle management"
+        assert "software software" not in q
+        assert not q.lower().endswith("market")
+
+    @pytest.mark.parametrize("desc", _all_niche_descriptions())
+    def test_label_is_never_longer_than_the_first_six_words_it_replaces(self, desc):
+        """The old label was `" ".join(desc.split()[:6])[:60]`. A shorter, well-formed
+        query is strictly better, so the fix must never lengthen one."""
+        old = " ".join(desc.split()[:6])[:60]
+        assert len(_niche_query_label(desc)) <= len(old)
+
+    @pytest.mark.parametrize("desc", _all_niche_descriptions())
+    def test_label_never_opens_with_a_determiner_or_closes_on_a_category_noun(self, desc):
+        words = _niche_query_label(desc).split()
+        if not words:
+            return
+        assert words[0].lower() not in _NICHE_LABEL_DETERMINERS
+        assert words[-1].lower() not in _NICHE_LABEL_CATEGORY_NOUNS
+
+    @pytest.mark.parametrize("desc,expected", [
+        # The shapes the Stage-1 LLM actually writes, all present in the corpus above.
+        ("The dental revenue cycle management market encompasses the software",
+         "dental revenue cycle management"),
+        ("The sim-racing hardware market encompasses the physical", "sim-racing hardware"),
+        ("The open-source AI model ecosystem encompasses tools", "open-source AI model"),
+        ("The ecosystem of competitive esports fans spans", "competitive esports fans"),
+        ("The AI Agent Builders niche focuses on", "AI Agent Builders"),
+        ("The LLM Developer Tools niche encompasses frameworks", "LLM Developer Tools"),
+    ])
+    def test_framing_boilerplate_is_stripped(self, desc, expected):
+        assert _niche_query_label(desc) == expected
+
+    def test_a_description_with_no_framing_is_left_alone(self):
+        assert _niche_query_label("london plumbers ltd invoicing") == \
+            "london plumbers ltd invoicing"
+
+
+class TestCapabilityDiscoveryQuery:
+    """`_capability_phrases` is asked for buyer/market vocabulary and its own prompt example
+    is "multi-entity consolidation software", so the word arrives inside the phrase about as
+    often as not. The template must not stutter — and must still add it when it is missing."""
+
+    @pytest.mark.parametrize("capability", [
+        "NPI taxonomy reconciliation software",
+        "multi-entity consolidation software",
+        "dental claims software tools",
+        "SOFTWARE for payout reconciliation",
+    ])
+    def test_software_is_never_doubled_for_a_phrase_that_already_carries_it(self, capability):
+        q = _capability_discovery_query(capability, "dental revenue cycle management")
+        assert q.lower().count("software") == 1, q
+        assert q.startswith(capability)
+
+    @pytest.mark.parametrize("capability", [
+        "payout deposit reconciliation",
+        "dental claim status tracking",
+        "denial appeal analytics",
+    ])
+    def test_software_is_still_added_when_the_phrase_lacks_it(self, capability):
+        q = _capability_discovery_query(capability, "dental revenue cycle management")
+        assert q == f"{capability} software dental revenue cycle management"
+
+    def test_capability_survives_the_120_char_cap(self):
+        q = _capability_discovery_query("payout deposit reconciliation", "x" * 200)
+        assert len(q) == 120
+        assert q.startswith("payout deposit reconciliation software")
+
+    def test_an_empty_niche_label_leaves_no_trailing_whitespace(self):
+        assert _capability_discovery_query("denial appeal analytics", "") == \
+            "denial appeal analytics software"
+
+
+class TestParityProbeEmitsTheFixedQuery:
+    def test_the_probe_issues_the_well_formed_discovery_query(self, monkeypatch):
+        """End-to-end through `_probe_mechanism_parity` with the real dental description and
+        a capability phrase that already ends in "software"."""
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 5)
+        seen = []
+
+        class _Tool:
+            def __init__(self):
+                self._cache = {}
+
+            def run(self, search_query):
+                seen.append(search_query)
+                return "R"
+
+        crew = _crew(search_tool=_Tool(),
+                     niche_context=SimpleNamespace(
+                         niche_description=DENTAL_NICHE_DESCRIPTION),
+                     _incumbent_rows=[], audience_mapping=None, coverage_caveats=[])
+        crew._probe_incumbents = lambda: ""
+        crew._capability_phrases = lambda top: {
+            "Alpha": "NPI taxonomy reconciliation software"}
+        crew._mechanism_keywords = lambda idea, **kw: "kw"
+        crew._probe_adjacent_markets = lambda top: ([], 0)
+        crew._probe_toolbelt_free_bundle = lambda top: ([], 0)
+        crew._run_parallel = lambda *a, **k: []
+        crew._record_divergent_usage = lambda u: None
+        crew._validate_idea_caps = lambda idea: []
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(SimpleNamespace(findings=[]), None)):
+            crew._probe_mechanism_parity([_idea("Alpha")])
+        assert seen == [
+            "NPI taxonomy reconciliation software dental revenue cycle management"]

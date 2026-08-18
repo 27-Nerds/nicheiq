@@ -566,7 +566,10 @@
           </p>
           <dl class="iv-echo">
             {#if pivot.keeps}<div class="iv-echo-row"><dt>Kept</dt><dd>{pivot.keeps}</dd></div>{/if}
-            {#if pivot.changes}<div class="iv-echo-row"><dt>Changed</dt><dd>{pivot.changes}</dd></div>{/if}
+            <!-- iv-clamp-3: the producer stores the revision's `changes` text VERBATIM
+                 (research_flow.py dropped its [:200] slice) — the length limit is this
+                 clamp, so long values fold with a real ellipsis and stay whole in the DOM. -->
+            {#if pivot.changes}<div class="iv-echo-row"><dt>Changed</dt><dd class="iv-clamp-3">{pivot.changes}</dd></div>{/if}
             {#if pivot.because}
               <div class="iv-echo-row">
                 <dt>Gap we aimed at</dt>
@@ -1223,6 +1226,21 @@
   .iv-pivot-rejected {
     margin: 0.75rem 0 0;
     max-width: var(--iv-measure);
+  }
+  /* Length limit for the rejected revision's pitch and the accepted revision's
+     "Changed" cell. The producer stores both strings verbatim — it used to cut them
+     at [:160] and [:200], which shipped mid-word stumps ("…stuck on Eaglesoft or D")
+     that read as corrupted data. Clamping here instead gives a real ellipsis, folds
+     at whatever the viewport's line length actually is rather than a guessed
+     character count, and leaves the full text in the DOM for copy/select and
+     assistive tech. Muted-meta voice: no color, weight, or hover change. */
+  .iv-pivot-rejected,
+  .iv-echo-row dd.iv-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .iv-pivot-trigger + .iv-pivot-rejected,
   .iv-pivot-rejected + .iv-pivot-absent {

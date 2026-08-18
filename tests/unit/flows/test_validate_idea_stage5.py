@@ -650,3 +650,153 @@ def test_the_refusal_next_step_copy_still_tells_the_user_to_re_run(monkeypatch):
         assert "run the check again" in next_step.lower() or "run it again" in next_step.lower(), (
             f"{reason}: next_step no longer invites a re-run ({next_step!r}) — a re-run is a "
             "second full charge, so S15's disclosure requirement changes with this copy")
+
+
+# ── Pivot text is stored verbatim (no producer-side character slice) ──────────
+#
+# `rejected_pitch` and `changes` were each cut with a different guessed magnitude
+# ([:160] and [:200]) off the SAME source field. The report then shipped mid-word
+# stumps ("…so practices stuck on Eaglesoft or D") that users read as corrupted
+# data. Both slices are gone; the length limit lives in ValidationVerdict.svelte's
+# line-clamp. These tests pin the PROPERTY (stored == producer's value, verbatim)
+# rather than any number — an assertion on 160/200/any N would reintroduce the
+# defect as a test.
+
+# Longer than either deleted slice, and shaped so a [:160] or [:200] cut lands
+# mid-word (a length assertion would pass while the text is still mangled).
+_LONG_PITCH = (
+    "A standalone, PMS-agnostic denial-recovery queue that converts insurer EOBs "
+    "into evidence-specific resubmission checklists, so practices stuck on legacy "
+    "practice-management software can rework a denial in one pass instead of "
+    "rebuilding the whole claim from scratch inside the incumbent's own screens."
+)
+
+
+def _mid_word_cut(stored: str, source: str) -> bool:
+    """True when `stored` is a prefix of `source` that stops inside a word."""
+    return (
+        stored != source
+        and source.startswith(stored)
+        and bool(stored)
+        and not stored[-1].isspace()
+        and not source[len(stored)].isspace()
+    )
+
+
+def test_rejected_pitch_is_stored_verbatim_not_character_sliced():
+    rev = _scored_rev(mf=0.4, tf=0.4, nov=0.4, seo=0.4)
+    rev.value_proposition = _LONG_PITCH
+    flow = _flow()
+    crew = _crew_with_scored_seed(FakeCrew(
+        parity="shipped by Cropster: lot tracking shipped since 2021",
+        pivot_rev=rev, pivot_ok=False))
+    flow._inject_validate_seed(crew, _pool())
+
+    stored = flow.state.user_idea_pivot["rejected_pitch"]
+    assert stored == rev.value_proposition, (
+        "rejected_pitch is no longer the producer's value verbatim — a character "
+        "slice has been re-added; presentation limits belong in the renderer's "
+        "line-clamp (.iv-pivot-rejected), not here")
+    assert not _mid_word_cut(stored, rev.value_proposition), (
+        f"rejected_pitch stops mid-word: ...{stored[-30:]!r}")
+
+
+def test_accepted_changes_is_stored_verbatim_not_character_sliced():
+    rev = _seed_idea()
+    rev.solution_name = "Support-History Wedge"
+    rev.innovation_angle = _LONG_PITCH
+    flow = _flow()
+    crew = FakeCrew(parity="partial (CompetX): overlapping tracker",
+                    pivot_rev=rev, pivot_ok=True)
+    flow._inject_validate_seed(crew, _pool())
+
+    stored = flow.state.user_idea_pivot["changes"]
+    assert stored == rev.innovation_angle, (
+        "pivot `changes` is no longer verbatim — a character slice has been "
+        "re-added; the clamp lives on .iv-echo-row dd.iv-clamp-3 instead")
+    assert not _mid_word_cut(stored, rev.innovation_angle)
+
+
+def test_changes_falls_back_to_value_proposition_verbatim():
+    """The fallback arm reads the same field `rejected_pitch` does — it must not
+    reacquire a slice either (that is how the two magnitudes diverged)."""
+    rev = _seed_idea()
+    rev.solution_name = "Support-History Wedge"
+    rev.innovation_angle = None
+    rev.value_proposition = _LONG_PITCH
+    flow = _flow()
+    crew = FakeCrew(parity="partial (CompetX): overlapping tracker",
+                    pivot_rev=rev, pivot_ok=True)
+    flow._inject_validate_seed(crew, _pool())
+
+    assert flow.state.user_idea_pivot["changes"] == _LONG_PITCH
+
+
+def test_ries_label_truthiness_survives_the_unsliced_changes_value():
+    """`ries_label` is decided by `elif record["changes"]:` — a TRUTHINESS test.
+    Dropping the slice must not move it in either direction:
+      * a long value proposition is truthy sliced or whole → "zoom-in" still set;
+      * an empty one still maps to None via the trailing `or None` → no label.
+    """
+    # (a) long, no persona change → zoom-in, exactly as before the slice went.
+    rev = _seed_idea()
+    rev.solution_name = "Support-History Wedge"
+    rev.innovation_angle = None
+    rev.value_proposition = _LONG_PITCH
+    flow = _flow()
+    flow._inject_validate_seed(
+        FakeCrew(parity="partial (CompetX): overlapping tracker",
+                 pivot_rev=rev, pivot_ok=True), _pool())
+    record = flow.state.user_idea_pivot
+    assert record["changes"]  # truthy
+    assert record["ries_label"] == "zoom-in"
+
+    # (b) both source fields empty → changes is None, so no label is claimed.
+    rev2 = _seed_idea()
+    rev2.solution_name = "Blank Wedge"
+    rev2.innovation_angle = None
+    rev2.value_proposition = ""
+    flow2 = _flow()
+    flow2._inject_validate_seed(
+        FakeCrew(parity="partial (CompetX): overlapping tracker",
+                 pivot_rev=rev2, pivot_ok=True), _pool())
+    record2 = flow2.state.user_idea_pivot
+    assert record2["changes"] is None
+    assert record2["ries_label"] is None
+
+    # (c) persona change still wins over the zoom-in fallback.
+    rev3 = _seed_idea()
+    rev3.solution_name = "Segment Wedge"
+    rev3.innovation_angle = _LONG_PITCH
+    rev3.target_personas = ["enterprise green buyers"]
+    flow3 = _flow()
+    flow3._inject_validate_seed(
+        FakeCrew(parity="partial (CompetX): overlapping tracker",
+                 pivot_rev=rev3, pivot_ok=True), _pool())
+    assert flow3.state.user_idea_pivot["ries_label"] == "customer-segment"
+
+
+def test_keeps_still_selects_two_personas_and_one_pain():
+    """The neighbouring LIST slices (`[:2]` personas, `[:1]` pain) are selection,
+    not character truncation — they stay. Pinned so the char-slice removal above
+    is not later "completed" by deleting these too."""
+    rev = _seed_idea()
+    rev.solution_name = "Support-History Wedge"
+    seed_personas = ["roaster A", "roaster B", "roaster C"]
+    flow = _flow()
+    crew = FakeCrew(parity="partial (CompetX): overlapping tracker",
+                    pivot_rev=rev, pivot_ok=True)
+    orig_execute = crew.execute_seed_pipeline
+
+    def _wide(req):
+        seed = orig_execute(req)
+        seed.target_personas = list(seed_personas)
+        seed.pain_points_addressed = ["stale green inventory", "second pain", "third"]
+        return seed
+
+    crew.execute_seed_pipeline = _wide
+    flow._inject_validate_seed(crew, _pool())
+
+    keeps = flow.state.user_idea_pivot["keeps"]
+    assert keeps == "roaster A; roaster B; stale green inventory"
+    assert "roaster C" not in keeps and "second pain" not in keeps

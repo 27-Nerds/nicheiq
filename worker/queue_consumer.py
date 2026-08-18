@@ -33,19 +33,31 @@ sys.path.insert(0, str(project_root))
 # Load environment
 load_dotenv(project_root / ".env")
 
-# Configure logging
-logger.remove()
-logger.add(
-    sys.stderr,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-    level="INFO",
-)
-logger.add(
-    project_root / "output" / "logs" / "worker_{time:YYYY-MM-DD}.log",
-    rotation="1 day",
-    retention="7 days",
-    level="DEBUG",
-)
+WORKER_LOG_DIR = project_root / "output" / "logs"
+
+
+def configure_logging() -> None:
+    """Install this worker's loguru sinks (stderr at INFO, dated file at DEBUG).
+
+    Called from the ``run_consumer`` entry path, NOT at import time. ``loguru.logger``
+    is a process-global singleton, so configuring it on import made *every* importer
+    (notably pytest, which imports this module from several test files) redirect its
+    whole process's log output into the live worker log — 5.7k synthetic ERROR/CRITICAL
+    lines in a single day's file — and ``logger.remove()`` also discarded whatever sinks
+    the importer had installed. Importing this module must have no logging side effects.
+    """
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level="INFO",
+    )
+    logger.add(
+        WORKER_LOG_DIR / "worker_{time:YYYY-MM-DD}.log",
+        rotation="1 day",
+        retention="7 days",
+        level="DEBUG",
+    )
 
 # Queue configuration
 QUEUE_NAME = "nicheiq:jobs"
@@ -708,6 +720,9 @@ def requeue_stale_processing(redis_conn) -> int:
 def run_consumer():
     """Main consumer loop - blocks on Redis queue and processes jobs."""
     global shutdown_requested, _jobs_processed
+
+    # Sinks are installed here rather than at import time (see configure_logging).
+    configure_logging()
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)

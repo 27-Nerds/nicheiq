@@ -1,0 +1,44 @@
+[
+ {
+  "why": "A REJECTED pivot as the pipeline persisted it while the [:160] slice was live — `rejected_pitch` is exactly 160 characters for that reason, so this record is a specimen of the defect the clamp replaces. Long enough that the renderer must fold it, and the spec asserts every character still reaches the DOM.",
+  "file": "tests/fixtures/idea_check_states/shipped_idexx_weakened.block.generated.json",
+  "path": ".pivot",
+  "key": "rejected",
+  "value": {
+   "attempted": true,
+   "outcome": "rejected",
+   "trigger_finding": "IDEXX Neo ships controlled-substance reconciliation reports and integrates with VetSnap for automated log-vs-invoice reconciliation",
+   "because": "limited users included; extra fees per user",
+   "trigger_incumbent": "IDEXX Neo",
+   "keeps": null,
+   "changes": null,
+   "reason_not_shown": "It scored better, but a named product already ships the revised mechanism too, so we're not proposing it.",
+   "ries_label": null,
+   "name": null,
+   "rejection_code": "parity_not_cleared",
+   "rejected_name": "AccreditedVetMapper Solo",
+   "rejected_pitch": "AccreditedVetMapper Solo gives independent and small veterinary clinics a per-clinic, unlimited-staff workflow for turning existing controlled-substance exports",
+   "rejected_composite": 60,
+   "original_composite": 46
+  }
+ },
+ {
+  "why": "An ACCEPTED pivot: `changes` is 175 characters of real innovation-angle prose (under the old [:200] cap, so it was never cut) — the value the 'Changed' cell has to clamp rather than truncate.",
+  "file": "tests/fixtures/idea_check_states/pivot_accepted_teamsnap.block.generated.json",
+  "path": ".pivot",
+  "key": "accepted",
+  "value": {
+   "attempted": true,
+   "outcome": "accepted",
+   "trigger_finding": "TeamSnap availability tracking and lineup tools",
+   "because": "Advanced analytics or pro-level media",
+   "keeps": "Volunteer youth soccer coaches managing weekly recreational games, Soccer parents who need timely attendance, kickoff, and lineup information, Cannot confirm player check-in and deliver timely game information",
+   "changes": "The wedge is not another availability tracker: it is a lightweight playing-time accountability layer for clubs that must measure, explain, and document fairness over a season.",
+   "reason_not_shown": null,
+   "ries_label": "zoom-in",
+   "name": "FairPlay Ledger: Season Fairness Analytics",
+   "idea_id": "idea_fad8f7df232a98eb3adfad3c6f53513d",
+   "idea_revision": 1
+  }
+ }
+]

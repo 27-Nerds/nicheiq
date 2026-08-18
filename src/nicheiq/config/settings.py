@@ -584,6 +584,48 @@ class Settings(BaseSettings):
             "prints USPS SCAN forms free in-platform (ShipProof was wrongly viable). 0 disables."
         ),
     )
+    incumbent_probe_seed_from_niche_input: bool = Field(
+        default=True,
+        description=(
+            "Seed `_probe_incumbents`' 3 discovery queries from the USER'S OWN INPUT "
+            "(`niche_context.niche_input`, reduced to its mechanical head) instead of the "
+            "Stage-1-derived `niche_description`. Falls back to `niche_description` when "
+            "`niche_input` is empty. Measured, not assumed: a pre-registered 42-subject / "
+            "21-vertical-family / 6-rep campaign (probes/incumbent_arms_v2.py) scored the "
+            "pitch-seeded arm the winner on 20 of 25 decidable subjects vs 5 for production "
+            "(p=0.00204, Holm 0.0347). Blast radius is 100% of runs — `niche_input` is "
+            "present and differs from `niche_description` on all 306 Stage-1 checkpoints. "
+            "This flag exists to make the change revertible without a deploy; it is NOT a "
+            "gate. Every conditional gate tested in the same campaign scored at or below "
+            "chance (best 6/25, p=0.998), and the merge arm was measured and rejected in an "
+            "earlier campaign (better name list, worse anchor set, double cost). Set False "
+            "only to roll back."
+        ),
+    )
+    incumbent_probe_seed_generated_description: bool = Field(
+        default=True,
+        description=(
+            "Seed `_probe_incumbents`' 3 discovery queries from a SHORT NICHE DESCRIPTION "
+            "produced by a SEPARATE LLM call over `niche_context.niche_input` (arm E2, "
+            "probes/incumbent_arm_e.py), falling back to the shipped mechanical "
+            "`_pitch_head(niche_input)` seed whenever that call fails or returns empty. "
+            "SHIPPED ON JUDGEMENT, NOT ON A WIN — read this before treating it as measured: "
+            "E2 won 7 of 10 decidable subjects vs the pitch-head baseline (p=0.172, Holm "
+            "0.344, macro-mean M1 0.316 vs 0.270) on the 19 TRUNCATED-SEED subjects, i.e. "
+            "UNPROVEN, while the baseline it replaces carries p=0.00204 / Holm 0.0347. What "
+            "WAS significant is the mechanism: asking a SEPARATE prompt instead of Stage 1's "
+            "cut market-register seeds from 52.6% to 15.8% (paired McNemar p=0.016), and the "
+            "anchor instruction added nothing measurable on top of that isolation (E1 vs E2 "
+            "p=0.25). E2 was also the LEAST replication-stable arm (name-set Jaccard 0.484 "
+            "vs the baseline's 0.523) and its seed is byte-identical across 3 generations at "
+            "temperature 0 in only 10 of 19 subjects. Costs one extra LLM call per run "
+            "(~$0.00008, median 0.83s, p90 1.17s, measured over 114 probe generations). Set "
+            "False to fall back to the measured pitch-head seed with no deploy; "
+            "`incumbent_probe_seed_from_niche_input=False` reverts BOTH layers to the "
+            "pre-2026-08 `niche_description` seed. env: "
+            "INCUMBENT_PROBE_SEED_GENERATED_DESCRIPTION."
+        ),
+    )
     parity_niche_frame_queries_per_family: int = Field(
         default=3, ge=0, le=3,
         description=(

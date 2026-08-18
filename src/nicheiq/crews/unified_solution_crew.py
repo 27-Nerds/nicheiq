@@ -219,6 +219,122 @@ def _tokenize_name(name: str) -> list[str]:
     return [t.lower() for t in tokens if len(t) >= 2 and t.lower() not in _NAME_STOP_WORDS]
 
 
+# --- Vendor-free discovery query construction (parity probes) -------------------------
+# `niche_context.niche_description` is a ~400-char LLM PARAGRAPH, not a search term. Its
+# opening words are boilerplate framing ("The <vertical> market encompasses the software,
+# services, and workflows used by ..."), so the previous label — the first 6 words, verbatim
+# — put a leading determiner and a trailing category noun into every fallback query. Live
+# (run 4bc9c406, checkpoint stage_5_search_arm_debug.json): the discovery arm searched
+#   "NPI taxonomy reconciliation software software The dental revenue cycle management market"
+# 10 times, i.e. a query no buyer would ever type, for ideas whose ONLY parity evidence
+# was that query. These are the two closed word classes that framing is built from — they
+# describe how the Stage-1 description is WRITTEN, not any one niche.
+_NICHE_LABEL_DETERMINERS = {"the", "this", "a", "an", "these", "those", "our"}
+_NICHE_LABEL_CATEGORY_NOUNS = {
+    "market", "markets", "industry", "industries", "ecosystem", "ecosystems",
+    "sector", "sectors", "space", "niche", "segment", "segments", "landscape",
+    "field", "world",
+}
+
+
+def _niche_query_label(niche_description: str) -> str:
+    """Reduce a niche DESCRIPTION to the vertical noun phrase a buyer would search.
+
+    Strips a leading determiner, then a leading category noun (+ its "of"), then cuts at
+    the first remaining category noun: "The dental revenue cycle management market
+    encompasses ..." -> "dental revenue cycle management"; "The ecosystem of competitive
+    esports fans ..." -> "competitive esports fans".
+
+    Measured over all 173 distinct niche descriptions in output/checkpoints: 0 got LONGER
+    than the old first-6-words label, so this can never make a query worse. Descriptions
+    with no noun phrase in the window at all ("This niche focuses on developing ...") are
+    left as-is minus the framing words — a Stage-1 description-quality problem, not
+    something a query template can repair by guessing at grammar.
+    """
+    words = [w for w in (w.strip(",.;:") for w in (niche_description or "").split()[:6]) if w]
+    if words and words[0].lower() in _NICHE_LABEL_DETERMINERS:
+        words = words[1:]
+    if words and words[0].lower() in _NICHE_LABEL_CATEGORY_NOUNS:
+        words = words[1:]
+        if words and words[0].lower() == "of":
+            words = words[1:]
+    kept: list[str] = []
+    for w in words:
+        if w.lower() in _NICHE_LABEL_CATEGORY_NOUNS:
+            break
+        kept.append(w)
+    return " ".join(kept or words)[:60].strip()
+
+
+def _pitch_head(niche_input: str) -> str:
+    """The user's pitch reduced to its mechanical head: first non-empty line; if that line is
+    longer than 110 chars, cut at the last word boundary before 110.
+
+    PORTED VERBATIM from `probes/incumbent_source_ab.pitch_head` (arm B2), which
+    `probes/incumbent_arms_v2.py` reuses byte-for-byte as the winning arm's subject string.
+    Do not "improve" this — a variant is an unmeasured variant. In particular the RAW pitch
+    was measured separately (arm B) and is WEAKER: an 877-char pitch produced 20% fabricated
+    extraction rows, which is what the 110-char head exists to prevent.
+    """
+    line = next((ln.strip() for ln in niche_input.splitlines() if ln.strip()), niche_input.strip())
+    if len(line) <= 110:
+        return line
+    cut = line[:110]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > 40 else cut).strip()
+
+
+# =======================================================================================
+# ARM E2 — the LLM-GENERATED short niche description that seeds `_probe_incumbents`.
+#
+# PORTED VERBATIM from `probes/incumbent_arm_e.py`: `E_BASE_PROMPT` -> `_INCUMBENT_SEED_PROMPT`,
+# `E2_ANCHOR` -> `_INCUMBENT_SEED_ANCHOR`, `MAX_SEED_CHARS`, `GEN_TEMPERATURE`, `_NicheSeed`, and
+# `gen_one`'s call kwargs (`settings.niche_context_llm`, timeout 120, no reasoning_effort).
+# `tests/unit/crews/test_incumbent_probe_seed.py` pins every one of them byte-for-byte against
+# the probe source. A variant is an UNMEASURED variant — and this arm shipped WITHOUT a win
+# (see `UnifiedSolutionCrew._generate_incumbent_seed`), so drift here would destroy the only
+# thing a later round could re-measure against.
+# =======================================================================================
+_INCUMBENT_SEED_MAX_CHARS = 110      # probe: MAX_SEED_CHARS — the length budget `_pitch_head` enforces
+_INCUMBENT_SEED_TEMPERATURE = 0.0    # probe: GEN_TEMPERATURE — arm D's 0.5 was near-totally unstable
+_INCUMBENT_SEED_TIMEOUT = 120        # probe: gen_one's timeout
+
+_INCUMBENT_SEED_PROMPT = """A user submitted the following free-text input describing something they want market research on.
+
+USER INPUT:
+{niche_input}
+
+Write a short niche description: at most {max_chars} characters, no quotes and no boolean operators. It is templated into "best software tools for <description>", so write it as a noun phrase naming what the software does and who it is for — not a question, not the name of a specific product.
+"""
+
+# E2 ONLY. Arm E1 (isolation, no anchor) and E2 (isolation + anchor) were both measured;
+# E1 vs E2 on broadening was p=0.25, so the anchor is carried because E2 is the arm the owner
+# chose to ship, NOT because the anchor was shown to add anything.
+_INCUMBENT_SEED_ANCHOR = """
+ANCHOR RULE: write the description from the USER'S OWN INPUT, not from the broader market that input belongs to. Use the input's own mechanism words (what the thing actually DOES) and its own audience words. Do NOT widen the subject to its parent category or industry. If the description you are about to write would describe the whole parent market just as well as it describes the user's input, it is wrong — narrow it back to the specific mechanism and audience the input names.
+"""
+
+
+class _NicheSeed(BaseModel):
+    """The generator's output schema. Field name and description are the probe's."""
+
+    niche_description: str = Field(
+        "", description=f"short niche description, at most {_INCUMBENT_SEED_MAX_CHARS} characters")
+
+
+def _capability_discovery_query(capability: str, niche_label: str) -> str:
+    """The vendor-free discovery query: "<capability> software <niche label>".
+
+    "software" is appended only when the capability phrase does not already carry it —
+    `_capability_phrases` is asked for buyer/market vocabulary and its own prompt example
+    is "multi-entity consolidation software", so the word arrives inside `capability` about
+    as often as not, and the template stuttered ("... reconciliation software software ...").
+    Capability FIRST so it survives the 120-char cap.
+    """
+    head = capability if "software" in (capability or "").lower() else f"{capability} software"
+    return " ".join(p for p in (head.strip(), (niche_label or "").strip()) if p)[:120]
+
+
 # Independent creative lenses for multi-sample divergent generation. Each divergent
 # sample renders the SAME prompt with a different {lens_directive} so the independent
 # LLM contexts explore orthogonal strategies (the only diversity lever on a reasoning
@@ -1811,6 +1927,200 @@ class UnifiedSolutionCrew:
             base = f"{base}\n\n{probe}"
         return base
 
+    def _incumbent_probe_seed(self) -> str:
+        """The string `_probe_incumbents`' 3 discovery queries are templated on.
+
+        WHY THE USER'S INPUT AND NOT THE DERIVED DESCRIPTION
+        ----------------------------------------------------
+        `niche_description` is a ~400-char Stage-1 LLM PARAGRAPH. Templated into
+        `f"best software tools for {niche}"[:120]` it truncates mid-prose:
+
+            "best software tools for The dental revenue cycle management market encompasses
+             the softw"
+
+        That query built a medical-RCM incumbent map for run 4bc9c406 (dental claim-denial
+        triage). Production anchored 4 names (Eaglesoft x3 reps, Open Dental, Curve,
+        Dentrix); the pitch-seeded arm anchored 13, including Vyne Trellis, DentalXChange
+        and eAssist. `_incumbent_rows[:2]` anchors every name-anchored `incumbent_parity`
+        query, so that map decides which vendors can EVER be searched — and the user's idea
+        was capped at market_fit 0.40 citing an Eaglesoft *manual page* while the product
+        that actually competes with it was never queried.
+
+        THE MEASUREMENT (do not re-litigate this from taste)
+        ---------------------------------------------------
+        Pre-registered campaign, plan frozen and checksummed before any API call and the
+        oracle frozen before that: `probes/incumbent_arms_v2.py` (+ the earlier
+        `probes/incumbent_source_ab.py`). 42 subjects, 21 vertical families, 6 reps per
+        cell, n=25 decidable subjects.
+
+            measured winners:          PITCH 20  ·  production 5
+            BASELINE always use PITCH  20/25   p=0.00204   Holm 0.0347
+            BASELINE always production  5/25   p=0.9995
+            PROPOSED conditional gate   6/25   p=0.998     <- anti-predictive
+            M1 (anchor_specialist_rate) 0.372 pitch  vs  0.261 production
+
+        Controls: a placebo oracle collapses M1 6-8x, so M1 tracks real incumbent
+        identification rather than row volume; and the pitch arm's rows are MORE
+        evidence-grounded than production's (5.8% vs 7.4% ungrounded), so it is not winning
+        by hallucinating.
+
+        THREE THINGS THAT WERE MEASURED AND REJECTED — do not add them back
+        ------------------------------------------------------------------
+        * A CONDITIONAL GATE (use the pitch only when some predicate holds). Every gate
+          tested scored at or below chance; the best was 6/25, p=0.998. The substitution is
+          unconditional on purpose.
+        * A MERGE arm (query both strings and union the rows). Measured in the earlier
+          campaign and rejected: better name list, WORSE anchor set, double the Serper cost.
+        * The RAW pitch. Weaker than the head — an 877-char pitch produced 20% fabricated
+          extraction rows. `_pitch_head` is the measured reduction; see its docstring.
+
+        The `[:120]` truncation on the templated queries is left exactly as production had
+        it, because that is what the winning arm was measured with.
+
+        THE GENERATED DESCRIPTION ON TOP (arm E2, 2026-08-18) — SHIPPED WITHOUT A WIN
+        ------------------------------------------------------------------------------
+        `_generate_incumbent_seed` asks a SEPARATE LLM call for a short niche description and
+        seeds the same three templates with it, falling back to `_pitch_head` on any failure.
+        The full measurement record — 7/10, p=0.172, UNPROVEN — is in that method's docstring
+        and in `settings.incumbent_probe_seed_generated_description`. Read it before treating
+        this layer as measured: the seed it displaces is the one carrying p=0.00204.
+
+        FOUR SEED STATES (the source of each is published on `self._incumbent_seed_source`
+        and recorded in the search-arm ledger by `_probe_incumbents`)
+        -------------------------------------------------------------------------------
+        * generated ok            -> the separate call's short niche description  ("generated")
+        * generation failed/empty -> `_pitch_head(niche_input)`, today's shipped seed ("pitch_head")
+        * no `niche_input`        -> `niche_description`, unchanged legacy behaviour ("description").
+          Reachable only via hand-built or legacy contexts, never via Stage 1: `niche_input`
+          is present and differs from `niche_description` on all 306 Stage-1 checkpoints on
+          disk, across every entry mode (unknown 197, validate_idea 54, audience 29, idea 26).
+        * no `niche_context`      -> "" , and `_probe_incumbents` fail-softs to "" exactly as
+          it did before. No LLM call is made.
+
+        TWO FLAGS, NESTED — the generated layer lives INSIDE the niche-input layer
+        --------------------------------------------------------------------------
+        The generator's prompt is built FROM `niche_input`, so "do not seed from the user's
+        input" has to switch it off too; otherwise the documented rollback would still be
+        seeding from the input, one indirection later.
+
+            from_niche_input | generated | niche_input | generator | seed
+            -----------------+-----------+-------------+-----------+---------------------
+            True             | True      | present     | non-empty | GENERATED description
+            True             | True      | present     | fails/""  | _pitch_head(niche_input)
+            True             | True      | empty       | not called| niche_description
+            True             | False     | present     | not called| _pitch_head(niche_input)
+            True             | False     | empty       | not called| niche_description
+            False            | any       | any         | not called| niche_description
+            any              | any       | no niche_context      -> ""
+
+        `settings.incumbent_probe_seed_generated_description=False` falls back one level, to
+        the MEASURED pitch-head seed. `settings.incumbent_probe_seed_from_niche_input=False`
+        reverts both levels to the pre-2026-08 `niche_description` seed. Both are rollback
+        switches without a deploy, neither is a gate.
+        """
+        ctx = getattr(self, "niche_context", None)
+        # NOT stripped: byte-identical to the expression this replaced, so the flag-off /
+        # fallback path is the pre-change seed exactly.
+        description = getattr(ctx, "niche_description", "") or ""
+        if not settings.incumbent_probe_seed_from_niche_input:
+            self._incumbent_seed_source = "description"
+            return description
+        # `.strip()` before `_pitch_head` mirrors the campaign's population loader
+        # (`incumbent_source_ab.py`: `ni = (s1.get("niche_input") or "").strip()`).
+        niche_input = (getattr(ctx, "niche_input", "") or "").strip()
+        if not niche_input:
+            self._incumbent_seed_source = "description"
+            return description
+        if settings.incumbent_probe_seed_generated_description:
+            generated = self._generate_incumbent_seed(niche_input)
+            if generated:
+                self._incumbent_seed_source = "generated"
+                return generated
+        head = _pitch_head(niche_input)
+        self._incumbent_seed_source = "pitch_head" if head else "description"
+        return head or description
+
+    def _generate_incumbent_seed(self, niche_input: str) -> str:
+        """ARM E2: one SEPARATE LLM call -> a short niche description, or "" on any failure.
+
+        WHAT THIS IS, EXACTLY
+        ---------------------
+        `probes/incumbent_arm_e.py:gen_one` ported verbatim — `_INCUMBENT_SEED_PROMPT` +
+        `_INCUMBENT_SEED_ANCHOR`, `_NicheSeed`, temperature 0, timeout 120,
+        `settings.niche_context_llm`, no `reasoning_effort`. It is deliberately NOT part of
+        Stage 1's `_generate_niche_context` prompt: the isolation IS the mechanism (see
+        below), and merging the two calls in a later refactor would silently undo the only
+        thing this arm measured as significant. A unit test asserts the separation.
+
+        THE MEASUREMENT — THIS SHIPPED ON JUDGEMENT, NOT ON A WIN
+        ---------------------------------------------------------
+        Pre-registered, plan frozen and checksummed before any API call, oracle frozen before
+        that (`probes/incumbent_arm_e_prereg.json` / `_score.json`). Population: the 19
+        TRUNCATED-SEED subjects only (`_pitch_head(niche_input) != niche_input`) — the stratum
+        where the seed construction can move anything at all. 3 arms x 6 reps, contemporaneous.
+
+            E2 vs the shipped pitch head   7 of 10 decidable   p=0.172   Holm 0.344  UNPROVEN
+            M1 (anchor_specialist_rate)    0.316 E2  vs  0.270 baseline (macro-mean)
+            E1 (isolation, no anchor)      5 of 10             p=0.623
+            the seed it replaces           p=0.00204, Holm 0.0347
+
+        The probe's own decision rule was "an inconclusive result is a recommendation to KEEP
+        the baseline". The owner shipped it anyway on a stated rationale the campaign cannot
+        address: `_incumbent_rows` also feeds the wedge-design block, `_probe_niche_wallet`,
+        `_seed_gap_frames` and the toolbelt names, while the campaign only ever scored whether
+        frozen specialists reach the parity anchor slots. That is a judgement call about
+        coverage the measurement did not cover — not a result. Record it as such.
+
+        WHAT *WAS* SIGNIFICANT (the transferable finding, and the reason the call is separate)
+        --------------------------------------------------------------------------------------
+        Arm D asked STAGE 1 for the seed and inherited its "research the BROADER subject"
+        instruction: a blinded, vendor-different judge (controls 42/42, then 19/19 on all
+        three controls here) labelled 52.6% of D1's seeds MARKET-register. The same ask in a
+        SEPARATE prompt: 15.8% (paired exact McNemar, b=6/c=0, p=0.016). The ANCHOR RULE
+        added nothing measurable on top of that isolation (E1 15.8% vs E2 5.3%, p=0.25); it
+        is carried only because E2 is the arm the owner chose.
+
+        THE COSTS OF SHIPPING IT — both are real and neither is hypothetical
+        --------------------------------------------------------------------
+        * STABILITY. E2 was the LEAST replication-stable arm: incumbent name-set Jaccard 0.484
+          across reps vs 0.523 for the deterministic baseline, and at temperature 0 the seed
+          itself is byte-identical across 3 generations in only 10 of 19 subjects. The seed
+          this replaces is a pure string operation and cannot vary at all.
+        * ONE EXTRA LLM CALL PER RUN. Measured over the probe's 114 generations: $0.0088
+          total, i.e. ~$0.00008 per call; latency median 0.83s, p90 1.17s, max 1.89s.
+
+        FAIL-SOFT IS NOT OPTIONAL HERE. An incumbent probe that raised because a seed
+        generator timed out would be a strict regression over a deterministic string
+        operation, so every exception falls back to `_pitch_head`. The result (including a
+        failed "") is cached on the instance: at most ONE generation call per run, and a
+        failure is never retried into a second charge.
+        """
+        cached = getattr(self, "_incumbent_seed_generated", None)
+        if cached is not None:
+            return cached
+        seed = ""
+        try:
+            prompt = _INCUMBENT_SEED_PROMPT.format(
+                niche_input=niche_input, max_chars=_INCUMBENT_SEED_MAX_CHARS
+            ) + _INCUMBENT_SEED_ANCHOR
+            result, usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=_NicheSeed,
+                temperature=_INCUMBENT_SEED_TEMPERATURE,
+                timeout=_INCUMBENT_SEED_TIMEOUT,
+                model_name=settings.niche_context_llm)
+            seed = (getattr(result, "niche_description", "") or "").strip()
+            if getattr(self, "cost_tracker", None) and usage is not None:
+                self.cost_tracker.record_llm_usage(
+                    "Stage 7 - Incumbent Seed", usage.to_dict())
+            logger.info(f"[IncumbentSeed] generated seed ({len(seed)} chars): {seed[:110]!r}"
+                        if seed else "[IncumbentSeed] empty seed -> falling back to pitch head")
+        except Exception as e:  # noqa: BLE001 — a seed generator may never break the probe
+            logger.warning(f"[IncumbentSeed] generation failed (non-fatal), falling back to "
+                           f"the pitch head: {str(e)[:120]}")
+            seed = ""
+        self._incumbent_seed_generated = seed
+        return seed
+
     def _probe_incumbents(self) -> str:
         """Portfolio funnel F4: web-probe the REAL incumbent products for this niche (names, pricing,
         focus, gaps) via 3 Serper queries + one small extraction call. Cached on the instance;
@@ -1835,16 +2145,39 @@ class UnifiedSolutionCrew:
         text = ""
         try:
             search_tool = getattr(self, "search_tool", None)
-            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            niche = self._incumbent_probe_seed()
             if search_tool is None or not niche:
                 self._incumbent_probe_text = ""
                 return ""
+            # Seed PROVENANCE, in the same ledger as the queries it produced. The arm name
+            # carries the source ("generated" | "pitch_head" | "description") so
+            # `stage_5_search_arm_debug.json` shows, per run, whether the generator fired or
+            # fell back — the fallback is silent by design and would otherwise be invisible.
+            # `counted=False`, and the arm name is DISTINCT from "incumbent_probe": this row
+            # is not a query, so it must never enter the gating counter (a prior round proved
+            # arithmetically that charging an uncounted arm to `_ma_serper_calls` starves the
+            # downstream `_ma_search_batch` arms) nor inflate the incumbent_probe query count.
+            # It does add 1 to `total_spend` (= len(log)); `gated_spend`, `_ma_serper_calls`
+            # and every per-arm query count are untouched.
+            self._record_search_arm(
+                f"incumbent_probe_seed:{getattr(self, '_incumbent_seed_source', 'unknown')}",
+                niche, None, counted=False)
             snippets = []
             for q in (f"best software tools for {niche}"[:120],
                       f"{niche} app pricing per month"[:120],
                       f"best apps and tools for {niche}"[:120]):
                 try:
-                    snippets.append(str(search_tool.run(search_query=q))[:3000])
+                    res = str(search_tool.run(search_query=q))
+                    # Attribution for the arm the WHOLE parity stack anchors on: every
+                    # name-anchored `parity_direct` query is `f'"{incumbent}" {kw}'`, so the
+                    # incumbent map these 3 queries build decides which vendors can ever be
+                    # searched — and the ledger recorded parity_direct/adjacent_*/toolbelt but
+                    # not this, leaving the queries behind a bad map unrecoverable after a run.
+                    # `counted=False`: raw `search_tool.run`, so `_ma_serper_calls` never saw
+                    # it. See `_record_search_arm` — routing these into the gating counter
+                    # would starve the downstream `_ma_search_batch` arms.
+                    self._record_search_arm("incumbent_probe", q, res, counted=False)
+                    snippets.append(res[:3000])
                 except Exception:
                     continue
             if not snippets:
@@ -1879,6 +2212,16 @@ class UnifiedSolutionCrew:
                 verify_query = f"{' '.join(unfound_candidates)} pricing"[:120]
                 verify_result = self._ma_search(verify_query)
                 if verify_result:
+                    # Recorded only on a RESULT: `_ma_search` also returns None when the
+                    # market-awareness budget refused the call, and `search_arm_spend` means
+                    # "queries ISSUED" — logging a refused query would invent spend.
+                    # `counted=False` even though this one went through `_ma_search`: a cache
+                    # HIT is served before the budget gate and never increments
+                    # `_ma_serper_calls`, and the return value cannot tell hit from spend, so
+                    # the conservative mark is the one that can never push `gated_spend` past
+                    # `ma_serper_calls` and corrupt the diagnostic.
+                    self._record_search_arm("incumbent_probe", verify_query, verify_result,
+                                            counted=False)
                     snippets.append(str(verify_result)[:3000])
                     combined_snippets = "\n".join(snippets)
 
@@ -3414,7 +3757,10 @@ class UnifiedSolutionCrew:
             # Short niche label for query framing — `niche` is the full niche_description
             # (~400 chars), and the old f"{niche} software {kw}"[:120] fallback truncated the
             # mechanism words away entirely, searching a prose fragment of the description.
-            niche_label = " ".join(niche.split()[:6])[:60]
+            # `_niche_query_label` strips the description's framing boilerplate and
+            # `_capability_discovery_query` de-duplicates "software"; see their docstrings for
+            # the live malformed query this replaced.
+            niche_label = _niche_query_label(niche)
 
             snippets = []
             for idea in top:
@@ -3426,13 +3772,12 @@ class UnifiedSolutionCrew:
                 queries = [f'"{r["name"]}" {kw}'[:120] for r in ranked[:2]
                            if _overlap(r.get("focus", ""), idea_text) > 0]
                 if discovery_left > 0:
-                    # Capability FIRST so it survives the 120-char cap.
-                    queries.append(f"{kw} software {niche_label}"[:120])
+                    queries.append(_capability_discovery_query(kw, niche_label))
                     discovery_left -= 1
                     self._parity_discovery_spent = getattr(
                         self, "_parity_discovery_spent", 0) + 1
                 if not queries:
-                    queries = [f"{kw} software {niche_label}"[:120]]
+                    queries = [_capability_discovery_query(kw, niche_label)]
                 for q in queries:
                     try:
                         res = str(search_tool.run(search_query=q))
@@ -3499,6 +3844,33 @@ class UnifiedSolutionCrew:
                 f = by_name.get((getattr(idea, "solution_name", "") or "").strip().lower())
                 if f is None:
                     continue
+                # MEASURED AND REJECTED (2026-08-17) — a "covered_by must appear in its own
+                # evidence" guard here. Motivating live defect (run 4bc9c406): "partial by
+                # Eaglesoft: Vyne Claims Tracking includes Timely Filing Letter" — covered_by
+                # names one company, the evidence describes another, and both the market_fit
+                # cap and the ruled-out reason text are stamped from covered_by.
+                # The check was run over all 557 named stamps in
+                # output/checkpoints/*/stage_5_3_refinement.json: it REJECTS 72 (12.9%) at
+                # ~12.5% precision (9 genuinely bad / 72). It is not a mismatch detector — the
+                # `evidence` field is spec'd as "what the incumbent ships, <=20 words", a
+                # DESCRIPTION, so ~49 of the 68 distinct rejects are correct stamps whose
+                # evidence simply never repeats the vendor ("Reconciliation platform for
+                # financial services with ISO 20022 support" for AutoRek), and another 10 are
+                # variants the naive form cannot see (IDEXX Neo->"Neo", Intercom Fin->"Fin",
+                # Applied Epic->"Epic", Vet-CSI-360->"CSI-360", GSC/GBP acronyms,
+                # Google Search Console->"Google's"). Shipping it would suppress ~63 real
+                # findings to catch 9, and 8 of those 9 are the vendor-less
+                # `covered_by in {"evidence","red-team"}` class whose writer was already
+                # deleted (see red_team_review's module docstring) — leaving ONE live true
+                # positive in a 46-day, 199-run corpus.
+                # The safe variant (flag only when the evidence names a DIFFERENT vendor from
+                # the run's incumbent map) rejects 0.90% but fires 0/509 times on
+                # shipped|partial and so does not detect the defect above either: "Vyne" was
+                # never in that run's recoverable vendor vocabulary, and "Vyne Claims Tracking
+                # includes ..." is deterministically indistinguishable from a vendor naming
+                # its own feature ("AI Visibility Tool tracks brand mentions" for SE Ranking).
+                # Detecting this needs vendor identity, which no string rule has. Do not
+                # re-add either form without re-running that corpus measurement.
                 if f.parity in ("shipped", "partial") and f.covered_by:
                     note = f"{f.parity} by {f.covered_by}: {f.evidence or 'n/a'}"
                 elif f.parity == "substitute":
@@ -3635,19 +4007,30 @@ class UnifiedSolutionCrew:
             # De-duplicated word sequence of the top terms — short enough to survive as
             # a real search phrase ("drafts replies answering repetitive questions").
             mechanism = " ".join(dict.fromkeys(" ".join(terms[:3]).split()))[:80]
-            niche_label = " ".join(niche.split()[:6])[:60]
+            # Same label/"software" de-duplication as the in-wave probe — this third query
+            # is the identical template and carried the identical two defects.
+            niche_label = _niche_query_label(niche)
             # Three angles on the same category. The "best … tools" listicle form is
             # the discovery workhorse — the run that found the crowded category found
             # it through a roundup article; the run with only the two plain forms
             # missed it (same pitch). Kept ≤3 queries per the probe's cost budget.
             queries = [f"{mechanism} tool"[:120],
                        f"best {mechanism} tools"[:120],
-                       f"{mechanism} software {niche_label}"[:120]]
+                       _capability_discovery_query(mechanism, niche_label)]
             snippets = []
             for q in queries:
                 try:
                     calls += 1
-                    snippets.append(str(search_tool.run(search_query=q))[:1500])
+                    res = str(search_tool.run(search_query=q))
+                    # Attribution: the ledger recorded parity_direct/adjacent_*/toolbelt but
+                    # not this arm, so a "Check my idea" run's brief-parity finding could not
+                    # be traced back to the queries that produced it. `counted=False`: raw
+                    # `search_tool.run`, invisible to `_ma_serper_calls` (this probe has its
+                    # own ≤3-query budget and reports spend through its `calls` return).
+                    self._record_search_arm("seed_brief_parity", q, res,
+                                            idea=getattr(seed, "solution_name", None),
+                                            counted=False)
+                    snippets.append(res[:1500])
                 except Exception:
                     continue
             if not snippets:

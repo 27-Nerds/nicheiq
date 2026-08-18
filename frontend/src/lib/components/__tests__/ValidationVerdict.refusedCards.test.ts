@@ -430,6 +430,14 @@ describe("no spec hand-authors the pipeline's idea-check copy", () => {
     // The vendored refusal register (G-3): a spec needing a specific cause's sentence takes
     // it from here, and that counts as a derivation like any other.
     "SEED_FAILURE_COPY",
+    // The vendored pivot records (2026-08): the graded block carries `not_attempted`, so a
+    // spec needing a pivot with real `rejected_pitch` / `changes` text — the clamp spec —
+    // has nothing to derive one from. `pivotClampText.captured.json` supplies them, copied
+    // from the same producer-generated blocks and pinned against drift in Python by
+    // `tests/unit/flows/test_pivot_clamp_fixture_contract.py`. That pin is the reason this
+    // name belongs here: an unpinned vendored file would be a hand-authored value with a
+    // longer fuse, which is what this guard exists to catch.
+    "PIPELINE_PIVOTS",
   ]);
 
   /**

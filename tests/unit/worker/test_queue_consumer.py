@@ -1030,7 +1030,11 @@ class TestReliableQueue:
             received.append(job_data)
             qc.shutdown_requested = True
 
+        # configure_logging is patched out in every in-process run_consumer test: it installs
+        # the worker's real sinks on loguru's global logger, which would redirect the rest of
+        # the pytest session into the live output/logs/worker_<date>.log.
         with patch.object(qc, "get_redis_connection", return_value=r), \
+             patch.object(qc, "configure_logging"), \
              patch.object(qc, "process_job", side_effect=_stop), \
              patch.object(qc, "start_heartbeat", create=True), \
              patch("worker.heartbeat.start_heartbeat"), \
@@ -1070,6 +1074,7 @@ class TestReliableQueue:
             raise RuntimeError("unexpected")
 
         with patch.object(qc, "get_redis_connection", return_value=r), \
+             patch.object(qc, "configure_logging"), \
              patch.object(qc, "process_job", side_effect=_boom), \
              patch("worker.heartbeat.start_heartbeat"), \
              patch("worker.heartbeat.stop_heartbeat"), \
