@@ -314,6 +314,20 @@ services:
       # Structured-output route for openrouter/* tiers (json_schema needs a guided-decoding provider, e.g. deepinfra)
       OPENROUTER_STRUCTURED_MODE: ${OPENROUTER_STRUCTURED_MODE:-tool_choice}
       OPENROUTER_STRUCTURED_PROVIDERS: ${OPENROUTER_STRUCTURED_PROVIDERS:-}
+      # Model-layer failover chains (JSON map). This passthrough was MISSING until 2026-08-19,
+      # so llm_fallback_models was unreachable in prod and every structured call ran with no
+      # model-level failover at all. Live consequence: job ba5b96b6 died in Stage 1 when
+      # gemini-3.1-flash-lite returned finish_reason=error on all three transport rungs — and
+      # Stage 1 is fail-hard, so the whole run was lost. The default below gives the two
+      # gemini-flash-lite consumers a provider-decorrelated fallback; the settings docstring
+      # already recorded flash-lite structured-output flakiness before this fired.
+      # Fallbacks MEASURED 2026-08-19 against the real NicheContext schema under our own
+      # structured params -- the docstring's suggested openai/gpt-4o-mini 404s
+      # ("no endpoints handle the requested parameters"), as does gpt-4.1-mini, so a
+      # plausible-looking chain would have installed a DEAD fallback. haiku-4.5 (Anthropic)
+      # and deepseek-v4-flash both serve it standalone and are provider-decorrelated from
+      # Google. Re-test with probes/niche_context_failover.py before changing either.
+      LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-{"google/gemini-3.1-flash-lite":["anthropic/claude-haiku-4.5","deepseek/deepseek-v4-flash"]}}
       # Moonshot AI (Kimi) — required if any tier uses a kimi-* model id
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
       KIMI_THINKING: ${KIMI_THINKING:-false}

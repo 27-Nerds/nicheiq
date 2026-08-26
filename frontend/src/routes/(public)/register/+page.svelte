@@ -8,6 +8,7 @@
   import OAuthButtons from "$lib/components/ui/OAuthButtons.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import { trackSignup } from "$lib/analytics";
 
   const availableProviders = $derived(page.data.availableProviders);
 
@@ -53,6 +54,10 @@
         error = data.error || "Registration failed";
         return;
       }
+
+      // Credentials never hit the adapter's createUser path, so the "Signup"
+      // conversion is fired here rather than from the session flag.
+      trackSignup("password");
 
       const result = await signIn("credentials", {
         email,

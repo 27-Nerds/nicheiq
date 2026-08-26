@@ -11,6 +11,9 @@ const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 const prisma = new PrismaClient();
 
+/** How long after account creation the session still advertises a new signup. */
+const SIGNUP_FRESHNESS_MS = 60_000;
+
 // Validate OAuth configuration (warn in development, throw in production for deployed apps)
 function validateOAuthConfig() {
   const isProduction = env.NODE_ENV === 'production';
@@ -155,7 +158,15 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account, trigger }) {
+      // Auth.js reports trigger === 'signUp' only on the request that creates
+      // the adapter user (OAuth). Stamped so the client can fire the GA4
+      // "Signup" conversion; self-expires via the freshness check below, since
+      // the JWT itself is long-lived.
+      if (trigger === 'signUp') {
+        token.signupAt = Date.now();
+        token.signupMethod = account?.provider ?? 'oauth';
+      }
       // On sign in, add user info to token
       if (user) {
         token.id = user.id;
@@ -184,6 +195,13 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
         session.user.name = token.name as string | null;
         session.user.image = token.image as string | null;
         session.user.role = token.role as string | undefined;
+        // Surfaced only for the first minute after account creation, so a
+        // stale token can never re-report the conversion.
+        const signupAt = token.signupAt as number | undefined;
+        session.user.freshSignup =
+          signupAt && Date.now() - signupAt < SIGNUP_FRESHNESS_MS
+            ? ((token.signupMethod as string) ?? 'oauth')
+            : undefined;
       }
       return session;
     },
@@ -207,6 +225,8 @@ declare module '@auth/core/types' {
       name?: string | null;
       image?: string | null;
       role?: string;
+      /** Provider name for a just-created account; drives the GA4 "Signup" event. */
+      freshSignup?: string;
     };
   }
 }

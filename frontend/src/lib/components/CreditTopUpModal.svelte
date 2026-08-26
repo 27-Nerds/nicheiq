@@ -3,6 +3,7 @@
   import { invalidateAll, goto } from "$app/navigation";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import type { TokenPackage } from "$lib/types/billing";
+  import { stashPendingPurchase } from "$lib/analytics";
   import { Loader2 } from "lucide-svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
@@ -183,6 +184,8 @@
 
       const data = await res.json();
       if (res.ok && data.url) {
+        const pkg = packages.find((p) => p.id === packageId);
+        if (pkg) stashPendingPurchase(pkg, "package");
         window.location.href = data.url;
       } else {
         checkoutError = data.error || "Failed to start checkout.";

@@ -4,6 +4,7 @@
 	import type { SubscriptionPlan } from '$lib/types/billing';
 	import CtaIcon from '$lib/components/ui/CtaIcon.svelte';
 	import PlanCard from '$lib/components/ui/PlanCard.svelte';
+	import { stashPendingPurchase } from '$lib/analytics';
 
 	interface Props {
 		session?: { user?: { name?: string | null; email?: string | null } } | null;
@@ -118,6 +119,8 @@
 				return;
 			}
 			if (response.ok && result.url) {
+				const plan = plans.find((p) => p.id === planId);
+				if (plan) stashPendingPurchase(plan, 'subscription');
 				window.location.href = result.url;
 			} else {
 				subscribeError = result.error || 'Failed to start subscription.';

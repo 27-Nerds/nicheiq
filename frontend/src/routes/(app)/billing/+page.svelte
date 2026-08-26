@@ -31,6 +31,7 @@
     SubscriptionPlan,
     UserSubscription,
   } from "$lib/types/billing";
+  import { stashPendingPurchase } from "$lib/analytics";
 
   interface Transaction {
     id: string;
@@ -214,6 +215,8 @@
       }
 
       if (response.ok && result.url) {
+        const plan = plans.find((p) => p.id === planId);
+        if (plan) stashPendingPurchase(plan, "subscription");
         window.location.href = result.url;
       } else {
         subscriptionError = result.error || "Failed to start subscription.";
@@ -344,6 +347,8 @@
       const result = await response.json();
 
       if (response.ok && result.url) {
+        const pkg = packages.find((p) => p.id === packageId);
+        if (pkg) stashPendingPurchase(pkg, "package");
         // Redirect to Stripe Checkout
         window.location.href = result.url;
       } else {

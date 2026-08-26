@@ -3,6 +3,7 @@
   import { invalidateAll, goto } from "$app/navigation";
   import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
   import type { SubscriptionPlan } from "$lib/types/billing";
+  import { stashPendingPurchase } from "$lib/analytics";
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
@@ -158,6 +159,8 @@
 
       const data = await res.json();
       if (res.ok && data.url) {
+        const plan = plans.find((p) => p.id === planId);
+        if (plan) stashPendingPurchase(plan, "subscription");
         window.location.href = data.url;
       } else {
         actionError = data.error || "Failed to start subscription.";

@@ -3,6 +3,7 @@
   import { browser, dev } from "$app/environment";
   import { afterNavigate } from "$app/navigation";
   import { onMount } from "svelte";
+  import { markAnalyticsReady } from "$lib/analytics";
 
   const enabled = browser && !dev && !!PUBLIC_GA_MEASUREMENT_ID;
 
@@ -130,6 +131,8 @@
       window.gtag("config", PUBLIC_GA_MEASUREMENT_ID, {
         send_page_view: false,
       });
+      // Release any conversion events queued before consent was granted.
+      markAnalyticsReady();
       // Fire catch-up pageview for current page
       if (!window.location.pathname.startsWith("/admin")) {
         initialPageViewSent = true;
